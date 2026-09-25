@@ -2,7 +2,7 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Status: Planning / Phase 0 not started.** Driftless has no application implementation yet. The repository currently contains planning and architecture documentation only.
+> **Status: Phase 0 in progress.** Spike 0.1 is provisionally closed with desktop manual evidence and deferred physical Android debt. Spike 0.2 has a provisional controlled-desktop connectivity result with external-network validation deferred. No production application implementation exists.
 
 ## Goals
 
@@ -58,9 +58,9 @@ Progressive Watch is a runtime-detected capability. A browser or device that can
 
 ## Development status
 
-The project version is `0.0.0-planning`. Phase 0 — Architecture & Feasibility has not started. No React/Vite project, PWA, player, signaling service, WebRTC connection, synchronization engine, transfer engine, or automated test suite has been implemented.
+The project version is `0.0.0-planning`. Phase 0 — Architecture & Feasibility is in progress on `phase/0-feasibility`. Isolated Spike 0.1 and Spike 0.2 experiments and their small deterministic test suites exist under `spikes/phase0/`. Physical Android local-media qualification and real external-network WebRTC validation remain deferred debts. No React/Vite production project, PWA, production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
 
-The next implementation step, after this documentation baseline is accepted, is to create the `phase/0-feasibility` branch and begin the scoped technical spikes. Full product implementation should not begin before the Phase 0 exit gate is evaluated.
+The next step is independent review of Spike 0.2 before beginning Spike 0.3. Phase 1 and full product implementation must not begin as part of the current work.
 
 ## Documentation
 

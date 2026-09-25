@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: NOT STARTED**.
+The current state is **Phase 0 — Architecture & Feasibility: IN PROGRESS**. Spike 0.1 is `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`; Spike 0.2 is `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED` pending independent review. Spike 0.3 and later spikes have not started. Deferred physical qualification debt remains open and Phase 0 is not complete.
 
 ## Phase 0 — Architecture & Feasibility
 

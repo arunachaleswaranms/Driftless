@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Driftless Phase 0 — Local Media Playback</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>Driftless Phase 0</p>
+        <h1>Spike 0.1 — Local Media Playback</h1>
+        <p>
+          Select a local video for native browser playback. This experiment does not upload or
+          read the file into JavaScript memory.
+        </p>
+      </header>
+
+      <section aria-labelledby="selection-heading">
+        <h2 id="selection-heading">Media selection</h2>
+        <div class="actions">
+          <label class="file-picker">
+            Select video
+            <input id="file-input" type="file" accept="video/mp4,.mp4,video/*" />
+          </label>
+          <button id="clear-button" type="button" disabled>Clear selection</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">No file selected.</p>
+        <p id="compatibility-note">
+          Initial target: MP4 container with H.264/AVC video and AAC audio. The browser makes the
+          final native decoding decision.
+        </p>
+      </section>
+
+      <section aria-labelledby="media-heading">
+        <h2 id="media-heading">Selected media</h2>
+        <dl class="diagnostics-grid">
+          <div><dt>Filename</dt><dd id="filename">—</dd></div>
+          <div><dt>File size</dt><dd id="file-size">—</dd></div>
+          <div><dt>MIME type</dt><dd id="mime-type">—</dd></div>
+          <div><dt>Duration</dt><dd id="duration">—</dd></div>
+          <div><dt>Resolution</dt><dd id="resolution">—</dd></div>
+          <div><dt>Playback</dt><dd id="playback-position">—</dd></div>
+        </dl>
+
+        <video id="video" controls playsinline preload="metadata" aria-label="Selected local video">
+          This browser does not support the HTML video element.
+        </video>
+      </section>
+
+      <section aria-labelledby="diagnostics-heading">
+        <h2 id="diagnostics-heading">Local diagnostics</h2>
+        <p>These values remain in this page and are not transmitted.</p>
+        <dl class="diagnostics-grid">
+          <div><dt>Browser / User-Agent</dt><dd id="user-agent">—</dd></div>
+          <div><dt>Target MIME support</dt><dd id="mime-support">—</dd></div>
+          <div><dt>Ready state</dt><dd id="ready-state">0 (HAVE_NOTHING)</dd></div>
+          <div><dt>Network state</dt><dd id="network-state">0 (NETWORK_EMPTY)</dd></div>
+          <div><dt>Buffered ranges</dt><dd id="buffered-ranges">None</dd></div>
+          <div><dt>Seekable ranges</dt><dd id="seekable-ranges">None</dd></div>
+          <div><dt>Media error</dt><dd id="media-error">None</dd></div>
+          <div><dt>Object URL lifecycle</dt><dd id="object-url-state">No active object URL</dd></div>
+        </dl>
+
+        <h3>Event log</h3>
+        <ol id="event-log" aria-live="polite"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>
