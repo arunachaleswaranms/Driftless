@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Driftless Phase 0 — RTCDataChannel Binary Transfer</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>Driftless Phase 0</p>
+        <h1>Spike 0.3 — RTCDataChannel Binary Transfer</h1>
+        <p>
+          Transfer generated synthetic bytes in bounded chunks with <code>bufferedAmount</code>
+          backpressure and per-chunk integrity checks. No media, files, storage, synchronization,
+          analytics, or production signaling is present. Same-host throughput is a lab observation
+          only.
+        </p>
+      </header>
+
+      <section aria-labelledby="setup-heading">
+        <h2 id="setup-heading">Peer setup (local development signaling)</h2>
+        <p>
+          Open two tabs with the same room label: the <strong>receiver</strong> (responder) and the
+          <strong>sender</strong> (initiator). SDP and ICE travel only through a same-origin
+          <code>BroadcastChannel</code>.
+        </p>
+        <div class="setup-grid">
+          <label>
+            Role
+            <select id="role">
+              <option value="responder">Receiver (responder)</option>
+              <option value="initiator">Sender (initiator)</option>
+            </select>
+          </label>
+          <label>
+            Room label
+            <input id="room" type="text" maxlength="64" value="bt-local" autocomplete="off" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="start" type="button">Start peer</button>
+          <button id="refresh" type="button" disabled>Refresh diagnostics</button>
+          <button id="close" type="button" disabled>Close peer</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">Idle. Configure a role and start the peer.</p>
+      </section>
+
+      <section aria-labelledby="transfer-heading" id="sender-controls">
+        <h2 id="transfer-heading">Synthetic transfer (sender only)</h2>
+        <div class="setup-grid">
+          <label>
+            Total payload
+            <select id="total-bytes">
+              <option value="1048576">1 MiB</option>
+              <option value="16777216">16 MiB</option>
+              <option value="67108864">64 MiB</option>
+              <option value="134217728">128 MiB</option>
+            </select>
+          </label>
+          <label>
+            Transport chunk payload
+            <select id="chunk-size">
+              <option value="16384">16 KiB</option>
+              <option value="65536">64 KiB</option>
+              <option value="131072">128 KiB</option>
+              <option value="262144">256 KiB</option>
+            </select>
+          </label>
+          <label>
+            High-water / low-water
+            <select id="water-marks">
+              <option value="262144:65536">256 KiB / 64 KiB</option>
+              <option value="1048576:262144" selected>1 MiB / 256 KiB</option>
+              <option value="4194304:1048576">4 MiB / 1 MiB</option>
+            </select>
+          </label>
+          <label>
+            Experiment mode
+            <select id="fault-mode">
+              <option value="none">none (integrity expected to pass)</option>
+              <option value="corrupt-byte">corrupt-byte (flip one byte after hashing)</option>
+              <option value="drop-chunk">drop-chunk (skip middle chunk)</option>
+              <option value="duplicate-chunk">duplicate-chunk (send middle chunk twice)</option>
+              <option value="reorder-chunks">reorder-chunks (swap two middle chunks)</option>
+              <option value="malformed-frame">malformed-frame (inject bad-magic frame)</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="send" type="button" disabled>Start transfer</button>
+          <button id="matrix" type="button" disabled>Run lab matrix</button>
+          <button id="abort" type="button" disabled>Abort transfer</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="live-heading">
+        <h2 id="live-heading">Transfer diagnostics</h2>
+        <dl class="diagnostics-grid">
+          <div><dt>Browser / User-Agent</dt><dd id="user-agent">—</dd></div>
+          <div><dt>Role</dt><dd id="active-role">—</dd></div>
+          <div><dt>Connection state</dt><dd id="connection-state">closed</dd></div>
+          <div><dt>Data channel readyState</dt><dd id="channel-state">not created</dd></div>
+          <div><dt>SCTP maxMessageSize</dt><dd id="max-message-size">Unavailable</dd></div>
+          <div><dt>Transfer state</dt><dd id="transfer-state">idle</dd></div>
+          <div><dt>Total bytes</dt><dd id="total">—</dd></div>
+          <div><dt>Chunk size / chunks</dt><dd id="chunks">—</dd></div>
+          <div><dt>Bytes sent</dt><dd id="bytes-sent">—</dd></div>
+          <div><dt>Bytes received</dt><dd id="bytes-received">—</dd></div>
+          <div><dt>bufferedAmount (now)</dt><dd id="buffered-amount">—</dd></div>
+          <div><dt>Max bufferedAmount</dt><dd id="max-buffered">—</dd></div>
+          <div><dt>High-water / low-water</dt><dd id="water">—</dd></div>
+          <div><dt>Backpressure pauses / resumes</dt><dd id="pauses">—</dd></div>
+          <div><dt>Transfer start / end</dt><dd id="start-end">—</dd></div>
+          <div><dt>Elapsed</dt><dd id="elapsed">—</dd></div>
+          <div><dt>Approx. throughput</dt><dd id="throughput">—</dd></div>
+          <div><dt>Integrity result</dt><dd id="integrity">—</dd></div>
+          <div><dt>JS heap (coarse, Chrome-only)</dt><dd id="heap">Unavailable</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="path-heading">
+        <h2 id="path-heading">Selected-path and data-channel stats</h2>
+        <p>Candidate addresses and raw SDP are not displayed or logged.</p>
+        <dl class="diagnostics-grid">
+          <div><dt>Selected pair</dt><dd id="selected-pair">Unavailable</dd></div>
+          <div><dt>Evidence-based path classification</dt><dd id="path-classification">Unavailable</dd></div>
+          <div><dt>Protocol</dt><dd id="protocol">Unavailable</dd></div>
+          <div><dt>Current RTT</dt><dd id="rtt">Unavailable</dd></div>
+          <div><dt>data-channel stats (messages / bytes)</dt><dd id="channel-stats">Unavailable</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="resources-heading">
+        <h2 id="resources-heading">Owned resources</h2>
+        <dl class="diagnostics-grid">
+          <div><dt>Peer connection</dt><dd id="res-peer">none</dd></div>
+          <div><dt>Data channel</dt><dd id="res-channel">none</dd></div>
+          <div><dt>Signaling channel</dt><dd id="res-signal">none</dd></div>
+          <div><dt>Owned timers</dt><dd id="res-timers">0</dd></div>
+          <div><dt>Backpressure waiters</dt><dd id="res-waiters">0</dd></div>
+          <div><dt>Control waiters</dt><dd id="res-control">0</dd></div>
+          <div><dt>Active transfer</dt><dd id="res-transfer">none</dd></div>
+          <div><dt>Receiver verifications pending</dt><dd id="res-verifications">0</dd></div>
+          <div><dt>Rejected messages (lifetime)</dt><dd id="res-rejected">0</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="results-heading">
+        <h2 id="results-heading">Lab results (sender)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Test</th><th>Total</th><th>Chunk</th><th>HW/LW</th><th>Mode</th>
+                <th>Status</th><th>Elapsed</th><th>Throughput (lab)</th><th>Max buffered</th>
+                <th>Pauses</th><th>Integrity</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <details>
+          <summary>Raw JSON evidence</summary>
+          <pre id="results-json">[]</pre>
+        </details>
+      </section>
+
+      <section aria-labelledby="log-heading">
+        <h2 id="log-heading">Bounded event log</h2>
+        <ol id="event-log" aria-live="polite"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>

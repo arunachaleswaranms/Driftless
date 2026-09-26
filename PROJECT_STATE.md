@@ -20,13 +20,13 @@ Phase 0 — Architecture & Feasibility
 
 ## Current Activity
 
-Spike 0.2 — WebRTC Peer Connectivity
+Spike 0.3 — RTCDataChannel Binary Transfer
 
 ## Current Branch
 
 `phase/0-feasibility`
 
-Verified from Git on 2026-09-25 at `49497fe`. Phase 0 changes are intentionally uncommitted.
+Verified from Git on 2026-09-26 at `4edc074` (Spikes 0.1–0.2 checkpointed). Spike 0.3 changes are intentionally uncommitted.
 
 ## Repository Status
 
@@ -41,7 +41,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 and Spike 0.2 browser experiments now exist under `spikes/phase0/`. No production application, signaling service, synchronization engine, transfer engine, binary-transfer implementation, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1, Spike 0.2, and Spike 0.3 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer experiment is laboratory code only. No production application, signaling service, synchronization engine, transfer engine, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
 
 ## Accepted Architecture
 
@@ -77,17 +77,25 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
 - `AUTOMATED DESKTOP` validation on macOS 26.6.2 with Chrome 153 established offer/answer, ICE completion, `connected` state, an open data channel, `PING`/`PONG`, selected-pair diagnostics, and clean local cleanup in two same-browser tabs.
 - The final selected pair snapshot was host/host over UDP with 1.00 ms RTT reported on each peer. Repeated local runs also observed unselected server-reflexive candidates. These diagnostics do not prove separate-network connectivity or establish a performance baseline.
 
-No product feature is complete, and Phase 0 is not complete. Spike 0.2 has a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED` pending independent review.
+- The isolated Spike 0.3 page transfers deterministic synthetic bytes over one ordered `RTCDataChannel` in framed chunks with event-driven `bufferedAmount`/`bufferedamountlow` backpressure, per-chunk Web Crypto SHA-256 and deterministic-pattern verification, a chunk-digest manifest, explicit fault modes, bounded control messages, and resource accounting. It never materializes the whole payload on either peer.
+- Spike 0.3 deterministic tests pass: 10 tests, 0 failures on Node.js v26.3.0, including a real sender → fake channel → real receiver transfer. All Phase 0 tests: 20 pass, 0 fail.
+- `AUTOMATED DESKTOP` validation used two headless Chrome 153.0.8010.53 pages on macOS 26.6.2, with mDNS host-candidate obfuscation disabled for the lab profile and a host/host UDP selected pair. It ran a 23-run lab matrix twice.
+  - 1, 16, 64, and 128 MiB transfers at 16/64/128 KiB chunks passed integrity.
+  - 256 KiB chunks were rejected before sending because the frame exceeds Chrome's negotiated 262,144-byte `maxMessageSize`.
+  - Max `bufferedAmount` stayed ≤ high-water + one frame in all 38 sent runs.
+  - All five fault modes were detected, and cleanup released all owned resources during and after transfers.
+- Same-host warmed throughput plateaued at about 35 MiB/s. The first 2–4 s of sustained sending on a fresh association was markedly slower. These are lab observations, not Internet throughput or planning values.
+
+No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`; Spike 0.3 is pending independent review.
 
 ## In Progress
 
-- Independent review of Spike 0.2 implementation and evidence.
+- Independent review of Spike 0.3 implementation and evidence.
 - Accumulated physical Android and real external-network qualification remains deferred under the debt list below.
 
 ## Not Started
 
-- Spike 0.3 through Spike 0.7 implementation and validation.
-- RTCDataChannel binary transfer validation.
+- Spike 0.4 through Spike 0.7 implementation and validation.
 - OPFS and browser storage investigation.
 - MP4 parsing and segmentation investigation.
 - MSE progressive playback investigation.
@@ -108,12 +116,19 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 
 - `DEFERRED-PHYSICAL-001 — Spike 0.1 Android Chrome local media qualification`: validate file selection, playback, pause/resume, seeks, lifecycle cleanup, errors, and representative large-file resource behavior on physical Android Chrome. Android architecture risk remains unqualified; final Android support cannot be claimed.
 - `DEFERRED-PHYSICAL-002 — Spike 0.2 Android Chrome and external-network WebRTC qualification`: validate two real peers on genuinely separate Internet networks, including at least one physical Android participant where applicable, and record selected direct or relay path. Current same-host desktop evidence is not a real-network result.
+- `DEFERRED-PHYSICAL-003 — Spike 0.3 binary transfer over real external network / Android`: repeat bounded synthetic binary transfer between real peers on genuinely separate Internet networks, including at least one physical Android Chrome participant. Record the selected direct or relay path, the negotiated `maxMessageSize`, integrity, backpressure behavior, association warm-up, receiver/sender memory and CPU, and throughput under real loss and latency. Current evidence comes from headless same-host desktop Chrome and is not a real-network, TURN, or mobile result.
 
 The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence.
 
 ## Current Blockers
 
 No architecture blocker has been observed. Spike 0.1 has no exact desktop memory measurements and retains physical Android debt. Spike 0.2 proves controlled same-host browser connectivity only; different-NAT, carrier-network, physical Android, and TURN behavior remain unqualified. The selected host/host pair must not be generalized to Internet reachability.
+
+Spike 0.3 proves bounded, integrity-checked binary transfer in same-host headless Chrome only. The following remain inputs to later transfer-engine design, not blockers:
+
+- Negotiated `maxMessageSize` constrains chunk size (256 KiB payload + header exceeds Chrome's 262,144 bytes).
+- Fresh associations show a multi-second throughput warm-up.
+- RTCDataChannel provides no receive-side application flow control.
 
 ## Open Questions
 
@@ -133,9 +148,9 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent review of Spike 0.2 before beginning Spike 0.3.
+Independent review of Spike 0.3 before beginning Spike 0.4.
 
-Do not begin Spike 0.3, Phase 1, or full product implementation before the applicable review and phase gates.
+Do not begin Spike 0.4, Phase 1, or full product implementation before the applicable review and phase gates.
 
 ## Decisions That Must Not Be Accidentally Reverted
 
@@ -156,4 +171,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-25
+2026-09-26

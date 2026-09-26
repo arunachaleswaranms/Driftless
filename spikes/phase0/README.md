@@ -43,17 +43,25 @@ Phase 0 exists to prove or disprove Driftless's riskiest architectural assumptio
 
 ## Spike 0.3 — RTCDataChannel Binary Transfer
 
-- **Objective:** Measure bounded binary transfer behavior and backpressure over RTCDataChannel.
+- **Objective:** Measure bounded binary transfer behavior and backpressure over RTCDataChannel using synthetic bytes only, without media, file transfer, storage, MSE, synchronization, or Progressive Watch.
 - **Architectural question:** Can target browsers move binary chunks reliably without unbounded sender or receiver memory growth?
-- **Status:** `NOT STARTED`
-- **Environment:** Planned Tier 1 desktop and physical Android Chrome over direct and relayed paths where available.
-- **Procedure:** Not executed. A later spike must vary bounded chunk sizes, enforce `bufferedAmount` backpressure, verify byte integrity, and record throughput and memory observations.
-- **Acceptance criteria:** Integrity-checked transfer succeeds with explicit bounds and backpressure; safe operating ranges and failure modes are documented from evidence.
-- **Evidence:** None.
-- **Result:** `NOT TESTED`.
-- **Issues discovered:** None; investigation has not begun.
-- **Decision:** Pending.
-- **Follow-up:** Schedule only after Spike 0.2 evidence is reviewed.
+- **Status:** `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`
+- **Environment:** `AUTOMATED DESKTOP` on macOS 26.6.2 with two headless Chrome 153.0.8010.53 pages in one throwaway profile on one host, same-origin development signaling, and a host/host UDP selected pair. Physical Android and separate Internet networks were not tested.
+- **Procedure:** The isolated experiment in `spike-03-datachannel-binary/` generates deterministic payloads on demand and sends them in framed chunks with event-driven `bufferedAmount`/`bufferedamountlow` backpressure. The receiver verifies each chunk against the deterministic pattern and Web Crypto SHA-256, then releases the payload. A lab matrix covered 1/16/64/128 MiB × 16/64/128/256 KiB, three water-mark settings, and five explicit fault modes, and was executed twice. Cleanup was exercised during and after transfers.
+- **Acceptance criteria:** BT-01 through BT-08 pass in the controlled desktop environment. BT-09 remains `DEFERRED-PHYSICAL / EXTERNAL-NETWORK VALIDATION`; therefore the result is provisional rather than full `PASS`.
+- **Evidence:** [Spike 0.3 result record](results/spike-03-datachannel-binary.md).
+  - Every non-fault transfer up to 128 MiB passed byte-count, sequence, per-chunk SHA-256, pattern, and manifest checks.
+  - Max `bufferedAmount` never exceeded the high-water mark plus one frame (about 1.06–1.18 MB for 128 MiB at the 1 MiB mark).
+  - All five fault modes were detected.
+  - All owned resources were released on close.
+- **Result:** `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`.
+- **Issues discovered:**
+  - A 256 KiB payload plus header exceeds Chrome's negotiated 262,144-byte `maxMessageSize` and is rejected before sending.
+  - The first 2–4 s of sustained sending on a fresh association is markedly slower (3.4–10.5 MiB/s against about 35 MiB/s warmed).
+  - RTCDataChannel gives the receiving application no flow control, so production will need application-level acknowledgements or credits.
+  - Same-host throughput is a lab observation only. Headless Chrome required mDNS host-candidate obfuscation to be disabled for the lab run.
+- **Decision:** RTCDataChannel remains plausible as the bounded binary transport primitive. No architecture change or ADR modification is required from current evidence.
+- **Follow-up:** Independent review of Spike 0.3 before beginning Spike 0.4. Track `DEFERRED-PHYSICAL-003` for real external-network and physical Android validation.
 
 ## Spike 0.4 — Browser Storage and OPFS Feasibility
 
