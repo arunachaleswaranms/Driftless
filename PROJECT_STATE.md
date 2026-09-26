@@ -20,13 +20,13 @@ Phase 0 — Architecture & Feasibility
 
 ## Current Activity
 
-Spike 0.3 — RTCDataChannel Binary Transfer
+Spike 0.4 — Browser Storage / OPFS Feasibility
 
 ## Current Branch
 
 `phase/0-feasibility`
 
-Verified from Git on 2026-09-26 at `4edc074` (Spikes 0.1–0.2 checkpointed). Spike 0.3 changes are intentionally uncommitted.
+Verified from Git on 2026-09-26 at `0664735` (Spikes 0.1–0.3 checkpointed). Spike 0.4 changes are intentionally uncommitted.
 
 ## Repository Status
 
@@ -41,7 +41,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1, Spike 0.2, and Spike 0.3 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer experiment is laboratory code only. No production application, signaling service, synchronization engine, transfer engine, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.4 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer and Spike 0.4 synthetic OPFS storage experiments are laboratory code only. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
 
 ## Accepted Architecture
 
@@ -85,18 +85,31 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
   - Max `bufferedAmount` stayed ≤ high-water + one frame in all 38 sent runs.
   - All five fault modes were detected, and cleanup released all owned resources during and after transfers.
 - Same-host warmed throughput plateaued at about 35 MiB/s. The first 2–4 s of sustained sending on a fresh association was markedly slower. These are lab observations, not Internet throughput or planning values.
+- Spike 0.3 was checkpointed at `0664735`. This session proceeded to Spike 0.4 at the user's direction.
+- The isolated Spike 0.4 page writes deterministic synthetic bytes to OPFS one reused block at a time. It uses `createWritable()` and, separately, `FileSystemSyncAccessHandle` in a dedicated worker. It verifies selected ranges and every byte, resumes from the stored size, persists an entry across reload, reports `estimate()`/`persisted()`/`persist()`, refuses oversize or low-headroom requests, and deletes with confirmed absence (**Clear Spike Storage**).
+- Spike 0.4 deterministic tests pass: 9 tests, 0 failures, using in-memory fakes of the OPFS handle interfaces. All Phase 0 tests: 29 pass, 0 fail.
+- `AUTOMATED DESKTOP` validation used headless Chrome 153.0.8010.53 on macOS 26.6.2 with a throwaway profile. The lab matrix ran twice.
+  - Entries of 1 MiB, 64 MiB (64 KiB/1 MiB/4 MiB blocks), 256 MiB, 512 MiB, and 1 GiB passed range and every-byte verification.
+  - Aligned and unaligned resume boundaries were intact. A 64 MiB entry survived a page reload.
+  - Usage returned to baseline after each deletion, and the final OPFS root was empty.
+  - V8 heap stayed ≤ 2.8 MB. Transient verification-read ArrayBuffer garbage peaked at about 128 MB and was reclaimed by GC.
+- Spike 0.4 write-API findings, recorded as lab observations:
+  - `createWritable()` data is invisible until `close()`.
+  - A `keepExistingData` resume copies the existing file (O(n) time and 2× usage while open).
+  - The worker sync handle writes in place with an exclusive lock, and the main thread can read flushed data.
+  - Headless-profile quota was 10 GiB (`usage + 10 GiB`), which is environment-specific.
+  - `persist()` resolved `false`.
 
-No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`; Spike 0.3 is pending independent review.
+No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED` and is pending independent review.
 
 ## In Progress
 
-- Independent review of Spike 0.3 implementation and evidence.
+- Independent review of Spike 0.4 implementation and evidence.
 - Accumulated physical Android and real external-network qualification remains deferred under the debt list below.
 
 ## Not Started
 
-- Spike 0.4 through Spike 0.7 implementation and validation.
-- OPFS and browser storage investigation.
+- Spike 0.5 through Spike 0.7 implementation and validation.
 - MP4 parsing and segmentation investigation.
 - MSE progressive playback investigation.
 
@@ -117,8 +130,16 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 - `DEFERRED-PHYSICAL-001 — Spike 0.1 Android Chrome local media qualification`: validate file selection, playback, pause/resume, seeks, lifecycle cleanup, errors, and representative large-file resource behavior on physical Android Chrome. Android architecture risk remains unqualified; final Android support cannot be claimed.
 - `DEFERRED-PHYSICAL-002 — Spike 0.2 Android Chrome and external-network WebRTC qualification`: validate two real peers on genuinely separate Internet networks, including at least one physical Android participant where applicable, and record selected direct or relay path. Current same-host desktop evidence is not a real-network result.
 - `DEFERRED-PHYSICAL-003 — Spike 0.3 binary transfer over real external network / Android`: repeat bounded synthetic binary transfer between real peers on genuinely separate Internet networks, including at least one physical Android Chrome participant. Record the selected direct or relay path, the negotiated `maxMessageSize`, integrity, backpressure behavior, association warm-up, receiver/sender memory and CPU, and throughput under real loss and latency. Current evidence comes from headless same-host desktop Chrome and is not a real-network, TURN, or mobile result.
+- `DEFERRED-PHYSICAL-004 — Spike 0.4 Android Chrome OPFS/storage qualification`: on physical Android Chrome, repeat bounded OPFS writes with representative sizes, range and full verification, resume, reload persistence, deletion, and headroom refusal. Also cover:
+  - the worker sync-access-handle path;
+  - `estimate()` quota and usage;
+  - the `persist()` outcome;
+  - storage-full, eviction, backgrounding, and tab-discard behavior;
+  - transient read-buffer memory.
 
-The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence.
+  Record device model, OS, browser version, and free storage. Current evidence comes from headless desktop Chrome with a 10 GiB throwaway-profile quota and is not a mobile or normal-profile result.
+
+The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spike 0.4 found no attached device or emulator.
 
 ## Current Blockers
 
@@ -130,6 +151,14 @@ Spike 0.3 proves bounded, integrity-checked binary transfer in same-host headles
 - Fresh associations show a multi-second throughput warm-up.
 - RTCDataChannel provides no receive-side application flow control.
 
+Spike 0.4 proves bounded OPFS storage in headless desktop Chrome only. The following remain inputs to later transfer-engine and cache design, not blockers:
+
+- `createWritable()` commits only on `close()`, so data in a long-lived stream cannot be read back for playback until it commits.
+- A `keepExistingData` resume copies the whole existing file.
+- `FileSystemSyncAccessHandle` avoids both but requires a worker and holds an exclusive write lock.
+- Small (64 KiB) writes carry high per-call overhead relative to 1 MiB writes.
+- Quota is environment-specific, `persist()` was not granted, and eviction remains possible.
+
 ## Open Questions
 
 - Where will production signaling be hosted?
@@ -137,7 +166,8 @@ Spike 0.3 proves bounded, integrity-checked binary transfer in same-host headles
 - What TURN bandwidth, reliability, and cost are practical for progressive media?
 - What exact MP4 fragmentation strategy is interoperable across target browsers?
 - What transport chunk size and data-channel settings perform reliably?
-- How do target browsers behave when storing multi-GB media?
+- How do target browsers behave when storing multi-GB media? Spike 0.4 verified entries up to 1 GiB in headless desktop Chrome only.
+- Should the receive cache use per-segment OPFS entries, a worker-owned sync access handle, or a layered memory/OPFS approach?
 - Is Progressive Watch feasible on Safari macOS and Safari/iOS?
 - How does Firefox behave with the proposed progressive playback pipeline?
 - What cache persistence and eviction strategy best balances resume behavior and privacy?
@@ -148,9 +178,9 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent review of Spike 0.3 before beginning Spike 0.4.
+Independent review of Spike 0.4 before beginning Spike 0.5.
 
-Do not begin Spike 0.4, Phase 1, or full product implementation before the applicable review and phase gates.
+Do not begin Spike 0.5, Phase 1, or full product implementation before the applicable review and phase gates.
 
 ## Decisions That Must Not Be Accidentally Reverted
 

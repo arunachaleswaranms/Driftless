@@ -65,17 +65,38 @@ Phase 0 exists to prove or disprove Driftless's riskiest architectural assumptio
 
 ## Spike 0.4 — Browser Storage and OPFS Feasibility
 
-- **Objective:** Evaluate browser-local storage for large received media data.
-- **Architectural question:** Is OPFS, or a justified alternative, usable with multi-GB sequential/random-access workloads and explicit cleanup on target devices?
-- **Status:** `NOT STARTED`
-- **Environment:** Planned Tier 1 desktop and physical Android Chrome with recorded quota, available storage, persistence, and lifecycle conditions.
-- **Procedure:** Not executed. A later spike must measure bounded writes/reads, quota estimation, errors, cleanup, restart behavior, and eviction risk without assuming reported capacity is guaranteed.
-- **Acceptance criteria:** Storage behavior, resource use, cleanup, and failure handling are reproducible and sufficient to make an architecture decision.
-- **Evidence:** None.
-- **Result:** `NOT TESTED`.
-- **Issues discovered:** None; investigation has not begun.
-- **Decision:** Pending; OPFS remains a candidate, not a selection.
-- **Follow-up:** Define representative data sizes and device conditions before execution.
+- **Objective:** Determine whether browser storage, primarily OPFS, can receive and temporarily cache large progressively written data without the application holding the whole payload in JavaScript memory. Synthetic bytes only; no media, MP4 parsing, MSE, peer transfer, or Progressive Watch.
+- **Architectural question:** Is OPFS, or a justified alternative, usable with large sequential/random-access workloads, resume, and explicit cleanup on target devices?
+- **Status:** `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`
+- **Environment:** `AUTOMATED DESKTOP` on macOS 26.6.2 with headless Chrome 153.0.8010.53 and a throwaway profile, served from `http://127.0.0.1:4175`. Physical Android and other browsers were not tested.
+- **Procedure:** The isolated experiment in `spike-04-browser-storage/` generates deterministic bytes one reused block at a time and writes them to OPFS through `createWritable()`. Separately, it writes through `FileSystemSyncAccessHandle` in a worker. A lab matrix covered:
+  - 1 MiB to 1 GiB entries;
+  - range and streamed full-file verification;
+  - aligned and unaligned resume;
+  - write-API visibility and lock semantics;
+  - a corruption negative control;
+  - simulated-headroom refusal;
+  - deletion and **Clear Spike Storage**.
+
+  A reload-persistence entry was verified after `Page.reload`, and `persist()` was requested once. The matrix was run twice.
+- **Acceptance criteria:** ST-01 to ST-11 have current controlled-desktop evidence. ST-12 remains `DEFERRED PHYSICAL`, so the result is provisional rather than full `PASS`.
+- **Evidence:** [Spike 0.4 result record](results/spike-04-browser-storage.md).
+  - 1 MiB, 64 MiB (at 64 KiB, 1 MiB, and 4 MiB blocks), 256 MiB, 512 MiB, and 1 GiB entries passed range and every-byte verification.
+  - Resume boundaries at 64 MiB and at 16 MiB + 4,099 bytes were intact.
+  - A 64 MiB entry survived a page reload.
+  - `estimate()` usage tracked writes to the byte and returned to baseline after deletion.
+  - V8 heap stayed ≤ 2.8 MB; transient ArrayBuffer garbage from verification reads was reclaimed by GC.
+  - Final OPFS root was empty.
+- **Result:** `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`.
+- **Issues discovered:**
+  - `createWritable()` data is invisible until `close()`, and `abort()` discards it.
+  - A `keepExistingData` resume copies the whole existing file: about 1.24 s and +1 GiB usage while open for 1 GiB.
+  - `FileSystemSyncAccessHandle` writes in place and lets the main thread read flushed data, but holds an exclusive write lock.
+  - 64 KiB writes were about 10× slower than 1 MiB writes.
+  - Headless-profile quota was 10 GiB (`usage + 10 GiB`), which is environment-specific.
+  - `persist()` resolved `false`.
+- **Decision:** OPFS appears viable for later architecture work. It is not selected as the final cache design. No architecture change or ADR modification is required.
+- **Follow-up:** Independent review of Spike 0.4 before beginning Spike 0.5. Track `DEFERRED-PHYSICAL-004` for physical Android Chrome storage qualification.
 
 ## Spike 0.5 — MP4 Parsing and Segmentation
 
