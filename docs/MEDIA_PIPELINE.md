@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the intended media-flow boundaries for Driftless. No pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices.
+This document defines the intended media-flow boundaries for Driftless. No production pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spike 0.5 are recorded separately in [Spike 0.5 Observations](#spike-05-observations-mp4-parsing-and-segmentation) and do not change the planned behavior below.
 
 ## Mode A - Local Sync
 
@@ -139,6 +139,33 @@ When the host performs a seek or the guest needs an unbuffered authoritative pos
 6. Resume forward buffering from the new position.
 
 The exact keyframe, fragment, and append-window strategy depends on the selected fragmentation approach and must be proven in spikes.
+
+## Spike 0.5 Observations (MP4 Parsing and Segmentation)
+
+These observations come from `AUTOMATED DESKTOP` evidence: MP4Box.js 2.4.1, headless Chrome 153 and Node.js 26 on macOS, and synthetic media only. See the [Spike 0.5 result record](../spikes/phase0/results/spike-05-mp4-segmentation.md). They inform later design but are not production decisions, and physical Android behavior is unqualified.
+
+### Observed in Spike 0.5
+
+- **Parsing.** A non-fragmented MP4 can be parsed through bounded `File.slice()` reads that follow MP4Box.js's `appendBuffer()` next-offset hints. When `moov` is after `mdat`, the parser skips the `mdat` and asks for the `moov` directly. A 4.53 GB, 90-minute file had metadata after 7 reads and 7.0 MB, with no sequential pass.
+- **Layout detection.** A header-only top-level box scan detects `moov` placement, fragmentation, and 64-bit box sizes in 3–64 reads of ≤ 16 bytes each.
+- **Initialization segments.** MP4Box.js `initializeSegmentation()` produced a structurally valid init segment (`ftyp` + `moov` with `mvex`/`trex` and empty sample tables) for H.264 + AAC tracks. MSE acceptance was not tested.
+- **Built-in segmentation.** In MP4Box.js 2.4.1, built-in segmentation (`onSegment`, `rapAlignement: true`) ends each video segment on a keyframe instead of starting the next segment with it. As a result, every segment after the first begins with a non-sync sample. The same `nbSamples` must be used for every track, and segment boundaries after `seek()` do not match the boundaries of a sequential run.
+- **Planned segmentation.** A deterministic plan built from the `moov` sample tables alone, cut with `ISOFile.createFragment()`, produced keyframe-aligned, time-aligned video and audio segments. Any single planned segment could be generated from the `moov` plus one bounded source window. On the 4.53 GB file, the segment at 45:00 needed 8.7 MB of reads. It was byte-identical to the same segment produced sequentially.
+- **Memory.**
+  - MP4Box.js retained ≤ 6.3 MB of source data during full passes over the 4.53 GB file at 1 MiB blocks.
+  - Expanding the sample tables cost about 343 B of JS heap per sample, which was 142 MB for 415,260 samples.
+- **Buffer pinning.** Unselected tracks pin every source buffer unless they are drained.
+- **Fragmented sources.** An already fragmented source made MP4Box.js retain the whole file plus an `mdat` copy. Its sample index was only partial at `onReady`.
+
+### Planned Production Behavior (Unchanged, Pending Later Evidence)
+
+The pipeline above remains the plan. No segment duration, block size, parser integration, or index representation has been selected. The observations point toward:
+
+- deriving segment boundaries deterministically from the sample index rather than from sequential parser state;
+- a compact sample index;
+- explicit handling of fragmented sources and non-target tracks.
+
+These still require design review and Spike 0.6 MSE evidence.
 
 ## Resumability and Interruption Recovery
 

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; worker-src 'none'; style-src 'self'; img-src 'self' data:; media-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Driftless Phase 0 — MP4 Parsing & Segmentation</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>Driftless Phase 0</p>
+        <h1>Spike 0.5 — MP4 Parsing &amp; Segmentation</h1>
+        <p>
+          Inspect a locally selected MP4 with MP4Box.js 2.4.1, reading it in bounded
+          <code>File.slice()</code> blocks, and generate fragmented-MP4 initialization and media
+          segments in memory. Segments are verified, summarised, and then released. Nothing is
+          uploaded, stored, or played: <code>connect-src</code> and <code>media-src</code> are
+          <code>'none'</code>, and there is no MSE, WebRTC, analytics, or telemetry on this page.
+        </p>
+      </header>
+
+      <section aria-labelledby="controls-heading">
+        <h2 id="controls-heading">Source and experiment</h2>
+        <p>
+          The selected file is treated as untrusted input. A header-only box scan and a bounded
+          <code>moov</code> check run before MP4Box.js sees any bytes.
+        </p>
+        <div class="setup-grid">
+          <label>
+            Local media file
+            <input id="file" type="file" accept="video/mp4,audio/mp4,.mp4,.m4v,.m4a,video/*" />
+          </label>
+          <label>
+            Read block size (experimental)
+            <select id="block-size">
+              <option value="65536">64 KiB</option>
+              <option value="262144">256 KiB</option>
+              <option value="1048576" selected>1 MiB</option>
+              <option value="4194304">4 MiB</option>
+            </select>
+          </label>
+          <label>
+            Segment target (single runs)
+            <select id="target">
+              <option value="1">≈ 1 s</option>
+              <option value="2" selected>≈ 2 s</option>
+              <option value="4">≈ 4 s</option>
+            </select>
+          </label>
+          <label>
+            Later position (seconds; blank = 50% of duration)
+            <input id="later" type="text" inputmode="decimal" placeholder="e.g. 2700" />
+          </label>
+          <label class="checkbox">
+            <input id="hash" type="checkbox" checked />
+            SHA-256 of generated segments
+          </label>
+          <label class="checkbox">
+            <input id="all-targets" type="checkbox" checked />
+            Full analysis: run 1 s, 2 s, and 4 s strategies over the whole file
+          </label>
+        </div>
+        <div class="actions">
+          <button id="run-inspect" type="button">Inspect</button>
+          <button id="run-builtin" type="button">Built-in segmentation</button>
+          <button id="run-planned" type="button">Planned segmentation</button>
+          <button id="run-seek" type="button">Later-position experiments</button>
+          <button id="run-all" type="button">Run full analysis</button>
+          <button id="cancel" type="button" disabled>Cancel</button>
+          <button id="clear" type="button" class="danger">Clear results</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">Select a file.</p>
+      </section>
+
+      <section aria-labelledby="diag-heading">
+        <h2 id="diag-heading">Diagnostics</h2>
+        <dl class="diagnostics-grid">
+          <div><dt>Browser / User-Agent</dt><dd id="user-agent">—</dd></div>
+          <div><dt>File (name as text only)</dt><dd id="file-name">—</dd></div>
+          <div><dt>Source size</dt><dd id="source-size">—</dd></div>
+          <div><dt>Read block size / max in flight</dt><dd id="read-block">—</dd></div>
+          <div><dt>Operation</dt><dd id="operation">idle</dd></div>
+          <div><dt>Parser progress (bytes consumed / reads)</dt><dd id="progress">—</dd></div>
+          <div><dt>Container layout</dt><dd id="layout">—</dd></div>
+          <div><dt>moov discovered</dt><dd id="moov">—</dd></div>
+          <div><dt>Movie duration</dt><dd id="duration">—</dd></div>
+          <div><dt>Classification</dt><dd id="classification">—</dd></div>
+          <div><dt>Initialization segment</dt><dd id="init">—</dd></div>
+          <div><dt>Segments generated (last run)</dt><dd id="segments">—</dd></div>
+          <div><dt>Parser-retained bytes (max)</dt><dd id="retained">—</dd></div>
+          <div><dt>JS heap now / peak (coarse, Chrome-only)</dt><dd id="heap">Unavailable</dd></div>
+          <div><dt>Parser errors</dt><dd id="errors">none</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="tracks-heading">
+        <h2 id="tracks-heading">Tracks</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Type</th><th>Codec</th><th>Size / audio</th><th>Timescale</th>
+                <th>Duration</th><th>Samples</th><th>Sync samples</th><th>Sync interval (s)</th><th>Edit list</th>
+              </tr>
+            </thead>
+            <tbody id="tracks-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="runs-heading">
+        <h2 id="runs-heading">Runs</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Run</th><th>Result</th><th>Segments (v / a)</th><th>Video seg. duration (min / med / max)</th>
+                <th>Video starts on sync</th><th>Reads</th><th>Bytes read</th><th>Parser retained max</th><th>Time</th><th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="runs-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="segments-heading">
+        <h2 id="segments-heading">Segments (last run: first 12 and last 4)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Track</th><th>Samples</th><th>Start (s)</th><th>Duration (s)</th><th>Bytes</th>
+                <th>Starts on sync (table / emitted)</th><th>Source range</th><th>SHA-256 (prefix)</th><th>Problems</th>
+              </tr>
+            </thead>
+            <tbody id="segments-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="later-heading">
+        <h2 id="later-heading">Later-position requirements</h2>
+        <p>What must be prepared first for a seek, derived from the <code>moov</code> sample tables only.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Target</th><th>Track</th><th>Random-access sample (s)</th><th>Decode lead</th><th>RAP source offset</th>
+                <th>GOP source range</th><th>GOP bytes</th>
+              </tr>
+            </thead>
+            <tbody id="later-body"></tbody>
+          </table>
+        </div>
+        <details>
+          <summary>Raw JSON evidence (bounded)</summary>
+          <pre id="results-json">[]</pre>
+        </details>
+      </section>
+
+      <section aria-labelledby="log-heading">
+        <h2 id="log-heading">Bounded event log</h2>
+        <ol id="event-log" aria-live="polite"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>

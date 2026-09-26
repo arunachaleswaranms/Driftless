@@ -20,13 +20,13 @@ Phase 0 — Architecture & Feasibility
 
 ## Current Activity
 
-Spike 0.4 — Browser Storage / OPFS Feasibility
+Spike 0.5 — MP4 Parsing & Segmentation
 
 ## Current Branch
 
 `phase/0-feasibility`
 
-Verified from Git on 2026-09-26 at `0664735` (Spikes 0.1–0.3 checkpointed). Spike 0.4 changes are intentionally uncommitted.
+Verified from Git on 2026-09-26 at `72c8629` (Spikes 0.1–0.4 checkpointed). Spike 0.5 changes are intentionally uncommitted.
 
 ## Repository Status
 
@@ -41,7 +41,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.4 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer and Spike 0.4 synthetic OPFS storage experiments are laboratory code only. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.5 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, and Spike 0.5 MP4 parsing/segmentation experiments are laboratory code only. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
 
 ## Accepted Architecture
 
@@ -54,7 +54,7 @@ The master planning document exists at `docs/planning/Driftless_Master_Project_P
 - The synchronization plane, media transfer plane, and signaling plane remain logically independent.
 - Progressive Watch initially targets MP4 containing H.264/AVC video and AAC audio.
 - Progressive playback is enabled only after runtime capability detection.
-- MSE, OPFS or other browser storage, and MP4Box.js remain investigation areas, not proven choices.
+- MSE, OPFS or other browser storage, and MP4Box.js remain investigation areas, not proven choices. Spike 0.5 found MP4Box.js viable for inspection and segmentation of non-fragmented target media, but it is not selected.
 - Development optimizes for two-person rooms before considering a maximum of three participants.
 - The project advances through explicit phase exit gates.
 
@@ -100,17 +100,34 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
   - Headless-profile quota was 10 GiB (`usage + 10 GiB`), which is environment-specific.
   - `persist()` resolved `false`.
 
-No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED` and is pending independent review.
+- Spike 0.4 was checkpointed at `72c8629`. This session proceeded to Spike 0.5 at the user's direction.
+- The isolated Spike 0.5 page reads a locally selected MP4 in bounded `File.slice()` blocks, one read in flight, with no upload (`connect-src 'none'`). Before MP4Box.js 2.4.1 sees any bytes, it runs a header-only box scan and a `moov` sample-table budget check. It then:
+  - inspects tracks, codecs, timing, and keyframes;
+  - produces fragmented-MP4 init and media segments in memory with two strategies (MP4Box.js built-in `onSegment`, and a deterministic time plan derived from the sample tables and cut with `createFragment()`);
+  - verifies every segment with an independent fMP4 box walker, then releases it.
+- Spike 0.5 deterministic tests pass: 18 tests, 0 failures, 11 of them running real MP4Box.js over in-code MP4 fixtures. All Phase 0 tests: 47 pass, 0 fail.
+- `AUTOMATED DESKTOP` validation used headless Chrome 153.0.8010.53 on macOS 26.6.2 and synthetic FFmpeg test media only. The media ranged from 1.2 MB to 4.53 GB and covered `moov` first and last, fragmented, HEVC, MP3-in-MP4, Opus, WebM, video-only, two-audio, truncated, random, and oversize-claim inputs. The matrix ran twice.
+  - Every target file was classified `TARGET COMPATIBLE` and produced a verified init segment plus complete, contiguous, monotonic media segments, with 0 verification problems.
+  - The 90-minute, 4.53 GB `moov`-last file had metadata after 7 reads and 7.0 MB. Full passes held at most 6.3 MB of source data in the parser.
+  - The planned segment at 45:01 needed 8 reads and 8.7 MB, and it was byte-identical to its sequential cut.
+  - Non-target and malformed inputs were classified or refused before parsing. The console was empty, and the only network requests were same-origin static files.
+- Spike 0.5 findings, recorded as lab observations:
+  - MP4Box.js 2.4.1 built-in `rapAlignement` segments end on the keyframe, so later video segments start one sample after it. Its boundaries also change after `seek()`.
+  - All segmented tracks must share one `nbSamples`.
+  - Sample-table expansion costs about 343 B of JS heap per sample (142 MB for 90 minutes).
+  - An undrained, unselected track pins the whole file in parser buffers.
+  - Already fragmented sources were retained at 2× their size, so they are classified `NON-TARGET`.
+
+No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`, with real-world media coverage `MANUAL TEST REQUIRED`, and is pending independent review.
 
 ## In Progress
 
-- Independent review of Spike 0.4 implementation and evidence.
+- Independent review of Spike 0.5 implementation and evidence.
 - Accumulated physical Android and real external-network qualification remains deferred under the debt list below.
 
 ## Not Started
 
-- Spike 0.5 through Spike 0.7 implementation and validation.
-- MP4 parsing and segmentation investigation.
+- Spike 0.6 through Spike 0.7 implementation and validation.
 - MSE progressive playback investigation.
 
 ## Evidence Classification Policy
@@ -139,7 +156,17 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 
   Record device model, OS, browser version, and free storage. Current evidence comes from headless desktop Chrome with a 10 GiB throwaway-profile quota and is not a mobile or normal-profile result.
 
-The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spike 0.4 found no attached device or emulator.
+- `DEFERRED-PHYSICAL-005 — Spike 0.5 Android Chrome MP4 parsing/segmentation qualification`: on physical Android Chrome, repeat the pre-check, inspection, and built-in and planned segmentation on `moov`-first and `moov`-last target files, including a multi-GB, ≥ 90-minute file, plus later-position planned random access with hash comparison. Record:
+  - heap after `onReady` (sample-table cost) and peak heap;
+  - parser-retained bytes;
+  - `File.slice()` behavior for Downloads and content-URI files;
+  - throughput;
+  - backgrounding during a long pass;
+  - device model, OS, browser version, and free RAM.
+
+  Current evidence comes from headless desktop Chrome with synthetic media and is not a mobile or real-world-media result.
+
+The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spikes 0.4 and 0.5 found no attached device or emulator.
 
 ## Current Blockers
 
@@ -159,12 +186,22 @@ Spike 0.4 proves bounded OPFS storage in headless desktop Chrome only. The follo
 - Small (64 KiB) writes carry high per-call overhead relative to 1 MiB writes.
 - Quota is environment-specific, `persist()` was not granted, and eviction remains possible.
 
+Spike 0.5 proves bounded MP4 inspection and segmentation of synthetic, non-fragmented target media in headless desktop Chrome only. The following remain inputs to later media-pipeline design, not blockers:
+
+- MP4Box.js 2.4.1's built-in segmenter is not keyframe-aligned for random access, and its boundaries are path-dependent. Deterministic, index-derived segmentation via `createFragment()` worked, but it touches semi-internal sample fields.
+- Sample-table expansion (about 343 B per sample) may exceed mobile memory budgets for long or high-frame-rate media.
+- Unselected tracks must be drained.
+- Already fragmented sources are not handled with bounded memory.
+- MP4Box.js can stall or log to `console.error` on malformed input, so driver-side guards are required.
+
 ## Open Questions
 
 - Where will production signaling be hosted?
 - Will STUN/TURN be self-hosted or provided by a third party?
 - What TURN bandwidth, reliability, and cost are practical for progressive media?
-- What exact MP4 fragmentation strategy is interoperable across target browsers?
+- What exact MP4 fragmentation strategy is interoperable across target browsers? Spike 0.5 produced verified fMP4 segments but did not test MSE acceptance.
+- How should the host represent the sample index to bound memory on long media, and should segment identity be the Spike 0.5 deterministic plan?
+- Should already fragmented source MP4s be supported, and by what bounded-memory path?
 - What transport chunk size and data-channel settings perform reliably?
 - How do target browsers behave when storing multi-GB media? Spike 0.4 verified entries up to 1 GiB in headless desktop Chrome only.
 - Should the receive cache use per-segment OPFS entries, a worker-owned sync access handle, or a layered memory/OPFS approach?
@@ -178,9 +215,9 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent review of Spike 0.4 before beginning Spike 0.5.
+Independent review of Spike 0.5 before beginning Spike 0.6.
 
-Do not begin Spike 0.5, Phase 1, or full product implementation before the applicable review and phase gates.
+Do not begin Spike 0.6, Phase 1, or full product implementation before the applicable review and phase gates.
 
 ## Decisions That Must Not Be Accidentally Reverted
 
