@@ -20,13 +20,13 @@ Phase 0 — Architecture & Feasibility
 
 ## Current Activity
 
-Spike 0.5 — MP4 Parsing & Segmentation
+Spike 0.6 — MSE Progressive Playback
 
 ## Current Branch
 
 `phase/0-feasibility`
 
-Verified from Git on 2026-09-26 at `72c8629` (Spikes 0.1–0.4 checkpointed). Spike 0.5 changes are intentionally uncommitted.
+Verified from Git on 2026-09-26 at `9d802b6` (Spikes 0.1–0.5 checkpointed). Spike 0.6 changes are intentionally uncommitted.
 
 ## Repository Status
 
@@ -41,7 +41,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.5 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, and Spike 0.5 MP4 parsing/segmentation experiments are laboratory code only. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.6 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, and Spike 0.6 MSE progressive-playback experiments are laboratory code only. Spike 0.6 adds no dependency; it imports the Spike 0.5 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
 
 ## Accepted Architecture
 
@@ -54,7 +54,7 @@ The master planning document exists at `docs/planning/Driftless_Master_Project_P
 - The synchronization plane, media transfer plane, and signaling plane remain logically independent.
 - Progressive Watch initially targets MP4 containing H.264/AVC video and AAC audio.
 - Progressive playback is enabled only after runtime capability detection.
-- MSE, OPFS or other browser storage, and MP4Box.js remain investigation areas, not proven choices. Spike 0.5 found MP4Box.js viable for inspection and segmentation of non-fragmented target media, but it is not selected.
+- MSE, OPFS or other browser storage, and MP4Box.js remain investigation areas, not proven choices. Spike 0.5 found MP4Box.js viable for inspection and segmentation of non-fragmented target media, but it is not selected. Spike 0.6 found progressive MSE playback of the Spike 0.5 planned segments viable in controlled desktop Chrome only; MSE is not qualified on Android or on other browsers.
 - Development optimizes for two-person rooms before considering a maximum of three participants.
 - The project advances through explicit phase exit gates.
 
@@ -118,17 +118,42 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
   - An undrained, unselected track pins the whole file in parser buffers.
   - Already fragmented sources were retained at 2× their size, so they are classified `NON-TARGET`.
 
-No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`, with real-world media coverage `MANUAL TEST REQUIRED`, and is pending independent review.
+- Spike 0.5 was checkpointed at `9d802b6`. This session proceeded to Spike 0.6 at the user's direction.
+- The isolated Spike 0.6 page plays a locally selected MP4 through MSE while supplying it progressively.
+  - It cuts Spike 0.5 planned, keyframe-aligned fMP4 segments on demand from bounded `File.slice()` windows, and verifies and refuses bad fragments.
+  - It releases segments with deterministic arrival profiles (FAST 8×, NORMAL 1.5×, SLOW 0.5×, BURSTY, MANUAL).
+  - It appends through a per-SourceBuffer queue that never appends while `updating`, into one muxed or two separate SourceBuffers.
+  - It gates on a lookahead cap and append backpressure, trims behind the playhead, reprioritises on unbuffered seeks, calls `endOfStream()` only when idle, and tears down with a resource report.
+- Spike 0.6 tests pass: 42 tests, 0 failures. They include 16 deterministic pipeline regressions for B1, B2, and B3 (gated preparation, seeded rapid-seek storms in both SourceBuffer layouts), and 6 preparer tests running real MP4Box.js. The preparer's cuts are byte-identical to Spike 0.5's planned cuts. All Phase 0 tests: 89 pass, 0 fail.
+- Post-review Chrome reruns passed early playback, buffer growth, underrun/recovery, buffered and unbuffered seeks, separate-track append, EOS, refusal, and cleanup. The exact review seek race retried segment 7 and resolved seeking in 26.9 ms; 10 further seek cycles found no falsely appended segment. The review reset/load probe and 5 additional rapid reset/load cycles kept the new session owned and playable, with old MediaSources closed and clean final teardown. After the B3 fix, Chrome seek storms on MP-02 (1,147 seeks in double and triple bursts, many during SourceBuffer updates, including one with cuts delayed 20–60 ms) produced 0 pipeline failures, 0 permanent `seeking` hangs, and 0 stale or partial `APPENDED` promotions. The same delayed-cut storm against the pre-fix code failed 17 times with `DROPPED`. The review's own storm script, rerun unchanged, found 0 failures in 252 seeks, and the accepted MSE scenarios all passed again. See the Spike 0.6 result record; independent re-review is still required.
+- `AUTOMATED DESKTOP` validation used Chrome 153.0.8010.53 on macOS 26.6.2 (headless, plus one headed smoke run) with synthetic media only. The autoplay policy was left in force: `play()` without user activation was rejected, and runs used trusted CDP clicks. Two identical final runs followed a development run.
+  - Playback began after 2 of 76 segments (MP-02, 110.5 MB), and after 2 of 2,700 segments on the 4.53 GB, 90-minute file when 0.31 % of it had been read. It continued while withheld segments were released: about 30 presented fps, advancing `currentTime`, and changing frame digests.
+  - Buffer ahead grew to the 60 s cap under FAST delivery. SLOW delivery produced 4 `waiting` underruns, each recovering within 10 ms of the next append.
+  - Buffered seeks took 11–17 ms. Unbuffered seeks (to 180 s, 90 s, 45:01, and 22:30) took 15–82 ms: they reprioritised one keyframe-aligned segment cut from one bounded window, with no SourceBuffer reset or init re-append.
+  - `endOfStream()` after the last `updateend` produced a normal `ended`.
+  - Reset, replace, MSE-failure, parser-failure, and `pagehide` teardown were clean.
+  - 10 non-target or malformed files were refused before any MediaSource was created.
+  - 0 console messages and 0 exceptions; only same-origin static requests.
+- Spike 0.6 findings, recorded as lab observations:
+  - A segment that does not start on a keyframe is accepted silently; frames up to the next keyframe are dropped.
+  - Chrome applies source edit lists in MSE.
+  - The init segment's `updateend` precedes `loadedmetadata`, and MP4Box.js init segments carry no duration.
+  - A muxed SourceBuffer reports the intersection of its tracks.
+  - `QuotaExceededError` occurred at about 159 MB of uncapped 720p lookahead, and clears only after playback advances.
+  - No `stalled` event fired for MSE underruns.
+  - A never-shown background tab defers `sourceopen` until it is shown.
+  - `droppedVideoFrames` is unusable under this automation.
+
+No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`, with real-world media coverage `MANUAL TEST REQUIRED`. Spike 0.6 is `READY FOR INDEPENDENT RE-REVIEW` after fixing the B1 and B2 blockers from the first independent review and the B3 blocker from the second. Physical Android and real-world media remain deferred.
 
 ## In Progress
 
-- Independent review of Spike 0.5 implementation and evidence.
+- Independent re-review of Spike 0.6 implementation and evidence, including the B1 incomplete-segment seek race, the B2 stale-session teardown race, and the B3 superseded-preparation seek race.
 - Accumulated physical Android and real external-network qualification remains deferred under the debt list below.
 
 ## Not Started
 
-- Spike 0.6 through Spike 0.7 implementation and validation.
-- MSE progressive playback investigation.
+- Spike 0.7 implementation and validation.
 
 ## Evidence Classification Policy
 
@@ -166,7 +191,16 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 
   Current evidence comes from headless desktop Chrome with synthetic media and is not a mobile or real-world-media result.
 
-The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spikes 0.4 and 0.5 found no attached device or emulator.
+- `DEFERRED-PHYSICAL-006 — Spike 0.6 Android Chrome MSE progressive-playback qualification`: on physical Android Chrome, repeat MSE-01 to MSE-12 with MP-01, MP-02, and the multi-GB MP-03. Cover:
+  - early start from an initial buffer, ahead buffering, underrun and recovery;
+  - seeks inside and outside the buffer, including 45:00 on the 4.53 GB file;
+  - end of stream, reset, replace, and failure cleanup;
+  - the `QuotaExceededError` limit and recovery;
+  - backgrounding, screen-off, and a never-shown tab.
+
+  Record device model, OS, Chrome version, free RAM, heap after the `moov` parse, `isTypeSupported` answers, audible A/V sync, and visible smoothness. Current evidence comes from automated desktop Chrome with synthetic media and muted audio, and is not a mobile or real-world-media result.
+
+The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spikes 0.4, 0.5, and 0.6 found no attached device or emulator.
 
 ## Current Blockers
 
@@ -194,12 +228,24 @@ Spike 0.5 proves bounded MP4 inspection and segmentation of synthetic, non-fragm
 - Already fragmented sources are not handled with bounded memory.
 - MP4Box.js can stall or log to `console.error` on malformed input, so driver-side guards are required.
 
+Independent review of Spike 0.6 reproduced two blocker-level state-management defects: a partial segment was marked appended after a seek dropped queued audio (B1), and stale asynchronous teardown could clear a newer session (B2). The second review confirmed both fixed and reproduced a third (B3): a preparation superseded by a later unbuffered seek was reported as a fatal pipeline failure, leaving the element seeking until reset. All three have targeted fixes and deterministic regressions, but Spike 0.6 awaits independent re-review before commit or advancement. Its controlled desktop playback evidence remains limited to synthetic media. The following remain inputs to later buffer-manager and Progressive Watch design, not additional blockers:
+
+- Misaligned segments fail silently (dropped frames, no error), so keyframe alignment and independent verification are required.
+- A buffer manager must reprioritise unbuffered seeks. Naive sequential delivery left a far seek pending indefinitely.
+- Lookahead must be capped and `QuotaExceededError` treated as backpressure. The quota is environment-specific; about 159 MB in this headless profile.
+- A receiver in a never-shown tab does not open its MediaSource until the tab is shown. Hidden tabs keep playing but throttle timers; long-duration throttling was not tested.
+- Chrome applies edit lists in MSE. Other browsers were not tested.
+- The sample-table heap (about 71 MB for 90 minutes at 30 fps) remains the main mobile memory risk.
+- A/V sync, smoothness, and real-world media were not measured.
+
 ## Open Questions
 
 - Where will production signaling be hosted?
 - Will STUN/TURN be self-hosted or provided by a third party?
 - What TURN bandwidth, reliability, and cost are practical for progressive media?
-- What exact MP4 fragmentation strategy is interoperable across target browsers? Spike 0.5 produced verified fMP4 segments but did not test MSE acceptance.
+- What exact MP4 fragmentation strategy is interoperable across target browsers? Spike 0.6 showed that desktop Chrome 153 plays Spike 0.5 planned fragments in both muxed and separate SourceBuffer layouts. Firefox, Safari, and Android Chrome are untested.
+- What startup, low-water, high-water, and lookahead thresholds and quota handling should the buffer manager use on target devices? Spike 0.6 used laboratory values only.
+- How should Progressive Watch behave when the receiver tab is backgrounded or has never been shown?
 - How should the host represent the sample index to bound memory on long media, and should segment identity be the Spike 0.5 deterministic plan?
 - Should already fragmented source MP4s be supported, and by what bounded-memory path?
 - What transport chunk size and data-channel settings perform reliably?
@@ -215,9 +261,9 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent review of Spike 0.5 before beginning Spike 0.6.
+Independent re-review of Spike 0.6 before commit or Spike 0.7.
 
-Do not begin Spike 0.6, Phase 1, or full product implementation before the applicable review and phase gates.
+Do not begin Spike 0.7, Phase 1, or full product implementation before the applicable review and phase gates.
 
 ## Decisions That Must Not Be Accidentally Reverted
 

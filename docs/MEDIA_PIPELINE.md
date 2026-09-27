@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the intended media-flow boundaries for Driftless. No production pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spike 0.5 are recorded separately in [Spike 0.5 Observations](#spike-05-observations-mp4-parsing-and-segmentation) and do not change the planned behavior below.
+This document defines the intended media-flow boundaries for Driftless. No production pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5 and 0.6 are recorded separately in [Spike 0.5 Observations](#spike-05-observations-mp4-parsing-and-segmentation) and [Spike 0.6 Observations](#spike-06-observations-mse-progressive-playback). They do not change the planned behavior below.
 
 ## Mode A - Local Sync
 
@@ -166,6 +166,49 @@ The pipeline above remains the plan. No segment duration, block size, parser int
 - explicit handling of fragmented sources and non-target tracks.
 
 These still require design review and Spike 0.6 MSE evidence.
+
+## Spike 0.6 Observations (MSE Progressive Playback)
+
+These observations come from `AUTOMATED DESKTOP` evidence: Chrome 153 on macOS (headless, plus one headed smoke run), with audio muted at the browser level, synthetic media only, and local media paced by a deterministic arrival simulator rather than a network. See the [Spike 0.6 result record](../spikes/phase0/results/spike-06-mse-progressive.md). They inform later design but are not production decisions. Android, other browsers, and real-world media are unqualified.
+
+### Observed in Spike 0.6
+
+- **Progressive start.** Playback began from an initial buffer of 2 planned segments and continued as further segments arrived. On a 4.53 GB, 90-minute `moov`-last file, playback began when 0.31 % of the file had been read.
+- **Segment consumption.** The Spike 0.5 planned segments (one `traf` per `moof`, per track) were appended unchanged. Both SourceBuffer layouts worked:
+  - one muxed SourceBuffer with the combined init segment;
+  - separate video and audio SourceBuffers with MP4Box.js per-track init segments.
+
+  A muxed SourceBuffer reports the intersection of its tracks, so a segment becomes playable only when both of its fragments have been appended.
+- **Append discipline.** Appends were serialised on `updating`/`updateend` per SourceBuffer. An invalid segment fired `error` and then `updateend`, ended the MediaSource with a decode error, and failed the queue closed.
+- **Initialization.**
+  - The init segment's `updateend` fires before `loadedmetadata`.
+  - MP4Box.js init segments for non-fragmented sources carry no duration (`Infinity` until `duration` is set).
+  - `endOfStream()` resets the duration to the highest buffered end.
+- **Timestamps.** Chrome applied the source edit lists (`elst` `media_time`) in MSE, so both tracks start at 0. Default `appendWindowStart` trimmed audio that would have fallen before 0. A full sequential append of 76 segments kept one contiguous range ending at [0, 300.000].
+- **Random access.** A fragment that does not start on a keyframe raised no error. Frames up to its first keyframe were silently dropped, and a fragment with no keyframe buffered nothing. Keyframe-aligned segments buffered from their start.
+- **Buffering and underrun.** Buffer ahead grew to the lookahead cap when delivery exceeded playback. With delivery slower than playback, each underrun fired `waiting` (never `stalled`), and playback resumed within about 10 ms of the next append's `updateend`.
+- **Seeking.**
+  - A seek inside the buffered range needed no action.
+  - A seek outside it needed reprioritisation. Mapping the target to its planned segment (whose start is the preceding keyframe) and appending that segment next was enough: no `abort()`, `remove()`, init re-append, `changeType()`, or `timestampOffset` change. Disjoint buffered ranges coexisted.
+  - Naive sequential delivery left a far seek pending.
+  - `abort()` of an in-flight append discarded it cleanly, and later appends needed no new init segment.
+  - Rapid successive unbuffered seeks routinely supersede segment preparation that is queued or in progress. Superseded work must be treated as cancellation, with delivery re-targeted to the latest seek, not as a pipeline failure. Only genuine preparation errors are fatal.
+- **Quota.** Appending far ahead with no cap reached `QuotaExceededError` after about 159 MB (190 s of 720p media) in this headless profile. Chrome evicted nothing ahead of the playhead, and appends resumed only after playback advanced, when Chrome evicted played media.
+- **Lifecycle.**
+  - A tab that had never been shown did not open its MediaSource until it was shown.
+  - A playing session in a hidden tab kept playing and appending over 10 s.
+  - `pagehide` teardown released every pipeline resource.
+
+### Planned Production Behavior (Unchanged, Pending Later Evidence)
+
+The receiver pipeline and buffer management above remain the plan. No startup, low-water, high-water, lookahead, or quota threshold has been selected, and no SourceBuffer layout has been chosen. The observations point toward:
+
+- keeping keyframe-aligned segments and independent verification, because misalignment fails silently;
+- a buffer manager that reprioritises to the playhead or seek target, cancels work superseded by a newer seek without failing, and treats `QuotaExceededError` as backpressure;
+- explicit handling of receivers in background or never-shown tabs;
+- verifying edit-list and timeline behavior on other browsers before relying on it for synchronization.
+
+These still require design review, Spike 0.7 integration evidence, and physical Android qualification.
 
 ## Resumability and Interruption Recovery
 

@@ -130,17 +130,42 @@ Phase 0 exists to prove or disprove Driftless's riskiest architectural assumptio
 
 ## Spike 0.6 — MSE Progressive Playback
 
-- **Objective:** Test playback from incrementally appended MP4 initialization and media segments.
-- **Architectural question:** Can target browsers sustain Media Source Extensions playback, buffer growth, and seek-related append transitions for the initial media target?
-- **Status:** `NOT STARTED`
-- **Environment:** Planned Tier 1 desktop and physical Android Chrome with exact codec strings and browser/device versions recorded.
-- **Procedure:** Not executed. A later spike must append valid fragments incrementally, observe SourceBuffer state and quota behavior, continue playback as data arrives, and exercise defined errors.
-- **Acceptance criteria:** Progressive append and playback work under recorded target conditions with bounded resource use and clear unsupported/error behavior.
-- **Evidence:** None.
-- **Result:** `NOT TESTED`.
-- **Issues discovered:** None; investigation has not begun.
-- **Decision:** Pending; API presence alone is insufficient.
-- **Follow-up:** Execute only after independent review of Spike 0.5. Spike 0.5 produced verified segment inputs that have not been appended to MSE.
+- **Objective:** Determine whether compatible MP4 media can play progressively through Media Source Extensions, with initialization and media segments appended over time from a local source. Local media only; no WebRTC, peer transfer, storage, synchronization, or Progressive Watch.
+- **Architectural question:** Can target browsers sustain Media Source Extensions playback, buffer growth, and seek-related append transitions for the initial media target, starting before all media is supplied?
+- **Status:** `READY FOR INDEPENDENT RE-REVIEW` after fixes for the B1 and B2 blockers from the first independent review and the B3 blocker from the second; physical Android remains deferred.
+- **Environment:** `AUTOMATED DESKTOP` on macOS 26.6.2 with Chrome 153.0.8010.53 and a throwaway profile, served from `http://127.0.0.1:4177`.
+  - Headless for the main matrix, plus one headed smoke run.
+  - `--mute-audio`; the autoplay policy was left in force, and playback started from trusted CDP clicks.
+  - MP4Box.js 2.4.1 and the Spike 0.5 modules were imported unchanged.
+  - Physical Android, other browsers, and real-world media were not tested.
+- **Procedure:** The isolated experiment in `spike-06-mse-progressive/` does the following:
+  - cuts Spike 0.5 planned, keyframe-aligned fMP4 segments on demand from bounded `File.slice()` windows, and verifies each one;
+  - releases them with deterministic arrival profiles (FAST 8×, NORMAL 1.5×, SLOW 0.5×, BURSTY, MANUAL);
+  - appends them through a per-SourceBuffer queue that never appends while `updating`;
+  - plays through one muxed or two separate SourceBuffers.
+
+  Scripted experiments MSE-01 to MSE-12, plus supplementary S1 to S5 (buffer layout and edit lists, continuity, quota, long run, background tab), were executed by a CDP driver. A development run was followed by two identical final runs.
+- **Acceptance criteria:** MSE-01 to MSE-12 have current controlled-desktop evidence. MSE-13 remains `DEFERRED PHYSICAL`, and real-world media is `MANUAL TEST REQUIRED`, so the result is provisional rather than full `PASS`.
+- **Evidence:** [Spike 0.6 result record](results/spike-06-mse-progressive.md).
+  - **Early start.** Playback began after 2 of 76 segments (MP-02), and after 2 of 2,700 segments on a 4.53 GB, 90-minute file when 0.31 % of it had been read. It continued as withheld segments were released. Presented frames (about 30 fps), advancing `currentTime`, and changing frame digests confirm real playback.
+  - **Buffering.** Buffer ahead grew from 8.7 s to the 60 s cap under FAST delivery. SLOW delivery produced 4 `waiting` underruns, each recovering within 10 ms of the next append.
+  - **Seeks.** Buffered seeks completed in 11–17 ms. Unbuffered seeks to 180 s, 90 s, 45:01, and 22:30 completed in 15–82 ms after reprioritising one keyframe-aligned segment, with no SourceBuffer reset.
+  - **End of stream.** `endOfStream()` after the last `updateend` led to a normal `ended`.
+  - **Cleanup.** Reset, replace, MSE-failure, parser-failure, and `pagehide` teardown were all clean.
+  - **Unsupported media.** 10 non-target or malformed files were refused before any MediaSource was created.
+  - **Health.** 0 console messages and exceptions. Only same-origin static requests.
+- **Result:** Controlled-desktop feasibility evidence retained; independent re-review pending after the B1, B2, and B3 fixes. B3: a preparation superseded by a later unbuffered seek was reported as a fatal pipeline failure, leaving the element seeking until reset. Superseded preparation is now cancellation tied to the session, the seek generation, and the dropped slot; genuine preparation errors remain fatal.
+- **Issues discovered:**
+  - A segment that does not start on a keyframe is accepted **silently**: Chrome drops frames until the next keyframe, and a fragment with no keyframe buffers nothing.
+  - Chrome applies source edit lists in MSE.
+  - The init segment's `updateend` precedes `loadedmetadata`, and MP4Box.js init segments carry no duration (`Infinity` until set).
+  - A muxed SourceBuffer's buffered range is the intersection of its tracks.
+  - `QuotaExceededError` occurred at about 159 MB of 720p media when appending ahead with no cap; it clears only after the playhead moves.
+  - Chrome fired no `stalled` event for MSE underruns.
+  - A never-shown background tab defers `sourceopen` until it is shown, while a hidden playing session keeps playing and appending.
+  - `droppedVideoFrames` is unusable under this automation, for native playback too. A/V sync and smoothness were not measured.
+- **Decision:** MSE progressive playback of Spike 0.5 planned segments is viable in controlled desktop Chrome. No architecture change or ADR modification is required. Observations are recorded in `docs/MEDIA_PIPELINE.md`, separate from planned behavior.
+- **Follow-up:** Independent re-review of Spike 0.6 before commit or Spike 0.7. Track `DEFERRED-PHYSICAL-006` for physical Android Chrome qualification. Real-world media coverage remains `MANUAL TEST REQUIRED`.
 
 ## Spike 0.7 — P2P Progressive Media Proof
 

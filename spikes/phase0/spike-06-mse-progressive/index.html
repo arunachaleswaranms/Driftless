@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; worker-src 'none'; style-src 'self'; img-src 'self' data:; media-src blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Driftless Phase 0 — MSE Progressive Playback</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>Driftless Phase 0</p>
+        <h1>Spike 0.6 — MSE Progressive Playback</h1>
+        <p>
+          Plays a <strong>locally selected</strong> MP4 (H.264 + AAC) through Media Source Extensions. The file is
+          read in bounded <code>File.slice()</code> windows and cut into keyframe-aligned fMP4 segments with the
+          Spike 0.5 plan. A deterministic scheduler then releases the segments over time to simulate progressive
+          arrival. Nothing is uploaded: <code>connect-src</code> is <code>'none'</code>, and
+          <code>media-src</code> allows only the page's own MediaSource <code>blob:</code> URL. There is no WebRTC,
+          storage, analytics, or telemetry on this page.
+        </p>
+      </header>
+
+      <section aria-labelledby="setup-heading">
+        <h2 id="setup-heading">Source and pipeline</h2>
+        <div class="setup-grid">
+          <label>
+            Local media file(s)
+            <input id="file" type="file" multiple accept="video/mp4,.mp4,.m4v,video/*" />
+          </label>
+          <label>
+            SourceBuffer layout
+            <select id="buffer-mode">
+              <option value="muxed" selected>One muxed SourceBuffer (video + audio)</option>
+              <option value="separate">Separate video and audio SourceBuffers</option>
+            </select>
+          </label>
+          <label>
+            Delivery profile (experimental)
+            <select id="profile">
+              <option value="FAST">FAST — 8× real time</option>
+              <option value="NORMAL" selected>NORMAL — 1.5× real time</option>
+              <option value="SLOW">SLOW — 0.5× real time</option>
+              <option value="BURSTY">BURSTY — bursts and pauses (≈1.09×)</option>
+              <option value="MANUAL">MANUAL — release by hand</option>
+            </select>
+          </label>
+          <label>
+            Initial segments before delivery pacing
+            <input id="initial" type="number" min="0" max="50" value="2" />
+          </label>
+          <label>
+            Segment target
+            <select id="target">
+              <option value="1">≈ 1 s (GOP-bounded)</option>
+              <option value="2" selected>≈ 2 s</option>
+              <option value="4">≈ 4 s</option>
+            </select>
+          </label>
+          <label>
+            Lookahead cap (s, blank = none)
+            <input id="lookahead" type="text" inputmode="decimal" value="60" />
+          </label>
+          <label>
+            Back buffer kept (s, blank = never trim)
+            <input id="back-buffer" type="text" inputmode="decimal" value="30" />
+          </label>
+          <label>
+            Next-segment cursor
+            <select id="cursor">
+              <option value="playhead" selected>Playhead (reprioritise on seek)</option>
+              <option value="sequential">Sequential (naive negative control)</option>
+            </select>
+          </label>
+          <label class="checkbox">
+            <input id="seek-abort" type="checkbox" />
+            abort() the in-flight append on an unbuffered seek
+          </label>
+        </div>
+        <div class="actions">
+          <button id="load" type="button">Load</button>
+          <button id="play" type="button">Play</button>
+          <button id="pause" type="button">Pause</button>
+          <button id="hold" type="button">Hold delivery</button>
+          <button id="resume" type="button">Resume delivery</button>
+          <button id="release" type="button">Release 1 segment</button>
+          <label class="inline">Seek to (s) <input id="seek-to" type="text" inputmode="decimal" placeholder="e.g. 150" /></label>
+          <button id="seek" type="button">Seek</button>
+          <button id="reset" type="button" class="danger">Reset</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">Select a file.</p>
+      </section>
+
+      <section aria-labelledby="playback-heading">
+        <h2 id="playback-heading">Playback</h2>
+        <div class="player">
+          <video id="video" controls playsinline width="640" height="360"></video>
+        </div>
+        <div class="buffer-bar" aria-hidden="true">
+          <div id="bar-buffered"></div>
+          <div id="bar-prepared" class="marker prepared"></div>
+          <div id="bar-delivered" class="marker delivered"></div>
+          <div id="bar-playhead" class="marker playhead"></div>
+        </div>
+        <pre id="buffer-text" class="buffer-text">Playback:  —
+Buffered:  —
+Appended:  —
+Delivered: —
+Prepared:  —</pre>
+      </section>
+
+      <section aria-labelledby="diag-heading">
+        <h2 id="diag-heading">Diagnostics</h2>
+        <dl class="diagnostics-grid">
+          <div><dt>Browser / User-Agent</dt><dd id="d-ua">—</dd></div>
+          <div><dt>File (name as text only)</dt><dd id="d-file">—</dd></div>
+          <div><dt>Pipeline state</dt><dd id="d-state">idle</dd></div>
+          <div><dt>MIME / isTypeSupported</dt><dd id="d-mime">—</dd></div>
+          <div><dt>MediaSource.readyState</dt><dd id="d-ms">—</dd></div>
+          <div><dt>SourceBuffer(s): mode / updating / queue</dt><dd id="d-sb">—</dd></div>
+          <div><dt>video.readyState / networkState</dt><dd id="d-rs">—</dd></div>
+          <div><dt>currentTime / duration / paused</dt><dd id="d-time">—</dd></div>
+          <div><dt>Buffered ranges (element)</dt><dd id="d-ranges">—</dd></div>
+          <div><dt>Segments appended / in flight / total</dt><dd id="d-segs">—</dd></div>
+          <div><dt>Frames presented / decoded / dropped</dt><dd id="d-frames">—</dd></div>
+          <div><dt>Queued / prepared bytes (max)</dt><dd id="d-bytes">—</dd></div>
+          <div><dt>Source bytes read / file size</dt><dd id="d-source">—</dd></div>
+          <div><dt>Delivery scheduler</dt><dd id="d-sched">—</dd></div>
+          <div><dt>Stalls / seeks</dt><dd id="d-stalls">—</dd></div>
+          <div><dt>Live resources</dt><dd id="d-res">—</dd></div>
+          <div><dt>Refusal / failure</dt><dd id="d-err">none</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="scenario-heading">
+        <h2 id="scenario-heading">Scripted experiments</h2>
+        <p>
+          Each experiment loads the selected file(s), drives the pipeline, and records bounded evidence. Playback
+          starts only after a click on this page (browser autoplay policy is left in force).
+        </p>
+        <div class="actions">
+          <select id="scenario"></select>
+          <input id="scenario-params" type="text" placeholder='optional JSON overrides, e.g. {"initialSegments":3}' />
+          <button id="run-scenario" type="button">Run experiment</button>
+        </div>
+        <p id="scenario-state" data-state="idle">idle</p>
+        <details>
+          <summary>Experiment result (JSON, bounded)</summary>
+          <pre id="scenario-result">{}</pre>
+        </details>
+      </section>
+
+      <section aria-labelledby="append-heading">
+        <h2 id="append-heading">Append log (latest 40)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Seg</th><th>Kind</th><th>SB</th><th>Media (s)</th><th>Bytes</th><th>Append start (ms)</th>
+                <th>updateend (ms)</th><th>Buffered after</th><th>currentTime</th>
+              </tr>
+            </thead>
+            <tbody id="append-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="log-heading">
+        <h2 id="log-heading">Event timeline (latest 150)</h2>
+        <ol id="event-log"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>
