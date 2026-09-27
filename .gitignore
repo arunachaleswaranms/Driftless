@@ -53,9 +53,9 @@ temp/
 media-test-files/
 test-media-local/
 *.media-test
+spikes/phase0/test-media/
 
 # Large local fixtures (keep small, reviewed fixtures elsewhere)
 fixtures/local/
 fixtures/large/
 *.large-fixture
-

@@ -1,0 +1,297 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #08111f;
+  color: #e5edf8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgb(38 109 153 / 24%), transparent 34rem),
+    #08111f;
+}
+
+main {
+  width: min(74rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 5rem;
+}
+
+header,
+section {
+  border: 1px solid #29415f;
+  border-radius: 1rem;
+  background: rgb(13 27 45 / 92%);
+  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / 20%);
+}
+
+header {
+  padding: 2rem;
+}
+
+section {
+  margin-top: 1rem;
+  padding: 1.5rem;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+p {
+  color: #b6c5d8;
+  line-height: 1.55;
+}
+
+code {
+  color: #83ddff;
+}
+
+.setup-grid,
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.8rem;
+}
+
+label,
+.diagnostics-grid div {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid #29415f;
+  border-radius: 0.75rem;
+  background: #0a1728;
+  padding: 0.9rem;
+}
+
+select,
+input,
+button {
+  font: inherit;
+}
+
+select,
+input {
+  width: 100%;
+  border: 1px solid #47698d;
+  border-radius: 0.45rem;
+  background: #07111e;
+  color: #f4f8fc;
+  padding: 0.65rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin: 1rem 0;
+}
+
+button {
+  border: 1px solid #45bde9;
+  border-radius: 0.55rem;
+  background: #0e6688;
+  color: white;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+dt {
+  color: #8fa7c2;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+#status[data-kind="success"] {
+  color: #8ff0b2;
+}
+
+#status[data-kind="error"] {
+  color: #ff9f9f;
+}
+
+#event-log {
+  max-height: 22rem;
+  overflow: auto;
+  padding-left: 1.5rem;
+  color: #cbd8e8;
+}
+
+#event-log li {
+  margin-bottom: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid #29415f;
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: #8fa7c2;
+}
+
+td[data-ok="true"] {
+  color: #8ff0b2;
+}
+
+td[data-ok="false"] {
+  color: #ff9f9f;
+}
+
+details {
+  margin-top: 1rem;
+}
+
+pre {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid #29415f;
+  border-radius: 0.75rem;
+  background: #0a1728;
+  padding: 0.9rem;
+  font-size: 0.8rem;
+}
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+label.checkbox input {
+  width: auto;
+}
+
+button.danger {
+  border-color: #e98a8a;
+  background: #7a2230;
+}
+
+td[data-ok="refused"] {
+  color: #ffd27a;
+}
+
+/* Spike 0.6 additions */
+
+label.inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+label.inline input {
+  width: 8rem;
+}
+
+#scenario-params {
+  width: min(28rem, 100%);
+}
+
+select#scenario {
+  width: auto;
+}
+
+.player video {
+  width: min(640px, 100%);
+  height: auto;
+  background: #000;
+  border-radius: 0.5rem;
+}
+
+.buffer-bar {
+  position: relative;
+  height: 1.4rem;
+  margin: 1rem 0 0.6rem;
+  border: 1px solid #47698d;
+  border-radius: 0.4rem;
+  background: #07111e;
+  overflow: hidden;
+}
+
+#bar-buffered {
+  position: absolute;
+  inset: 0;
+}
+
+#bar-buffered span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #1f7fa8;
+}
+
+.buffer-bar .marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+
+.buffer-bar .marker.prepared {
+  background: #ffd27a;
+}
+
+.buffer-bar .marker.delivered {
+  background: #8ff0b2;
+}
+
+.buffer-bar .marker.playhead {
+  width: 3px;
+  background: #ff9f9f;
+}
+
+.buffer-text {
+  max-height: none;
+  font-size: 0.9rem;
+}
+
+#scenario-state[data-state="running"] {
+  color: #ffd27a;
+}
+
+#scenario-state[data-state="done"] {
+  color: #8ff0b2;
+}
+
+#scenario-state[data-state="error"] {
+  color: #ff9f9f;
+}

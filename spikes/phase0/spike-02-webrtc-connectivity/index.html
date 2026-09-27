@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Driftless Phase 0 — WebRTC Connectivity</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p>Driftless Phase 0</p>
+        <h1>Spike 0.2 — WebRTC Peer Connectivity</h1>
+        <p>
+          Establish one browser peer connection and a tiny control-only data channel. No media,
+          binary transfer, synchronization, analytics, or production signaling is present.
+        </p>
+      </header>
+
+      <section aria-labelledby="setup-heading">
+        <h2 id="setup-heading">Local development signaling</h2>
+        <p>
+          Open this page in two desktop tabs with the same room label. Start one as responder and
+          the other as initiator. SDP and ICE candidates travel only through a same-origin
+          <code>BroadcastChannel</code>; this cannot prove connectivity across separate networks.
+        </p>
+        <div class="setup-grid">
+          <label>
+            Role
+            <select id="role">
+              <option value="responder">Responder</option>
+              <option value="initiator">Initiator</option>
+            </select>
+          </label>
+          <label>
+            Room label
+            <input id="room" type="text" maxlength="64" value="wc-local" autocomplete="off" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="start" type="button">Start peer</button>
+          <button id="send" type="button" disabled>Send PING</button>
+          <button id="refresh" type="button" disabled>Refresh diagnostics</button>
+          <button id="close" type="button" disabled>Close peer</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">Idle. Configure a role and start the peer.</p>
+      </section>
+
+      <section aria-labelledby="states-heading">
+        <h2 id="states-heading">Connection state</h2>
+        <dl class="diagnostics-grid">
+          <div><dt>Browser / User-Agent</dt><dd id="user-agent">—</dd></div>
+          <div><dt>Role</dt><dd id="active-role">—</dd></div>
+          <div><dt>Signaling state</dt><dd id="signaling-state">closed</dd></div>
+          <div><dt>ICE gathering state</dt><dd id="ice-gathering-state">closed</dd></div>
+          <div><dt>ICE connection state</dt><dd id="ice-connection-state">closed</dd></div>
+          <div><dt>Connection state</dt><dd id="connection-state">closed</dd></div>
+          <div><dt>Local description</dt><dd id="local-description">not set</dd></div>
+          <div><dt>Remote description</dt><dd id="remote-description">not set</dd></div>
+          <div><dt>Data channel</dt><dd id="data-channel-state">not created</dd></div>
+          <div><dt>Last message sent</dt><dd id="last-message-sent">None</dd></div>
+          <div><dt>Last message received</dt><dd id="last-message-received">None</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="ice-heading">
+        <h2 id="ice-heading">ICE and selected-path diagnostics</h2>
+        <p>
+          Candidate values and addresses are not logged. Only candidate types and selected-pair
+          fields exposed by <code>getStats()</code> are displayed.
+        </p>
+        <dl class="diagnostics-grid">
+          <div><dt>Local candidate types observed</dt><dd id="local-candidate-types">None</dd></div>
+          <div><dt>Remote candidate types observed</dt><dd id="remote-candidate-types">None</dd></div>
+          <div><dt>Selected pair</dt><dd id="selected-pair">Unavailable</dd></div>
+          <div><dt>Selected local candidate type</dt><dd id="selected-local-type">Unavailable</dd></div>
+          <div><dt>Selected remote candidate type</dt><dd id="selected-remote-type">Unavailable</dd></div>
+          <div><dt>Protocol</dt><dd id="protocol">Unavailable</dd></div>
+          <div><dt>Current RTT</dt><dd id="rtt">Unavailable</dd></div>
+          <div><dt>Evidence-based path classification</dt><dd id="path-classification">Unavailable</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="log-heading">
+        <h2 id="log-heading">Bounded event log</h2>
+        <ol id="event-log" aria-live="polite"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "driftless-spike-05-mp4-segmentation",
+  "private": true,
+  "description": "Phase 0 laboratory experiment only. Not a production package.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "mp4box": "2.4.1"
+  }
+}
