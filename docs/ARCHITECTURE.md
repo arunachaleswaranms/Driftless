@@ -38,7 +38,7 @@ STUN assists peers in discovering viable network paths. TURN relays WebRTC traff
 | `packages/sync-engine/` | Host-authoritative state, heartbeat processing, drift estimation and correction decisions |
 | `packages/transfer-engine/` | Transfer planning, backpressure, chunk scheduling, reassembly, resume and integrity behavior |
 
-The repository directories exist, but these responsibilities have not been implemented.
+The repository directories exist, but these responsibilities have not been implemented. `apps/web/` contains only the Phase 1 application shell, PWA foundation, and test tooling; the other directories are empty.
 
 ## Web Client Components
 

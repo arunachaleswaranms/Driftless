@@ -2,7 +2,7 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Status: Phase 0 software feasibility closed.** Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. Phase 1 — Application Foundation is next and has not started. Physical Android and real external-network qualification remain deferred. No production application implementation exists.
+> **Status: Phase 1 — Application Foundation in progress.** Phase 0 software feasibility closed after Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. The production web client under `apps/web/` currently provides only an application shell, PWA foundation, and automated test baseline. It cannot yet select, play, or synchronize media. Physical Android and real external-network qualification remain deferred.
 
 ## Goals
 
@@ -58,9 +58,9 @@ Progressive Watch is a runtime-detected capability. A browser or device that can
 
 ## Development status
 
-The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No React/Vite production project, PWA, production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
+The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
 
-Phase 1 — Application Foundation is **NEXT — NOT STARTED**. No production application implementation exists yet. Physical-device and real-network qualification remains deferred.
+Phase 1 — Application Foundation is **IN PROGRESS**. The React/TypeScript/Vite web client in [`apps/web/`](apps/web/) contains an application shell with placeholder local-video and capability areas, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser smoke tests. Local file selection, playback, media metadata, and capability detection are not implemented yet. Physical-device and real-network qualification remains deferred.
 
 ## Documentation
 

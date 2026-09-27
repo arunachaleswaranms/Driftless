@@ -2,7 +2,7 @@
 
 ## Status and Purpose
 
-This is the planned product verification strategy. No production application test framework or suite has been initialized. Phase 0 has separate passing spike tests and controlled desktop browser evidence in [the result records](../spikes/phase0/), but those results do not satisfy physical-device or real-network gates. Each future product result must record application revision, browser/device versions, network conditions, media characteristics, and whether WebRTC used direct P2P or TURN relay.
+This is the planned product verification strategy. The production web client in `apps/web/` has a Phase 1 baseline of Vitest unit/component tests and Playwright browser smoke tests; the rest of this plan is not yet implemented. Phase 0 has separate passing spike tests and controlled desktop browser evidence in [the result records](../spikes/phase0/), but those results do not satisfy physical-device or real-network gates. Each future product result must record application revision, browser/device versions, network conditions, media characteristics, and whether WebRTC used direct P2P or TURN relay.
 
 ## Test Levels
 
@@ -26,7 +26,7 @@ Planned integration coverage includes signaling-to-WebRTC negotiation, reconnect
 
 ### Browser Automation
 
-Playwright is the planned browser-automation tool, subject to Phase 1 tooling decisions. It should exercise room flows, file selection using controlled fixtures, readiness, playback controls, reconnect UI, capability fallbacks, chat/reactions, and error states across supported desktop engines.
+Playwright was selected in Phase 1 and currently runs Chromium smoke tests against the production build of `apps/web/`. Other desktop engines are not yet configured. It should exercise room flows, file selection using controlled fixtures, readiness, playback controls, reconnect UI, capability fallbacks, chat/reactions, and error states across supported desktop engines.
 
 Browser automation is evidence for automated flows, not a substitute for real mobile devices, carrier networks, or codec/platform validation.
 

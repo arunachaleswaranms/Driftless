@@ -24,15 +24,13 @@ Driftless
 
 ## Current Development Stage
 
-Phase 1 — Application Foundation: **NEXT — NOT STARTED**.
+Phase 1 — Application Foundation: **IN PROGRESS**.
 
 ## Current Branch
 
-`main`
+`phase/1-application-foundation`
 
-Phase 0 was merged through PR #1 at `17eea6a`.
-
-No Phase 1 branch exists. Phase 1 implementation has not started.
+Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 work proceeds on `phase/1-application-foundation`, created from `main` at `4c15a54`.
 
 ## Repository Status
 
@@ -47,7 +45,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). No signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `services/signaling/`, `packages/protocol/`, `packages/sync-engine/`, and `packages/transfer-engine/` remain empty.
 
 ## Accepted Architecture
 
@@ -163,13 +161,28 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
 
 No product feature is complete. Spikes 0.1–0.7 completed their software-feasibility questions, and Phase 0 software feasibility is closed after the final independent review passed. Spike 0.2 and Spike 0.3 retain `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`; Spikes 0.1, 0.4, 0.5, and 0.6 retain `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 real-world media coverage remains `MANUAL TEST REQUIRED`. Spike 0.6 passed independent re-review after fixes for B1, B2, and B3 and was committed at `7bbb10f`. Spike 0.7's provisional software result was accepted on final independent review after its first `REQUEST CHANGES — DO NOT COMMIT` and subsequent fixes; it was committed at `e1ea11b`. Physical Android, external-network, and real-world media qualification remain deferred.
 
+## Phase 1 — Application Foundation
+
+**Phase status:** IN PROGRESS. The Phase 1 exit gate has not been evaluated.
+
+The web/PWA foundation and automated test baseline exist under `apps/web/`. It is written from scratch; no Phase 0 spike code was copied into it.
+
+- React 19, TypeScript 6.0, and Vite 8 as a standalone npm package with a committed lockfile. No repository-level workspace exists yet.
+- A minimal application shell: application name, development-build notice, skip link, and placeholder areas for local video and browser capabilities. The placeholders state that the features are not available and make no browser support claim.
+- PWA foundation: a web app manifest with 192 px and 512 px placeholder icons, and a service worker registered only in production builds. The worker has no fetch handler and caches nothing, so the application has no offline behavior.
+- Production builds carry a same-origin-only Content Security Policy meta tag. The application makes no backend, analytics, telemetry, or other external requests.
+- Tooling: `tsc -b` type checking, ESLint 10 with type-aware typescript-eslint rules, Prettier, Vitest with Testing Library and jsdom, and Playwright on Chromium.
+- `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0: 7 unit/component tests, and 8 Playwright smoke tests against the production build in Playwright's Chromium 153.0.8010.12. The smoke tests cover shell rendering, keyboard skip-link focus, narrow and desktop layout, manifest and icon delivery, service worker registration and control, the CSP, and zero Chromium manifest/installability errors other than the automation-only `in-incognito`. Every test fails on any console error or warning, uncaught exception, or cross-origin request. This is development evidence and not a compatibility claim.
+
+Not yet implemented in Phase 1: local file selection, object-URL media lifecycle, video playback and controls, media metadata, media error handling, player lifecycle tests, and capability detection.
+
 ## Open Deferred Qualification
 
 - Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge.
 
 ## Not Started
 
-- Phase 1 implementation and production application work have not started. The Phase 0 software-feasibility gate passed; physical and real-network qualification remains deferred.
+- Phase 2 and later implementation: signaling, rooms, WebRTC, synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
 
@@ -283,7 +296,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Phase 1 — Application Foundation is **NEXT — NOT STARTED**.
+Continue Phase 1 — Application Foundation with local file selection, object-URL lifecycle, playback, media metadata, and media error handling in `apps/web/`, followed by capability detection. Phase 1 is not complete until its exit gate is evaluated.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 

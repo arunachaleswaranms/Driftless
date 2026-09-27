@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: NEXT — NOT STARTED.**
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: IN PROGRESS.**
 
 - Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
 - Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
@@ -40,6 +40,8 @@ Technical spikes:
 - Media metadata.
 - Capability detection.
 - Automated test baseline.
+
+**Status — IN PROGRESS:** The web/PWA skeleton and automated test baseline exist in `apps/web/`. The local player, file selection, playback controls, media metadata, and capability detection remain. The exit gate has not been evaluated.
 
 **Exit gate:** The installable web foundation can select and play representative local media on target development browsers, reports capabilities accurately, and has an automated test baseline. No synchronized or progressive behavior is implied.
 
