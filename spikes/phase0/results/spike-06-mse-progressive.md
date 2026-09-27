@@ -6,9 +6,11 @@
 
 ## Result
 
-`READY FOR INDEPENDENT RE-REVIEW`
+`PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`
 
-The initial controlled-desktop provisional result below was challenged by independent review, so it is not a final pass. The first independent review reproduced two blocker-level state-management defects (B1, B2) and returned `REQUEST CHANGES — DO NOT COMMIT`. The second independent review confirmed B1 and B2 fixed but reproduced a third blocker (B3) and again returned `REQUEST CHANGES — DO NOT COMMIT`. The defects and corrective evidence are retained in [Independent Review Fixes](#independent-review-fixes).
+Final software status: Spike 0.6 **passed independent re-review and was committed at `7bbb10f`** (`test: validate MSE progressive playback`). Physical Android qualification remains open as `DEFERRED-PHYSICAL-006`, and real-world media coverage remains `MANUAL TEST REQUIRED`.
+
+Review history, retained: the initial controlled-desktop provisional result below was challenged by independent review. The first independent review reproduced two blocker-level state-management defects (B1, B2) and returned `REQUEST CHANGES — DO NOT COMMIT`. The second independent review confirmed B1 and B2 fixed but reproduced a third blocker (B3) and again returned `REQUEST CHANGES — DO NOT COMMIT`. The final independent re-review accepted the B1, B2, and B3 fixes, after which the spike was committed. The defects and corrective evidence are retained in [Independent Review Fixes](#independent-review-fixes). This record was committed while it still read `READY FOR INDEPENDENT RE-REVIEW`; the status above was corrected afterwards, during Spike 0.7 closure documentation.
 
 Software feasibility of progressive MSE playback passed in controlled desktop testing. In Chrome 153, local MP4/H.264/AAC media was prepared with the Spike 0.5 deterministic plan and appended to MSE one keyframe-aligned segment at a time, paced by a deterministic arrival simulator. With it:
 
@@ -559,4 +561,5 @@ None. `adb devices` listed no device, and no emulator was used. MSE-13 is `DEFER
 
 ## Follow-up
 
-Independent re-review of Spike 0.6 before commit or Spike 0.7.
+- Completed: independent re-review of Spike 0.6 passed, and the spike was committed at `7bbb10f`. The uncommitted Spike 0.7 work builds on that commit.
+- Open: `DEFERRED-PHYSICAL-006` (physical Android Chrome MSE qualification) and real-world media coverage (`MANUAL TEST REQUIRED`).

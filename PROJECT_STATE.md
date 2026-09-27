@@ -20,13 +20,13 @@ Phase 0 — Architecture & Feasibility
 
 ## Current Activity
 
-Spike 0.6 — MSE Progressive Playback
+Spike 0.7 — End-to-End P2P Progressive Watch Proof: final independent re-review, after the fix for its first review's `REQUEST CHANGES — DO NOT COMMIT` (B1 host scheduling, B2 stale closure documentation)
 
 ## Current Branch
 
 `phase/0-feasibility`
 
-Verified from Git on 2026-09-26 at `9d802b6` (Spikes 0.1–0.5 checkpointed). Spike 0.6 changes are intentionally uncommitted.
+Verified from Git on 2026-09-27 at `7bbb10f` (Spikes 0.1–0.6 checkpointed; Spike 0.6 committed after passing independent re-review). Spike 0.7 changes, including the B1 scheduling fix and B2 documentation corrections, are intentionally uncommitted and unpushed.
 
 ## Repository Status
 
@@ -41,7 +41,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.6 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, and Spike 0.6 MSE progressive-playback experiments are laboratory code only. Spike 0.6 adds no dependency; it imports the Spike 0.5 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
 
 ## Accepted Architecture
 
@@ -119,13 +119,14 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
   - Already fragmented sources were retained at 2× their size, so they are classified `NON-TARGET`.
 
 - Spike 0.5 was checkpointed at `9d802b6`. This session proceeded to Spike 0.6 at the user's direction.
+- Spike 0.6 passed independent re-review after the B1, B2, and B3 fixes and was committed at `7bbb10f`. Its status is `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`; the review history below is retained.
 - The isolated Spike 0.6 page plays a locally selected MP4 through MSE while supplying it progressively.
   - It cuts Spike 0.5 planned, keyframe-aligned fMP4 segments on demand from bounded `File.slice()` windows, and verifies and refuses bad fragments.
   - It releases segments with deterministic arrival profiles (FAST 8×, NORMAL 1.5×, SLOW 0.5×, BURSTY, MANUAL).
   - It appends through a per-SourceBuffer queue that never appends while `updating`, into one muxed or two separate SourceBuffers.
   - It gates on a lookahead cap and append backpressure, trims behind the playhead, reprioritises on unbuffered seeks, calls `endOfStream()` only when idle, and tears down with a resource report.
 - Spike 0.6 tests pass: 42 tests, 0 failures. They include 16 deterministic pipeline regressions for B1, B2, and B3 (gated preparation, seeded rapid-seek storms in both SourceBuffer layouts), and 6 preparer tests running real MP4Box.js. The preparer's cuts are byte-identical to Spike 0.5's planned cuts. All Phase 0 tests: 89 pass, 0 fail.
-- Post-review Chrome reruns passed early playback, buffer growth, underrun/recovery, buffered and unbuffered seeks, separate-track append, EOS, refusal, and cleanup. The exact review seek race retried segment 7 and resolved seeking in 26.9 ms; 10 further seek cycles found no falsely appended segment. The review reset/load probe and 5 additional rapid reset/load cycles kept the new session owned and playable, with old MediaSources closed and clean final teardown. After the B3 fix, Chrome seek storms on MP-02 (1,147 seeks in double and triple bursts, many during SourceBuffer updates, including one with cuts delayed 20–60 ms) produced 0 pipeline failures, 0 permanent `seeking` hangs, and 0 stale or partial `APPENDED` promotions. The same delayed-cut storm against the pre-fix code failed 17 times with `DROPPED`. The review's own storm script, rerun unchanged, found 0 failures in 252 seeks, and the accepted MSE scenarios all passed again. See the Spike 0.6 result record; independent re-review is still required.
+- Post-review Chrome reruns passed early playback, buffer growth, underrun/recovery, buffered and unbuffered seeks, separate-track append, EOS, refusal, and cleanup. The exact review seek race retried segment 7 and resolved seeking in 26.9 ms; 10 further seek cycles found no falsely appended segment. The review reset/load probe and 5 additional rapid reset/load cycles kept the new session owned and playable, with old MediaSources closed and clean final teardown. After the B3 fix, Chrome seek storms on MP-02 (1,147 seeks in double and triple bursts, many during SourceBuffer updates, including one with cuts delayed 20–60 ms) produced 0 pipeline failures, 0 permanent `seeking` hangs, and 0 stale or partial `APPENDED` promotions. The same delayed-cut storm against the pre-fix code failed 17 times with `DROPPED`. The review's own storm script, rerun unchanged, found 0 failures in 252 seeks, and the accepted MSE scenarios all passed again. The subsequent independent re-review accepted these fixes. See the Spike 0.6 result record.
 - `AUTOMATED DESKTOP` validation used Chrome 153.0.8010.53 on macOS 26.6.2 (headless, plus one headed smoke run) with synthetic media only. The autoplay policy was left in force: `play()` without user activation was rejected, and runs used trusted CDP clicks. Two identical final runs followed a development run.
   - Playback began after 2 of 76 segments (MP-02, 110.5 MB), and after 2 of 2,700 segments on the 4.53 GB, 90-minute file when 0.31 % of it had been read. It continued while withheld segments were released: about 30 presented fps, advancing `currentTime`, and changing frame digests.
   - Buffer ahead grew to the 60 s cap under FAST delivery. SLOW delivery produced 4 `waiting` underruns, each recovering within 10 ms of the next append.
@@ -144,16 +145,26 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
   - A never-shown background tab defers `sourceopen` until it is shown.
   - `droppedVideoFrames` is unusable under this automation.
 
-No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`, with real-world media coverage `MANUAL TEST REQUIRED`. Spike 0.6 is `READY FOR INDEPENDENT RE-REVIEW` after fixing the B1 and B2 blockers from the first independent review and the B3 blocker from the second. Physical Android and real-world media remain deferred.
+- The isolated Spike 0.7 experiment integrates two browser peers with development-only BroadcastChannel signaling, Spike 0.5/0.6 guarded MP4 preparation, bounded binary RTCDataChannel chunks and Spike 0.3 backpressure, receiver SHA-256 reassembly, MSE append queues, buffer feedback, experimental buffer windowing, pause/pacing, and seek generations. The receiver owns no source file. All implementation is under `spikes/phase0/`; no production directory was modified.
+- `AUTOMATED DESKTOP / CONTROLLED NETWORK` Chrome 153 evidence on 2026-09-27 used two same-origin tabs and an ignored 110,544,641 B, 300.023 s synthetic MP4 with 76 planned segments. Both peers connected over a host/host UDP selected pair. Video and audio init appended before media. Actual receiver playback began with 2 segments, 3,218,827 B received (2.911789% of source size), and 8.730701 s buffered. Frames/time advanced while later segments arrived. Host `bufferedAmount` peaked at 589,416 B, within the 512 KiB high-water mark plus one 65,568 B frame, and backpressure pauses/resumptions occurred.
+- Controlled Chrome runs demonstrated growing ahead buffer, a real non-seeking `waiting` at buffered end under host hold and constrained pacing, recovery when media arrived, buffered and unbuffered remote seek, repeated overlapping seek bursts with stale chunks discarded and latest target playing, malformed-frame rejection with transfer continuing, old/future MSE-range eviction, clean cleanup, and a second early-playback run without refreshing the tabs. Development runs exposed an undefined seek local, concurrent host source reads across generations, and duplicate receiver channel binding; all were fixed and retested. The complete record is [Spike 0.7 result](spikes/phase0/results/spike-07-p2p-progressive.md).
+- All Phase 0 Node tests pass: 92 tests, 0 failures at the initial review (including 3 Spike 0.7 transport/reassembly/peer-ownership tests). Spike 0.7 syntax checks pass. No device appeared in `adb devices`.
+- The first independent review of Spike 0.7 returned `REQUEST CHANGES — DO NOT COMMIT`. B1: the host's persistent transfer cursor ignored buffered/local seeks, so `remote seek → local buffered seek` and rapid mixed seeks stalled playback permanently at the old buffer end while far-future MSE media grew. B2: Phase 0 closure documentation was stale. Both are fixed:
+  - Host scheduling now follows the receiver's current playback need. `BUFFER_STATUS` reports the generation, sequence, playhead, contiguous coverage, and the first segment missing at the contiguous frontier. Every seek starts a new generation; stale needs are ignored; the ahead cap counts only contiguous coverage; the host send window and a per-segment delivery limit bound transfer; `waiting` reports its need at once; and MSE trimming works while stalled.
+  - Chrome validation of the fix also found and fixed a trimmed-tail need defect, a seek-boundary tolerance hang, a too-wide segment-end tolerance, and a pre-existing stale `initReady` that broke unbuffered seeks in second sessions.
+  - All Phase 0 Node tests now pass: **120 tests, 0 failures**, including 28 Spike 0.7 scheduling unit and deterministic simulation tests. The simulated regressions fail against a model of the pre-fix scheduler.
+  - In `AUTOMATED DESKTOP / CONTROLLED NETWORK` Chrome 153, reproductions A and B hung permanently (33.95 s) on a copy of the pre-fix build and passed 4/4 each on the fixed build. Three seeded mixed-seek stress runs (783 seeks, including bursts during backpressure, SourceBuffer updates, and active transport) had 0 permanent hangs, 0 pipeline failures, 63/63 gap crossings, 0 redeliveries, host send-ahead ≤ 20 s, and a maximum RTC `bufferedAmount` of 589,856 B. A full E2E regression pass (early playback at 2.911789%, concurrency, cap, backpressure, hold/underrun/recovery, buffered and remote seek, an eviction gap, malformed input, cleanup, and a second run with an unbuffered seek) passed.
+
+No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`, with real-world media coverage `MANUAL TEST REQUIRED`. Spike 0.6 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`: it passed independent re-review after fixes for the B1 and B2 blockers from the first independent review and the B3 blocker from the second, and was committed at `7bbb10f`. Spike 0.7 is `READY FOR INDEPENDENT RE-REVIEW` after its first independent review returned `REQUEST CHANGES — DO NOT COMMIT`; its controlled software proof supports provisional feasibility, not Phase 0 closure. Physical Android, external-network, and real-world media qualification remain deferred.
 
 ## In Progress
 
-- Independent re-review of Spike 0.6 implementation and evidence, including the B1 incomplete-segment seek race, the B2 stale-session teardown race, and the B3 superseded-preparation seek race.
+- Final independent re-review of Spike 0.7 (the B1 playback-need scheduling fix and B2 closure-documentation corrections) and the Phase 0 software-feasibility closure decision.
 - Accumulated physical Android and real external-network qualification remains deferred under the debt list below.
 
 ## Not Started
 
-- Spike 0.7 implementation and validation.
+- Phase 1 implementation and production application work; no phase exit has been approved.
 
 ## Evidence Classification Policy
 
@@ -200,6 +211,8 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 
   Record device model, OS, Chrome version, free RAM, heap after the `moov` parse, `isTypeSupported` answers, audible A/V sync, and visible smoothness. Current evidence comes from automated desktop Chrome with synthetic media and muted audio, and is not a mobile or real-world-media result.
 
+- `DEFERRED-PHYSICAL-007 — Spike 0.7 end-to-end Progressive Watch over physical Android / real external networks`: repeat the integrated two-peer MP4/H.264/AAC proof with at least one physical Android Chrome peer and peers on genuinely separate Internet networks. Record selected direct/relay candidate path, negotiated message size, metadata/init/fragment integrity, early playback percentage, concurrent transfer/playback, backpressure, buffer growth, slowdown/underrun/recovery, buffered and remote seeks including rapid bursts, pause, cleanup, second run, memory/CPU, and audible A/V sync. Test TURN where direct connectivity fails. Current evidence is same-host Chrome only; host/host UDP does not qualify Internet traversal or a TURN relay.
+
 The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spikes 0.4, 0.5, and 0.6 found no attached device or emulator.
 
 ## Current Blockers
@@ -228,7 +241,7 @@ Spike 0.5 proves bounded MP4 inspection and segmentation of synthetic, non-fragm
 - Already fragmented sources are not handled with bounded memory.
 - MP4Box.js can stall or log to `console.error` on malformed input, so driver-side guards are required.
 
-Independent review of Spike 0.6 reproduced two blocker-level state-management defects: a partial segment was marked appended after a seek dropped queued audio (B1), and stale asynchronous teardown could clear a newer session (B2). The second review confirmed both fixed and reproduced a third (B3): a preparation superseded by a later unbuffered seek was reported as a fatal pipeline failure, leaving the element seeking until reset. All three have targeted fixes and deterministic regressions, but Spike 0.6 awaits independent re-review before commit or advancement. Its controlled desktop playback evidence remains limited to synthetic media. The following remain inputs to later buffer-manager and Progressive Watch design, not additional blockers:
+Independent review of Spike 0.6 reproduced two blocker-level state-management defects: a partial segment was marked appended after a seek dropped queued audio (B1), and stale asynchronous teardown could clear a newer session (B2). The second review confirmed both fixed and reproduced a third (B3): a preparation superseded by a later unbuffered seek was reported as a fatal pipeline failure, leaving the element seeking until reset. All three have targeted fixes and deterministic regressions; the independent re-review accepted them and Spike 0.6 was committed at `7bbb10f`. (The user had explicitly authorized starting Spike 0.7 before that re-review.) Its controlled desktop playback evidence remains limited to synthetic media. The following remain inputs to later buffer-manager and Progressive Watch design, not additional blockers:
 
 - Misaligned segments fail silently (dropped frames, no error), so keyframe alignment and independent verification are required.
 - A buffer manager must reprioritise unbuffered seeks. Naive sequential delivery left a far seek pending indefinitely.
@@ -237,6 +250,8 @@ Independent review of Spike 0.6 reproduced two blocker-level state-management de
 - Chrome applies edit lists in MSE. Other browsers were not tested.
 - The sample-table heap (about 71 MB for 90 minutes at 30 fps) remains the main mobile memory risk.
 - A/V sync, smoothness, and real-world media were not measured.
+
+Spike 0.7 integrated those components in controlled Chrome and found no architecture blocker. Its development runs exposed an undefined seek-handler local, a host source-reader race when rapid seeks overlapped, and duplicate receiver channel binding; all were fixed and retested. The final experimental host joins superseded cuts, and the receiver rejects stale-generation chunks and binds one channel per session. The first independent review then reproduced a scheduling blocker (B1: a persistent host cursor ignored local seeks, stalling playback permanently after mixed seeks); the fix makes host scheduling follow the receiver's contiguous playback need with generation ownership. The software evidence is ready for final independent re-review, but sample-index heap, MSE/decoder memory, Android, real external networks, TURN, and non-synthetic sources remain unqualified. OPFS was not integrated; `Spike 0.7 demonstrates bounded streaming pipeline; durable cache integration remains productionization work.`
 
 ## Open Questions
 
@@ -261,9 +276,9 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent re-review of Spike 0.6 before commit or Spike 0.7.
+Final independent re-review of Spike 0.7 and Phase 0 software-feasibility closure.
 
-Do not begin Spike 0.7, Phase 1, or full product implementation before the applicable review and phase gates.
+Do not begin Phase 1 or full product implementation before the applicable review and phase gates. Do not self-close Phase 0 physical/network qualification.
 
 ## Decisions That Must Not Be Accidentally Reverted
 
@@ -284,4 +299,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-26
+2026-09-27

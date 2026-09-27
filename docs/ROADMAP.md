@@ -8,7 +8,11 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: IN PROGRESS**. Spike 0.1 is `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`; Spike 0.2 is `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED` pending independent review. Spike 0.3 and later spikes have not started. Deferred physical qualification debt remains open and Phase 0 is not complete.
+The current state is **Phase 0 — Architecture & Feasibility: IN PROGRESS**.
+
+- Spikes 0.1–0.6 have completed software-feasibility results and are checkpointed in Git: Spikes 0.1, 0.4, 0.5, and 0.6 are `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`; Spikes 0.2 and 0.3 are `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
+- Spike 0.7 — End-to-End P2P Progressive Watch Proof — is `READY FOR INDEPENDENT RE-REVIEW`. Its first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for a transfer-scheduling blocker, which has been fixed and re-validated in controlled desktop Chrome.
+- Deferred physical Android and external-network qualification debt (`DEFERRED-PHYSICAL-001` to `DEFERRED-PHYSICAL-007`) remains open. Phase 0 is not complete, and its software-feasibility closure awaits the Spike 0.7 re-review.
 
 ## Phase 0 — Architecture & Feasibility
 

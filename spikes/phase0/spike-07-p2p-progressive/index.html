@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; media-src blob:; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>Driftless Phase 0 — Spike 0.7</title>
+  <link rel="icon" href="data:," />
+  <style>body{font:14px system-ui;max-width:900px;margin:2rem auto;padding:0 1rem;color:#16202e}button,input,select{font:inherit;margin:.3rem}video{max-width:100%;background:#111}pre{background:#eef2f5;padding:1rem;white-space:pre-wrap;overflow:auto;max-height:32rem}fieldset{margin:1rem 0}label{display:inline-block}#status{font-weight:bold}</style>
+</head>
+<body>
+  <h1>Spike 0.7 — P2P Progressive Watch Proof</h1>
+  <p>EXPERIMENT ONLY. Same-origin BroadcastChannel signaling. Two tabs: one host with a local MP4, one receiver without it. No upload endpoint, storage server, analytics, or telemetry.</p>
+  <fieldset><legend>Peer</legend>
+    <label>Role <select id="role"><option value="host">Host</option><option value="receiver">Receiver</option></select></label>
+    <label>Room <input id="room" value="lab" maxlength="32" /></label>
+    <label>Host MP4 <input id="file" type="file" accept="video/mp4,.mp4" /></label>
+    <label>Profile <select id="profile"><option>FAST</option><option selected>NORMAL</option><option>CONSTRAINED</option></select></label>
+    <button id="start">Start peer</button><button id="close">Close / reset</button>
+  </fieldset>
+  <fieldset><legend>Experiment controls</legend>
+    <button id="play">Play receiver</button><button id="hold">Hold host transfer</button><button id="resume">Resume host transfer</button>
+    <label>Seek seconds <input id="seek-time" type="number" min="0" step="0.1" value="90" /></label><button id="seek">Seek receiver</button>
+    <button id="invalid">Inject invalid frame (host)</button><button id="refresh-pair">Refresh ICE path</button>
+  </fieldset>
+  <p id="status">Idle</p>
+  <video id="video" controls playsinline width="640" height="360"></video>
+  <h2>Bounded diagnostics</h2><pre id="diagnostics">{}</pre>
+  <script type="module" src="./src/app.mjs"></script>
+</body>
+</html>

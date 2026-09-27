@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the intended media-flow boundaries for Driftless. No production pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5 and 0.6 are recorded separately in [Spike 0.5 Observations](#spike-05-observations-mp4-parsing-and-segmentation) and [Spike 0.6 Observations](#spike-06-observations-mse-progressive-playback). They do not change the planned behavior below.
+This document defines the intended media-flow boundaries for Driftless. No production pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5, 0.6, and 0.7 are recorded separately below. They do not change the planned behavior below.
 
 ## Mode A - Local Sync
 
@@ -208,7 +208,24 @@ The receiver pipeline and buffer management above remain the plan. No startup, l
 - explicit handling of receivers in background or never-shown tabs;
 - verifying edit-list and timeline behavior on other browsers before relying on it for synchronization.
 
-These still require design review, Spike 0.7 integration evidence, and physical Android qualification.
+These still require design review and physical Android qualification. Spike 0.7 provides controlled-desktop integration evidence below.
+
+## Spike 0.7 Observations (P2P Progressive Watch)
+
+### Observed in Phase 0
+
+In `AUTOMATED DESKTOP / CONTROLLED NETWORK` Chrome 153 on one macOS host, two same-origin tabs connected by a host/host UDP WebRTC path. The receiver did not select a file. The host incrementally indexed an ignored synthetic 110,544,641 B, 300 s MP4/H.264/AAC source, sent separate verified init and keyframe-aligned media fragments as bounded RTCDataChannel chunks, and waited for each receiver append acknowledgment. See the [Spike 0.7 result record](../spikes/phase0/results/spike-07-p2p-progressive.md).
+
+- **Early playback:** the receiver's real `playing` event occurred after 2 of 76 planned segments, 3,218,827 B including init (2.911789% of source size), with 8.730701 s buffered. Frames and `currentTime` advanced while later binary fragments arrived.
+- **Pressure and pacing:** the sender's event-driven data-channel queue stayed below its 512 KiB high-water mark plus one frame. Buffer feedback stopped scheduling when ahead approached an experimental 20 s cap. Deliberate constrained pacing and complete transfer hold caused non-seeking `waiting` near the buffered end; appending later fragments resumed playback.
+- **Remote seek:** a seek to unbuffered 150 s requested a new generation, the host used its deterministic index to send segment 38, and playback resumed near the target. Overlapping seek bursts discarded old-generation chunks and converged on the latest target. A development race showed that merely aborting a seek's transport is insufficient: the host must **join its old source read before starting a new cut**, because the bounded reader allows only one read in flight.
+- **Transfer scheduling (found by independent review):** a host that keeps its own sequential read position stalls playback permanently. After a remote seek moved the host forward, a later *buffered* seek back was handled locally, the host kept streaming far-ahead media, and playback stopped for good at the old buffer end while a disjoint future range grew. The fixed experiment schedules from the receiver's current playback need: the first segment at the end of the playhead's contiguous buffered run, stamped with an intent generation that every seek (local or remote) advances. Only that contiguous coverage counts toward the ahead cap. A buffered seek still changes transfer priority; a `waiting` stall reports its need immediately; and the host ignores older generations. Development findings while fixing: a window trim that cuts the tail off a segment makes *that* segment the need even though its midpoint is still buffered; Chrome does not resolve a seek whose target is even 80 ms before the buffered start; and it does not play across a 67 ms (two-frame) gap, while the audio/video intersection routinely ends 6–16 ms short of a segment end. Time tolerances around segment boundaries therefore need care. A production buffer manager needs the same need-driven, contiguity-aware model.
+- **Receive memory:** the receiver held only one reassembly part (2,382,977 B maximum observed), appended it, then released the JavaScript bytes. The MSE experiment removed old and isolated future ranges outside an approximate 30 s window around the playhead. Browser-managed decoder/MSE memory and long-run mobile heap were not measured. OPFS was not integrated.
+- **Integrity and cleanup:** declared IDs/counts/bytes and SHA-256 were checked before append, followed by independent fMP4 structural checks. A malformed binary frame was rejected while later media continued. Both peers and MSE closed cleanly, and a second run played in the same tabs without refresh.
+
+### Planned production behavior (unchanged)
+
+The architecture above remains a plan. The two-segment startup threshold, 64 KiB transport payload, 20 s ahead cap, 30 s MSE window, one-part acknowledgement loop, `BUFFER_STATUS` need fields, and BroadcastChannel signaling are laboratory choices, not product parameters. Durable cache, reconnect, authentication, real external-network/TURN behavior, physical Android, other browsers, real-world media, and measured device memory remain future work. `Spike 0.7 demonstrates bounded streaming pipeline; durable cache integration remains productionization work.`
 
 ## Resumability and Interruption Recovery
 
@@ -253,4 +270,3 @@ An unsupported Progressive Watch file may still be usable in Local Sync if each 
 ## Feasibility Questions
 
 Phase 0 establishes whether representative large local files, binary data channels, browser storage, MP4 parsing/segmentation, and MSE playback of received fragments can form a viable architecture. Phase 5 revisits the pipeline as an integrated Progressive Watch technical spike, including backpressure, caching, and seeking. Passing one browser experiment does not establish production or cross-browser support.
-
