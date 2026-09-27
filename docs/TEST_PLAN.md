@@ -2,7 +2,7 @@
 
 ## Status and Purpose
 
-This is the planned verification strategy. No test framework, suite, fixtures, test environment, or passing result currently exists. Each result must record application revision, browser/device versions, network conditions, media characteristics, and whether WebRTC used direct P2P or TURN relay.
+This is the planned product verification strategy. No production application test framework or suite has been initialized. Phase 0 has separate passing spike tests and controlled desktop browser evidence in [the result records](../spikes/phase0/), but those results do not satisfy physical-device or real-network gates. Each future product result must record application revision, browser/device versions, network conditions, media characteristics, and whether WebRTC used direct P2P or TURN relay.
 
 ## Test Levels
 
@@ -35,6 +35,8 @@ Browser automation is evidence for automated flows, not a substitute for real mo
 Required devices include a physical Android device running Chrome and, before any relevant support claim, physical devices for other target mobile browsers. Record device model, OS, browser version, battery/background state, storage availability, and network type.
 
 **Emulators and desktop browser simulation do not satisfy real Android test gates.** They may supplement failure reproduction and automation only.
+
+Phase 0 software feasibility closed with `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` still open in [PROJECT_STATE.md](../PROJECT_STATE.md). Future device and network qualification must account for each debt before making the corresponding support claim; the Phase 0 desktop runs cannot substitute for physical Android, real cross-network, or TURN evidence.
 
 ## Functional Coverage
 

@@ -561,5 +561,5 @@ None. `adb devices` listed no device, and no emulator was used. MSE-13 is `DEFER
 
 ## Follow-up
 
-- Completed: independent re-review of Spike 0.6 passed, and the spike was committed at `7bbb10f`. The uncommitted Spike 0.7 work builds on that commit.
+- Completed: independent re-review of Spike 0.6 passed, and the spike was committed at `7bbb10f`. Spike 0.7 later built on that commit and was merged through Phase 0 PR #1.
 - Open: `DEFERRED-PHYSICAL-006` (physical Android Chrome MSE qualification) and real-world media coverage (`MANUAL TEST REQUIRED`).

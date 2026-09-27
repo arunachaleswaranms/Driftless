@@ -151,5 +151,5 @@ The choice has costs: connectivity variability, TURN exposure, browser constrain
 
 ## Unresolved Design Areas
 
-Phase 0 and later spikes must provide evidence for media fragmentation, transport chunk sizing, data-channel topology, MSE behavior, OPFS or alternative storage, multi-GB resource use, TURN deployment, fingerprinting, reconnect semantics, and cross-browser feasibility. These are intentionally not frozen here.
+Phase 0 supplied controlled desktop evidence for fragmentation, bounded data-channel transfer, MSE, OPFS, and parts of multi-GB resource behavior; see the [Phase 0 results](../spikes/phase0/). Physical Android, real-network/TURN behavior, broad browser compatibility, fingerprinting, reconnect semantics, and production parameter choices still need evidence. These choices are intentionally not frozen here.
 

@@ -1,10 +1,10 @@
 # Phase 0 Experiment Framework
 
-Phase 0 exists to prove or disprove Driftless's riskiest architectural assumptions before production application work begins. All code and evidence here are experimental. A successful spike is not a product support claim, and Phase 0 does not authorize Phase 1.
+Phase 0 tested Driftless's riskiest architectural assumptions before production application work. All code and evidence here are experimental. A successful spike is not a product support claim. Phase 1 is the next development phase, but has not started.
 
 ## Phase 0 Status
 
-Phase 0 is **IN PROGRESS**; software-feasibility closure has not been granted.
+Phase 0 is **SOFTWARE FEASIBILITY CLOSED / PASS**. Final independent review returned `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`; [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged the milestone into `main`. No architecture change was required. Physical/device and real-network qualification remain deferred.
 
 | Spike | Software feasibility | Git | Open debt |
 | --- | --- | --- | --- |
@@ -14,9 +14,11 @@ Phase 0 is **IN PROGRESS**; software-feasibility closure has not been granted.
 | 0.4 Browser storage / OPFS | `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED` | `72c8629` | `DEFERRED-PHYSICAL-004` |
 | 0.5 MP4 parsing / segmentation | `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED` | `9d802b6` | `DEFERRED-PHYSICAL-005` |
 | 0.6 MSE progressive playback | `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`; passed independent re-review | `7bbb10f` | `DEFERRED-PHYSICAL-006` |
-| 0.7 P2P progressive watch proof | `READY FOR INDEPENDENT RE-REVIEW` after a `REQUEST CHANGES` review (scheduling blocker B1, stale closure docs B2) | uncommitted | `DEFERRED-PHYSICAL-007` |
+| 0.7 P2P progressive watch proof | `PROVISIONAL PASS — PHYSICAL / EXTERNAL NETWORK VALIDATION DEFERRED`; final independent review passed after the first `REQUEST CHANGES` review and fixes | `e1ea11b`; merged through PR #1 | `DEFERRED-PHYSICAL-007` |
 
-Spikes 0.1–0.6 have completed software feasibility. Spike 0.7 is implemented and awaits final independent re-review. Physical Android, real external-network, STUN/TURN, and real-world media qualification remain deferred for every spike and are not validated by any desktop result.
+Spikes 0.1–0.7 completed their software-feasibility questions. Phase 0 software closure does **not** close `DEFERRED-PHYSICAL-001` through `007`. Physical Android, real external networks, representative NAT traversal, STUN/TURN behavior, and real-world media qualification are not validated by the desktop results.
+
+Individual result records retain their at-the-time Git state, review findings, and follow-up language as historical evidence. This table and `PROJECT_STATE.md` record the current closure status.
 
 ## Evidence Rules
 
@@ -187,12 +189,12 @@ Spikes 0.1–0.6 have completed software feasibility. Spike 0.7 is implemented a
 
 - **Objective:** Integrate the proven Phase 0 pieces into a minimal peer-to-peer progressive media proof.
 - **Architectural question:** Can a receiver begin and continue playback before the complete compatible file arrives while transport, storage, and playback remain bounded and independently observable?
-- **Status:** `READY FOR INDEPENDENT RE-REVIEW`. The first independent review returned `REQUEST CHANGES — DO NOT COMMIT` (B1 host scheduling, B2 stale closure docs); both are fixed and re-validated. Software feasibility supports a provisional result; physical Android and external-network validation remain deferred.
+- **Status:** `PROVISIONAL PASS — PHYSICAL / EXTERNAL NETWORK VALIDATION DEFERRED`; final independent review passed after the first `REQUEST CHANGES — DO NOT COMMIT` (B1 host scheduling, B2 stale closure docs) and fixes. Phase 0 software feasibility is closed; physical Android and external-network validation remain deferred.
 - **Environment:** `AUTOMATED DESKTOP / CONTROLLED NETWORK`, macOS 26.6.2, Chrome 153, two same-origin tabs, ignored synthetic MP4/H.264/AAC source. Selected path: host/host UDP. `adb devices` found no attached device.
 - **Procedure:** The isolated [experiment](spike-07-p2p-progressive/README.md) combines guarded incremental parse and planned keyframe-aligned cuts, bounded RTCDataChannel chunks with event-driven backpressure, receiver SHA-256 reassembly, MSE appends, buffer feedback/windowing, pacing profiles, temporary hold, and seek generations. All implementation remains under `spikes/phase0/`.
 - **Acceptance criteria:** E2E-01–E2E-18 have controlled-desktop evidence, including actual playback at 2 of 76 received segments (3,218,827 B; 2.911789% of source size), further transfer while frames/time advance, ahead buffering, real underrun/recovery, buffered and remote seeks, rapid-seek stress, malformed-message rejection, cleanup, and a fresh run without page reload. E2E-19 is `DEFERRED PHYSICAL / EXTERNAL NETWORK`.
 - **Evidence:** [Spike 0.7 result record](results/spike-07-p2p-progressive.md). All Phase 0 Node tests: 120 pass, 0 fail (92 at the initial review; 28 scheduling tests added for B1). The final browser code also evicted isolated old and future MSE ranges outside the experimental window, rejected a malformed frame during valid transfer, and handled overlapping distinct seeks with one receiver channel binding.
-- **Result:** Controlled-desktop software feasibility is ready for final independent re-review. B1 fix: host scheduling follows the receiver's current playback need — the first segment missing at the end of the playhead's contiguous run — with every seek starting a new generation, stale needs ignored, a contiguous-only ahead cap, a send-window bound, waiting-triggered need reports, and trimming while stalled. Regressions A and B hung on the pre-fix build in Chrome and pass 4/4 each after the fix. 783 mixed Chrome stress seeks produced 0 permanent hangs and 0 pipeline failures, and the full E2E regression pass succeeded. Do not issue final Phase 0 PASS or production readiness from this evidence.
+- **Result:** Controlled-desktop software feasibility passed final independent review. B1 fix: host scheduling follows the receiver's current playback need — the first segment missing at the end of the playhead's contiguous run — with every seek starting a new generation, stale needs ignored, a contiguous-only ahead cap, a send-window bound, waiting-triggered need reports, and trimming while stalled. Regressions A and B hung on the pre-fix build in Chrome and pass 4/4 each after the fix. 783 mixed Chrome stress seeks produced 0 permanent hangs and 0 pipeline failures, and the full E2E regression pass succeeded. This evidence does not establish production readiness.
 - **Issues discovered:** Development runs exposed an undefined seek-handler local and concurrent source reads across overlapping seek generations. Both were fixed and retested. Independent review then found B1: a persistent host cursor ignored buffered seeks, so mixed seeks stalled playback permanently. Validating the fix exposed a trimmed-tail need defect, a seek-boundary tolerance hang, a too-wide segment-end tolerance, and a stale `initReady` across sessions; all were fixed with regressions. Sample-index heap, browser MSE/decoder memory, real-world media, Android, and Internet paths remain unqualified.
 - **Decision:** No architecture change required from the controlled software proof. OPFS is not integrated; `Spike 0.7 demonstrates bounded streaming pipeline; durable cache integration remains productionization work.`
-- **Follow-up:** Final independent re-review of Spike 0.7 and Phase 0 software-feasibility closure. Track `DEFERRED-PHYSICAL-007` alongside `001`–`006`.
+- **Follow-up:** Track `DEFERRED-PHYSICAL-007` alongside `001`–`006`. Phase 1 — Application Foundation is next but not started.
