@@ -8,11 +8,11 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: IN PROGRESS**.
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: NEXT — NOT STARTED.**
 
-- Spikes 0.1–0.6 have completed software-feasibility results and are checkpointed in Git: Spikes 0.1, 0.4, 0.5, and 0.6 are `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`; Spikes 0.2 and 0.3 are `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
-- Spike 0.7 — End-to-End P2P Progressive Watch Proof — is `READY FOR INDEPENDENT RE-REVIEW`. Its first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for a transfer-scheduling blocker, which has been fixed and re-validated in controlled desktop Chrome.
-- Deferred physical Android and external-network qualification debt (`DEFERRED-PHYSICAL-001` to `DEFERRED-PHYSICAL-007`) remains open. Phase 0 is not complete, and its software-feasibility closure awaits the Spike 0.7 re-review.
+- Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
+- Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
+- No architecture change was required. Physical Android and external-network qualification debts `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open. This software gate does not establish product readiness or browser support.
 
 ## Phase 0 — Architecture & Feasibility
 
@@ -27,7 +27,9 @@ Technical spikes:
 - MP4 parsing/segmentation.
 - MSE playback of received fragments.
 
-**Exit gate:** Progressive Mode architecture appears technically viable. Evidence must include a real Android Chrome participant, resource observations, identified browser limitations, and a documented decision to proceed, revise, or stop. This gate does not establish production readiness.
+**Software-feasibility gate — CLOSED / PASS:** Controlled desktop results for Spikes 0.1–0.7 made the Progressive Watch architecture plausible. Final independent review passed, and no architecture change was required.
+
+**Original physical/device exit criterion — OPEN / DEFERRED:** The original master plan and this roadmap call for a real Android Chrome participant, real-network evidence, resource observations, and browser-limit qualification. The software closure did not satisfy that physical criterion. It remains tracked as `DEFERRED-PHYSICAL-001` through `007` and must be resolved at the applicable later device/network gates before any corresponding support or readiness claim. The master plan's full Phase 0 gate wording is retained as the baseline; this split records the actual software-only closure and deferred qualification without changing future phase scope.
 
 ## Phase 1 — Application Foundation
 

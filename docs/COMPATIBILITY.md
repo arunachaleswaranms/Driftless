@@ -12,6 +12,8 @@
 
 API presence alone does not change a status. Versions, operating systems, devices, media characteristics, direct/TURN path, and evidence dates must accompany future changes.
 
+Phase 0 used desktop Chrome as its primary controlled software environment. Its spike results are recorded in [Phase 0 evidence](../spikes/phase0/) and do not change the product statuses below. Physical Android, Edge, Firefox, and Safari each require their own qualification; Progressive Watch remains capability-detected even on a browser where Local Sync later passes.
+
 ## Target Tiers
 
 - **Tier 1:** Chrome desktop, Edge desktop, Chrome Android.

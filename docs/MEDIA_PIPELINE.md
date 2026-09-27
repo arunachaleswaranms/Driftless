@@ -165,7 +165,7 @@ The pipeline above remains the plan. No segment duration, block size, parser int
 - a compact sample index;
 - explicit handling of fragmented sources and non-target tracks.
 
-These still require design review and Spike 0.6 MSE evidence.
+These still require production design review and target-device qualification. Spike 0.6 supplied controlled desktop MSE evidence below.
 
 ## Spike 0.6 Observations (MSE Progressive Playback)
 

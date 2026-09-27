@@ -2,7 +2,7 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Status: Phase 0 in progress.** Spike 0.1 is provisionally closed with desktop manual evidence and deferred physical Android debt. Spike 0.2 has a provisional controlled-desktop connectivity result with external-network validation deferred. No production application implementation exists.
+> **Status: Phase 0 software feasibility closed.** Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. Phase 1 — Application Foundation is next and has not started. Physical Android and real external-network qualification remain deferred. No production application implementation exists.
 
 ## Goals
 
@@ -29,13 +29,13 @@ Only the host has the media file. Supported media is planned to transfer over a 
 
 The initial compatibility target is **MP4 with H.264/AVC video and AAC audio**. This is a target, not a claim of tested support. Arbitrary containers and codecs are not supported goals.
 
-**Planned:** feasibility spikes followed by progressive buffering and production hardening if the architecture proves viable.
+**Planned:** product-shaped progressive buffering and later production hardening, subject to the remaining device, network, and phase gates.
 
 **Implemented:** none.
 
 ## Planned architecture
 
-The accepted baseline is TypeScript, React, Vite, a Progressive Web App, and the HTML5 video element. WebRTC and `RTCDataChannel` are planned for peer communication. Media Source Extensions (MSE), Origin Private File System (OPFS) or other browser storage, and MP4Box.js are investigation areas whose use depends on Phase 0 and Phase 5 results.
+The accepted baseline is TypeScript, React, Vite, a Progressive Web App, and the HTML5 video element. WebRTC and `RTCDataChannel` are planned for peer communication. Phase 0 provided controlled desktop evidence for MSE, OPFS, and MP4Box.js, but their production use remains subject to later design and qualification.
 
 A small signaling service will coordinate room entry and WebRTC negotiation. STUN will help establish direct connections. TURN will relay traffic when direct connectivity is impossible; this may include media traffic and therefore has bandwidth and cost implications. Signaling should not normally carry or permanently store media.
 
@@ -52,15 +52,15 @@ The [architecture](docs/ARCHITECTURE.md) keeps signaling, synchronization, and m
 
 ## Platform and media targets
 
-Initial Tier 1 targets are Chrome desktop, Edge desktop, and Chrome on Android. Firefox desktop and Android are Tier 2 investigation targets. Safari on macOS and iOS, and other browsers, are Tier 3. Compatibility is currently **NOT TESTED**; see the [compatibility policy](docs/COMPATIBILITY.md).
+Initial Tier 1 targets are Chrome desktop, Edge desktop, and Chrome on Android. Firefox desktop and Android are Tier 2 investigation targets. Safari on macOS and iOS, and other browsers, are Tier 3. Product compatibility remains **NOT TESTED**; controlled Phase 0 Chrome results are spike evidence, not support claims. See the [compatibility policy](docs/COMPATIBILITY.md).
 
 Progressive Watch is a runtime-detected capability. A browser or device that can run the application may still be unable to use Progressive Watch.
 
 ## Development status
 
-The project version is `0.0.0-planning`. Phase 0 — Architecture & Feasibility is in progress on `phase/0-feasibility`. Isolated Spike 0.1 and Spike 0.2 experiments and their small deterministic test suites exist under `spikes/phase0/`. Physical Android local-media qualification and real external-network WebRTC validation remain deferred debts. No React/Vite production project, PWA, production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
+The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No React/Vite production project, PWA, production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
 
-The next step is independent review of Spike 0.2 before beginning Spike 0.3. Phase 1 and full product implementation must not begin as part of the current work.
+Phase 1 — Application Foundation is **NEXT — NOT STARTED**. No production application implementation exists yet. Physical-device and real-network qualification remains deferred.
 
 ## Documentation
 
@@ -74,8 +74,9 @@ The next step is independent review of Spike 0.2 before beginning Spike 0.3. Pha
 - [Compatibility policy](docs/COMPATIBILITY.md)
 - [Authoritative project state](PROJECT_STATE.md)
 - [Architecture decision records](docs/adr/)
+- [Planning document index](docs/planning/README.md)
 
-The master planning document is retained unchanged under `docs/planning/`.
+The master planning document is retained unchanged under `docs/planning/` as the original baseline. [PROJECT_STATE.md](PROJECT_STATE.md) records current execution status, and [ROADMAP.md](docs/ROADMAP.md) records phase progression.
 
 ## Roadmap summary
 

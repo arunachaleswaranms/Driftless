@@ -6,9 +6,15 @@
 
 ## Status
 
-`READY FOR INDEPENDENT RE-REVIEW`
+`PROVISIONAL PASS — PHYSICAL / EXTERNAL NETWORK VALIDATION DEFERRED`
 
-The first independent review returned `REQUEST CHANGES — DO NOT COMMIT`. Its blockers, B1 (host scheduling) and B2 (stale Phase 0 closure documentation), have been fixed and re-validated; see [Independent Review History](#independent-review-history). The software result supports `PROVISIONAL PASS — PHYSICAL / EXTERNAL NETWORK VALIDATION DEFERRED`, but this document does **not** issue final PASS or close Phase 0. The final independent re-review is the next gate. All numerical evidence below is `AUTOMATED DESKTOP / CONTROLLED NETWORK` from two same-origin Chrome tabs on one macOS host, using an ignored synthetic FFmpeg MP4. It is not physical Android, separate-NAT, STUN, TURN, or real Internet evidence.
+The first independent review returned `REQUEST CHANGES — DO NOT COMMIT`. Its blockers, B1 (host scheduling) and B2 (stale Phase 0 closure documentation), were fixed and re-validated; see [Independent Review History](#independent-review-history). Final independent review passed and closed **Phase 0 software feasibility**; see [Final Independent Review](#final-independent-review). All numerical evidence below is `AUTOMATED DESKTOP / CONTROLLED NETWORK` from two same-origin Chrome tabs on one macOS host, using an ignored synthetic FFmpeg MP4. It is not physical Android, separate-NAT, STUN, TURN, or real Internet evidence.
+
+## Final Independent Review
+
+**Verdict:** `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`.
+
+The exact reviewed Spike 0.7 implementation and regression fixes were committed at `e1ea11b`, and [Phase 0 PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`. Phase 0 software feasibility is closed. No architecture change was required. Physical Android and real external-network qualification remain deferred under `DEFERRED-PHYSICAL-001` through `007`; this review did not establish production readiness or broad browser support.
 
 ## Independent Review History
 
@@ -114,11 +120,11 @@ The first Chrome stress run of the first-pass fix exposed the trimmed-tail defec
 - **Cleanup.** Both peers reported `clean: true`. Receiver state was cleared: MediaSource, buffers, URL, `src`, scheduler, segment-time map. Host state was cleared: parser, peer, scheduler; loop aborted; 0 active parts.
 - **Second run.** It used a new transfer ID and played at 2 segments / 2.911789%. `MediaSource.duration` was 300.023 s, fixing the second-session defect, and an unbuffered seek to 250 s resolved at 250.01 s and advanced. It closed clean.
 
-### B2 documentation corrections
+### B2 documentation corrections at the pre-final-review checkpoint
 
 - Spike 0.6's result record, tracker entry, and `PROJECT_STATE.md` now record `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`: passed independent re-review and committed at `7bbb10f`. The B1/B2/B3 review failures remain in its history.
-- `docs/ROADMAP.md` now reflects the actual Phase 0 state: Spikes 0.1–0.6 are complete and checkpointed, Spike 0.7 is `READY FOR INDEPENDENT RE-REVIEW`, the deferred debt is open, and Phase 0 is not closed.
-- `spikes/phase0/README.md` has a Phase 0 status table, and `PROJECT_STATE.md` names the current activity as Spike 0.7's final independent re-review.
+- At that checkpoint, `docs/ROADMAP.md` recorded Spikes 0.1–0.6 as complete and checkpointed, Spike 0.7 as `READY FOR INDEPENDENT RE-REVIEW`, and Phase 0 software closure as pending. The deferred debt was open.
+- At that checkpoint, `spikes/phase0/README.md` gained a Phase 0 status table, and `PROJECT_STATE.md` named Spike 0.7's final independent re-review as the current activity. The current status has since been updated after the final PASS and PR merge.
 
 ## Architecture
 
@@ -229,7 +235,7 @@ The receiver and host each closed the RTCDataChannel and `RTCPeerConnection`; re
 - The host retains the MP4 sample index. Previous Spike 0.5 sample-table heap cost remains a mobile risk; Spike 0.7 did not remeasure it.
 - Browser-managed MSE/decoder memory and CPU were not directly measured. The receive/transport application working sets and buffer window are bounded by design and observed state, but that is not a device memory guarantee.
 - The experimental one-part acknowledgement loop sacrifices throughput to bound receive state. Production transfer scheduling, persistence, reconnect, and authentication need later design; this spike does not approve them.
-- During development, the seek event handler, concurrent-read generation handoff, and duplicate receiver channel binding failed in real Chrome. All were fixed and retested; independent review should challenge them again.
+- During development, the seek event handler, concurrent-read generation handoff, and duplicate receiver channel binding failed in real Chrome. All were fixed and retested before final independent review.
 - The B1 fix changed scheduling semantics. The trimmed-tail, seek-boundary, and segment-end tolerance defects found while validating it show that the need model is sensitive to segment boundaries, MSE trim edges, and time tolerances. The deterministic simulation uses uniform 4 s segments; Chrome covered only one synthetic source's real boundaries.
 - Receiver generations now advance on every seek, so a buffered seek can discard one in-flight part (up to about 2.5 MB here) that is then re-sent. This trades throughput for unambiguous intent ownership, which suits a feasibility proof but is not a production choice.
 - Heavy seek stress transfers far more than the source size (about 580 MB in 260 seeks on a 110.5 MB file), because each unbuffered seek refills about 20 s ahead. Per-seek transfer stays bounded by the ahead cap; a production cache would avoid re-sending media the receiver already holds.
@@ -237,12 +243,12 @@ The receiver and host each closed the RTCDataChannel and `RTCPeerConnection`; re
 
 ## Architecture Impact
 
-`No architecture change required` from the controlled software proof. The B1 fix changes only experimental scheduling inside the accepted separation of signaling, transfer, and playback. It confirms, as an input to later buffer-manager design, that transfer priority must be driven by the receiver's contiguous playback need, not by a sender-side position. The accepted P2P-first, separate signaling/transfer/playback, compatible-MP4 architecture remains plausible. This does not qualify remote Internet or physical Android behavior and does not close Phase 0.
+`No architecture change required` from the controlled software proof. The B1 fix changes only experimental scheduling inside the accepted separation of signaling, transfer, and playback. It confirms, as an input to later buffer-manager design, that transfer priority must be driven by the receiver's contiguous playback need, not by a sender-side position. The accepted P2P-first, separate signaling/transfer/playback, compatible-MP4 architecture remains plausible. Phase 0 software feasibility is closed; remote Internet and physical Android behavior remain unqualified.
 
 ## Git Status
 
-Branch `phase/0-feasibility` at `7bbb10f`. Spike 0.7 implementation, the B1 scheduling fix, its tests, and the B2 documentation corrections remain **uncommitted and unpushed**. Ignored test media is not tracked or staged. No production directory was modified.
+Historical milestone: the reviewed Spike 0.7 implementation, B1 scheduling fix, tests, and B2 documentation corrections were committed at `e1ea11b` on `phase/0-feasibility`, then merged to `main` through PR #1 at `17eea6a`. Ignored test media was not tracked. No production directory was modified by the milestone.
 
 ## Next Step
 
-`Final independent re-review of Spike 0.7 and Phase 0 software-feasibility closure.`
+`Phase 1 — Application Foundation: NEXT — NOT STARTED.` Physical and real-network qualification debt remains open.

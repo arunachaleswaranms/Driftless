@@ -135,5 +135,5 @@ Peers exchange capabilities before mode activation. A peer that cannot safely in
 
 ## Representation Still to Be Decided
 
-The following remain open: JSON schema tooling, binary frame layout, channel count and settings, identifier encodings, fingerprint format, chunk size, acknowledgement strategy, exact error codes, timing intervals, and numeric correction thresholds. These decisions require Phase 0 evidence and later subsystem design.
+The following remain open: JSON schema tooling, binary frame layout, channel count and settings, identifier encodings, fingerprint format, chunk size, acknowledgement strategy, exact error codes, timing intervals, and numeric correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.
 

@@ -10,23 +10,29 @@ Driftless
 
 `0.0.0-planning`
 
-## Current Phase
+## Phase 0 — Architecture & Feasibility
 
-Phase 0 — Architecture & Feasibility
+**Phase status:** SOFTWARE FEASIBILITY CLOSED / PASS
 
-## Phase Status
+**Final independent review gate:** `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`
 
-**IN PROGRESS**
+**Merged milestone:** [PR #1 — Phase 0: architecture and feasibility validation](https://github.com/arunachaleswaranms/Driftless/pull/1), merged into `main` at `17eea6a` on 2026-09-27. The reviewed Spike 0.7 implementation was committed at `e1ea11b` before merge.
 
-## Current Activity
+**Architecture conclusion:** No architecture change required.
 
-Spike 0.7 — End-to-End P2P Progressive Watch Proof: final independent re-review, after the fix for its first review's `REQUEST CHANGES — DO NOT COMMIT` (B1 host scheduling, B2 stale closure documentation)
+**Physical and real-network qualification:** DEFERRED; `DEFERRED-PHYSICAL-001` through `007` remain OPEN. Software closure is not a product support or physical-device pass.
+
+## Current Development Stage
+
+Phase 1 — Application Foundation: **NEXT — NOT STARTED**.
 
 ## Current Branch
 
-`phase/0-feasibility`
+`main`
 
-Verified from Git on 2026-09-27 at `7bbb10f` (Spikes 0.1–0.6 checkpointed; Spike 0.6 committed after passing independent re-review). Spike 0.7 changes, including the B1 scheduling fix and B2 documentation corrections, are intentionally uncommitted and unpushed.
+Phase 0 was merged through PR #1 at `17eea6a`.
+
+No Phase 1 branch exists. Phase 1 implementation has not started.
 
 ## Repository Status
 
@@ -155,16 +161,15 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
   - All Phase 0 Node tests now pass: **120 tests, 0 failures**, including 28 Spike 0.7 scheduling unit and deterministic simulation tests. The simulated regressions fail against a model of the pre-fix scheduler.
   - In `AUTOMATED DESKTOP / CONTROLLED NETWORK` Chrome 153, reproductions A and B hung permanently (33.95 s) on a copy of the pre-fix build and passed 4/4 each on the fixed build. Three seeded mixed-seek stress runs (783 seeks, including bursts during backpressure, SourceBuffer updates, and active transport) had 0 permanent hangs, 0 pipeline failures, 63/63 gap crossings, 0 redeliveries, host send-ahead ≤ 20 s, and a maximum RTC `bufferedAmount` of 589,856 B. A full E2E regression pass (early playback at 2.911789%, concurrency, cap, backpressure, hold/underrun/recovery, buffered and remote seek, an eviction gap, malformed input, cleanup, and a second run with an unbuffered seek) passed.
 
-No product feature is complete, and Phase 0 is not complete. Spike 0.2 and Spike 0.3 each have a software-feasibility result of `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`. Spike 0.4 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`, with real-world media coverage `MANUAL TEST REQUIRED`. Spike 0.6 has `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`: it passed independent re-review after fixes for the B1 and B2 blockers from the first independent review and the B3 blocker from the second, and was committed at `7bbb10f`. Spike 0.7 is `READY FOR INDEPENDENT RE-REVIEW` after its first independent review returned `REQUEST CHANGES — DO NOT COMMIT`; its controlled software proof supports provisional feasibility, not Phase 0 closure. Physical Android, external-network, and real-world media qualification remain deferred.
+No product feature is complete. Spikes 0.1–0.7 completed their software-feasibility questions, and Phase 0 software feasibility is closed after the final independent review passed. Spike 0.2 and Spike 0.3 retain `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`; Spikes 0.1, 0.4, 0.5, and 0.6 retain `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 real-world media coverage remains `MANUAL TEST REQUIRED`. Spike 0.6 passed independent re-review after fixes for B1, B2, and B3 and was committed at `7bbb10f`. Spike 0.7's provisional software result was accepted on final independent review after its first `REQUEST CHANGES — DO NOT COMMIT` and subsequent fixes; it was committed at `e1ea11b`. Physical Android, external-network, and real-world media qualification remain deferred.
 
-## In Progress
+## Open Deferred Qualification
 
-- Final independent re-review of Spike 0.7 (the B1 playback-need scheduling fix and B2 closure-documentation corrections) and the Phase 0 software-feasibility closure decision.
-- Accumulated physical Android and real external-network qualification remains deferred under the debt list below.
+- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge.
 
 ## Not Started
 
-- Phase 1 implementation and production application work; no phase exit has been approved.
+- Phase 1 implementation and production application work have not started. The Phase 0 software-feasibility gate passed; physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
 
@@ -213,6 +218,8 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 
 - `DEFERRED-PHYSICAL-007 — Spike 0.7 end-to-end Progressive Watch over physical Android / real external networks`: repeat the integrated two-peer MP4/H.264/AAC proof with at least one physical Android Chrome peer and peers on genuinely separate Internet networks. Record selected direct/relay candidate path, negotiated message size, metadata/init/fragment integrity, early playback percentage, concurrent transfer/playback, backpressure, buffer growth, slowdown/underrun/recovery, buffered and remote seeks including rapid bursts, pause, cleanup, second run, memory/CPU, and audible A/V sync. Test TURN where direct connectivity fails. Current evidence is same-host Chrome only; host/host UDP does not qualify Internet traversal or a TURN relay.
 
+Phase 0 closure supplies no physical Android or iOS result, real cross-state Internet result, representative NAT traversal or STUN-across-NAT result, TURN relay result, broad browser-compatibility result, real-world media-corpus result, or long-run mobile memory/thermal result. These remain future qualification work, not inferred passes.
+
 The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spikes 0.4, 0.5, and 0.6 found no attached device or emulator.
 
 ## Current Blockers
@@ -251,7 +258,7 @@ Independent review of Spike 0.6 reproduced two blocker-level state-management de
 - The sample-table heap (about 71 MB for 90 minutes at 30 fps) remains the main mobile memory risk.
 - A/V sync, smoothness, and real-world media were not measured.
 
-Spike 0.7 integrated those components in controlled Chrome and found no architecture blocker. Its development runs exposed an undefined seek-handler local, a host source-reader race when rapid seeks overlapped, and duplicate receiver channel binding; all were fixed and retested. The final experimental host joins superseded cuts, and the receiver rejects stale-generation chunks and binds one channel per session. The first independent review then reproduced a scheduling blocker (B1: a persistent host cursor ignored local seeks, stalling playback permanently after mixed seeks); the fix makes host scheduling follow the receiver's contiguous playback need with generation ownership. The software evidence is ready for final independent re-review, but sample-index heap, MSE/decoder memory, Android, real external networks, TURN, and non-synthetic sources remain unqualified. OPFS was not integrated; `Spike 0.7 demonstrates bounded streaming pipeline; durable cache integration remains productionization work.`
+Spike 0.7 integrated those components in controlled Chrome and found no architecture blocker. Its development runs exposed an undefined seek-handler local, a host source-reader race when rapid seeks overlapped, and duplicate receiver channel binding; all were fixed and retested. The final experimental host joins superseded cuts, and the receiver rejects stale-generation chunks and binds one channel per session. The first independent review then reproduced a scheduling blocker (B1: a persistent host cursor ignored local seeks, stalling playback permanently after mixed seeks); the fix makes host scheduling follow the receiver's contiguous playback need with generation ownership. Final independent review passed the software-feasibility closure gate. Sample-index heap, MSE/decoder memory, Android, real external networks, TURN, and non-synthetic sources remain unqualified. OPFS was not integrated; `Spike 0.7 demonstrates bounded streaming pipeline; durable cache integration remains productionization work.`
 
 ## Open Questions
 
@@ -276,9 +283,9 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Final independent re-review of Spike 0.7 and Phase 0 software-feasibility closure.
+Phase 1 — Application Foundation is **NEXT — NOT STARTED**.
 
-Do not begin Phase 1 or full product implementation before the applicable review and phase gates. Do not self-close Phase 0 physical/network qualification.
+`DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
 ## Decisions That Must Not Be Accidentally Reverted
 
