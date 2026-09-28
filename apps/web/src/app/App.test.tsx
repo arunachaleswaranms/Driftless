@@ -21,13 +21,18 @@ describe('App shell', () => {
     expect(main.tabIndex).toBe(-1);
   });
 
-  it.each([
-    ['Local video', /not available in this build/],
-    ['Browser capabilities', /makes no browser support claims/],
-  ])('renders the %s placeholder as a labelled region', (name, status) => {
+  it('renders the local video player as a labelled region with an empty state', () => {
     render(<App />);
 
-    const region = screen.getByRole('region', { name });
-    expect(within(region).getByText(status)).toBeDefined();
+    const region = screen.getByRole('region', { name: 'Local video' });
+    expect(within(region).getByLabelText('Choose video file')).toBeDefined();
+    expect(within(region).getByRole('status').textContent).toBe('No video selected.');
+  });
+
+  it('renders the browser capabilities placeholder as a labelled region', () => {
+    render(<App />);
+
+    const region = screen.getByRole('region', { name: 'Browser capabilities' });
+    expect(within(region).getByText(/makes no browser support claims/)).toBeDefined();
   });
 });

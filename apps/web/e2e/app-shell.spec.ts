@@ -1,4 +1,5 @@
-import { expect, test as base, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './support.ts';
 
 interface WebAppManifest {
   name?: string;
@@ -7,34 +8,6 @@ interface WebAppManifest {
   display?: string;
   icons?: { src: string; sizes: string; type: string; purpose?: string }[];
 }
-
-// Every test fails if the page logs a console error or warning, throws an
-// uncaught exception, or requests anything from another origin.
-const test = base.extend<{ pageProblems: string[] }>({
-  pageProblems: [
-    async ({ page, baseURL }, use) => {
-      const problems: string[] = [];
-      const expectedOrigin = new URL(baseURL ?? '').origin;
-      page.on('console', (message) => {
-        if (message.type() === 'error' || message.type() === 'warning') {
-          problems.push(`console ${message.type()}: ${message.text()}`);
-        }
-      });
-      page.on('pageerror', (error) => {
-        problems.push(`page error: ${error.message}`);
-      });
-      page.on('request', (request) => {
-        const url = new URL(request.url());
-        if (url.protocol !== 'data:' && url.origin !== expectedOrigin) {
-          problems.push(`cross-origin request: ${url.origin}`);
-        }
-      });
-      await use(problems);
-      expect(problems).toEqual([]);
-    },
-    { auto: true },
-  ],
-});
 
 async function waitForServiceWorkerControl(page: Page): Promise<void> {
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
@@ -168,6 +141,12 @@ test('applies the production content security policy', async ({ page }) => {
   const policy = await page
     .locator('meta[http-equiv="Content-Security-Policy"]')
     .getAttribute('content');
-  expect(policy).toContain("default-src 'self'");
-  expect(policy).toContain("object-src 'none'");
+  // The complete policy: media-src adds only blob:, for locally chosen video.
+  expect(policy?.split('; ')).toEqual([
+    "default-src 'self'",
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ]);
 });

@@ -163,18 +163,48 @@ No product feature is complete. Spikes 0.1–0.7 completed their software-feasib
 
 ## Phase 1 — Application Foundation
 
-**Phase status:** IN PROGRESS. The Phase 1 exit gate has not been evaluated.
+**Phase status:** IN PROGRESS. The Phase 1 exit gate has not been evaluated and has NOT YET PASSED.
 
-The web/PWA foundation and automated test baseline exist under `apps/web/`. It is written from scratch; no Phase 0 spike code was copied into it.
+| Part | Scope | Status |
+| --- | --- | --- |
+| Phase 1A | Production React/Vite/PWA foundation and automated test baseline | Implemented |
+| Phase 1B | Local browser media player: file selection, playback, media metadata, errors, and lifecycle | Implemented |
+| Phase 1C | Capability detection | NOT STARTED |
+
+The web client lives under `apps/web/`. It is written from scratch; no Phase 0 spike code was copied into it.
+
+### Phase 1A — foundation
 
 - React 19, TypeScript 6.0, and Vite 8 as a standalone npm package with a committed lockfile. No repository-level workspace exists yet.
-- A minimal application shell: application name, development-build notice, skip link, and placeholder areas for local video and browser capabilities. The placeholders state that the features are not available and make no browser support claim.
+- A minimal application shell: application name, development-build notice, skip link, the local video area, and a placeholder browser-capabilities area that states it makes no browser support claim.
 - PWA foundation: a web app manifest with 192 px and 512 px placeholder icons, and a service worker registered only in production builds. The worker has no fetch handler and caches nothing, so the application has no offline behavior.
 - Production builds carry a same-origin-only Content Security Policy meta tag. The application makes no backend, analytics, telemetry, or other external requests.
 - Tooling: `tsc -b` type checking, ESLint 10 with type-aware typescript-eslint rules, Prettier, Vitest with Testing Library and jsdom, and Playwright on Chromium.
-- `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0: 7 unit/component tests, and 8 Playwright smoke tests against the production build in Playwright's Chromium 153.0.8010.12. The smoke tests cover shell rendering, keyboard skip-link focus, narrow and desktop layout, manifest and icon delivery, service worker registration and control, the CSP, and zero Chromium manifest/installability errors other than the automation-only `in-incognito`. Every test fails on any console error or warning, uncaught exception, or cross-origin request. This is development evidence and not a compatibility claim.
 
-Not yet implemented in Phase 1: local file selection, object-URL media lifecycle, video playback and controls, media metadata, media error handling, player lifecycle tests, and capability detection.
+### Phase 1B — local browser media player
+
+- `apps/web/src/features/local-media/` plays one user-chosen local video file in a native `<video>` element with the browser's own controls (`controls`, `playsInline`, `preload="metadata"`, no autoplay). The user can choose, replace, and clear the file.
+- The `File` is bound through `URL.createObjectURL()`. The application never reads the file contents (no `arrayBuffer()`, `FileReader`, or similar), and never uploads, caches, or stores it. The browser's media stack reads it on demand.
+- Each selection owns one object URL and one media element, keyed by a selection id. On replacement, clear, or unmount, the element is paused and detached before the URL is revoked. Media events from a previous selection are ignored.
+- The panel shows the file name, browser-reported type, and size, then the browser-reported duration and dimensions. Unknown or infinite durations are shown as not reported. The browser-reported type is not treated as a compatibility signal, and no local path is available to or shown by the page.
+- `MediaError` codes are mapped to safe categories. The user-facing message says that this browser could not play the selected media, without naming a codec or exposing the browser's internal message.
+- The production CSP now also allows `media-src 'self' blob:`, which the object URL requires. Without it, Chromium blocked the object URL under the `default-src 'self'` fallback. No other directive changed.
+- The service worker is unchanged. Browsers do not dispatch `blob:` requests to service workers, and the browser tests confirm that no response came from the worker and that Cache Storage, OPFS, and IndexedDB stayed empty.
+- Browser tests use two synthetic, generated VP8/WebM fixtures without audio (16,273 B and 6,496 B) under `apps/web/e2e/media/`, with their generator script, command, tool versions, and SHA-256 digests recorded there. They are not part of the production build.
+- No runtime or development dependency was added.
+
+### Phase 1 automated evidence
+
+`AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0: 82 Vitest unit/component tests and 18 Playwright tests against the production build in Playwright's Chromium 153.0.8010.12.
+
+- The Phase 1A smoke tests cover shell rendering, keyboard skip-link focus, narrow and desktop layout, manifest and icon delivery, service worker registration and control, the complete CSP, and zero Chromium manifest/installability errors other than the automation-only `in-incognito`.
+- The Phase 1B unit/component tests cover the empty state, object URL binding, metadata, unknown durations, replacement, clear, same-file reselection, unmount, stale-event rejection, conservative errors, StrictMode and repeated-cycle URL balance, and the absence of file-content reads.
+- The Phase 1B browser tests cover: metadata; playback that starts only after a trusted click and advances; pause; forward and backward seeks set through `currentTime`; keyboard play/pause; replacement and clear with URL revocation; an unplayable file; 5 rapid replace/clear cycles with every URL revoked exactly once; same-origin `GET`-only requests; and narrow and desktop fit.
+- Every browser test fails on any console error or warning, uncaught exception, or cross-origin request.
+
+This is development evidence and not a compatibility claim. Playwright's Chromium reported sticky user activation at page load, and the fixtures have no audio, so the browser autoplay restriction itself was not exercised. The tests show only that the application never starts playback on its own. No physical device, other browser engine, MP4/H.264/AAC file, large file, or memory measurement was part of this evidence. `DEFERRED-PHYSICAL-001` remains open.
+
+Not yet implemented in Phase 1: capability detection (Phase 1C) and evaluation of the Phase 1 exit gate.
 
 ## Open Deferred Qualification
 
@@ -296,7 +326,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Continue Phase 1 — Application Foundation with local file selection, object-URL lifecycle, playback, media metadata, and media error handling in `apps/web/`, followed by capability detection. Phase 1 is not complete until its exit gate is evaluated.
+Continue Phase 1 — Application Foundation with Phase 1C capability detection in `apps/web/`, then evaluate the Phase 1 exit gate. Phase 1 is not complete until its exit gate is evaluated.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -319,4 +349,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-27
+2026-09-28

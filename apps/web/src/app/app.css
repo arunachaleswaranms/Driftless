@@ -6,6 +6,10 @@
   --color-text-muted: #4a5160;
   --color-border: #d5d9e0;
   --color-focus: #2f5fd0;
+  --color-accent: #2f5fd0;
+  --color-accent-text: #ffffff;
+  --color-error: #b3261e;
+  --color-error-surface: #fdecea;
   --space-1: 0.5rem;
   --space-2: 1rem;
   --space-3: 1.5rem;
@@ -34,6 +38,10 @@
     --color-text-muted: #aab1bd;
     --color-border: #343a44;
     --color-focus: #8fb0ff;
+    --color-accent: #8fb0ff;
+    --color-accent-text: #0e1420;
+    --color-error: #f2b8b5;
+    --color-error-surface: #3a1f1e;
   }
 }
 
@@ -50,7 +58,10 @@ body {
 
 h1,
 h2,
-p {
+h3,
+p,
+dl,
+dd {
   margin: 0;
 }
 
@@ -107,6 +118,12 @@ main:focus {
   padding-block: var(--space-3);
 }
 
+/* Grid items may shrink below their content's width, so long file names wrap
+   and the video scales instead of widening the column. */
+.app-main > * {
+  min-width: 0;
+}
+
 @media (min-width: 48rem) {
   .app-main {
     grid-template-columns: 3fr 2fr;
@@ -130,6 +147,107 @@ main:focus {
 .panel-status {
   margin-top: var(--space-1);
   color: var(--color-text-muted);
+}
+
+/* Hidden from view but still focusable and announced. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.button {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--color-accent-text);
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
+.button-secondary {
+  border-color: var(--color-border);
+  color: var(--color-text);
+  background: transparent;
+}
+
+/* The file input itself is visually hidden; its label is the visible control. */
+.visually-hidden:focus-visible + .button {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.local-media {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.local-media-actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.local-media-error {
+  padding: var(--space-2);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  background: var(--color-error-surface);
+}
+
+.local-media-error-summary {
+  font-weight: 600;
+}
+
+.local-media-video {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius);
+  background: #000;
+}
+
+.local-media-video[hidden] {
+  display: none;
+}
+
+.local-media-details h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.local-media-details dl {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+@media (min-width: 30rem) {
+  .local-media-details dl > div {
+    display: grid;
+    grid-template-columns: 12rem 1fr;
+    gap: var(--space-2);
+  }
+}
+
+.local-media-details dt {
+  color: var(--color-text-muted);
+}
+
+.local-media-file-name {
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: no-preference) {

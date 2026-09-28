@@ -5,9 +5,12 @@ import { defineConfig } from 'vitest/config';
 // Applied to production builds only. The development server relies on inline
 // scripts for React Fast Refresh, which this policy would block. Every
 // directive not listed falls back to default-src 'self', so the application
-// cannot load or contact any other origin.
+// cannot load or contact any other origin. media-src additionally allows
+// blob: so the video element can play a file chosen on this device through
+// its object URL. A blob: URL refers only to data created within this origin.
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
+  "media-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
