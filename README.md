@@ -2,7 +2,7 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Status: Phase 1 — Application Foundation in progress.** Phase 0 software feasibility closed after Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. The production web client under `apps/web/` provides an application shell, PWA foundation, automated test baseline, and a local video player for a file on the same device. It cannot yet detect browser capabilities or synchronize or transfer media. Physical Android and real external-network qualification remain deferred.
+> **Status: Phase 1 — Application Foundation in progress.** Phase 0 software feasibility closed after Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. The production web client under `apps/web/` provides an application shell, PWA foundation, automated test baseline, a local video player for a file on the same device, and a local report of the browser APIs the page can observe. It cannot synchronize or transfer media, and its capability report is not a browser support claim. Physical Android and real external-network qualification remain deferred.
 
 ## Goals
 
@@ -64,7 +64,8 @@ Phase 1 — Application Foundation is **IN PROGRESS**; its exit gate has not bee
 
 - **Phase 1A — implemented:** the React/TypeScript/Vite web client in [`apps/web/`](apps/web/), with an application shell, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser tests.
 - **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. The file is never uploaded or read by the application.
-- **Phase 1C — not started:** capability detection. The capabilities area remains a placeholder.
+- **Phase 1C — implemented:** capability detection. The capabilities area reports, on the page only, whether the API surfaces used by the current foundation and planned for later phases are present. These are runtime observations: API presence is not browser or product support, and it establishes no mode, including Progressive Watch. Product compatibility remains governed by the [compatibility policy](docs/COMPATIBILITY.md).
+- **Phase 1D — not started (next):** qualification and closure, including evaluation of the Phase 1 exit gate.
 
 Automated Chromium results are development evidence, not browser support claims. Physical-device and real-network qualification remains deferred.
 

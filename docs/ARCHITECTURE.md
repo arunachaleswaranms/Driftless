@@ -41,7 +41,7 @@ STUN assists peers in discovering viable network paths. TURN relays WebRTC traff
 These responsibilities remain the accepted target architecture. Current implementation, as recorded in [PROJECT_STATE.md](../PROJECT_STATE.md):
 
 - `apps/web/` contains the Phase 1 production web foundation: the application shell, PWA foundation, and test tooling, plus the local media player — local file selection, browser-local object URL lifecycle, HTML5 video integration, reported media metadata, and playback, error, and reset behavior.
-- Capability detection and reporting (Phase 1C) is not implemented; the web client shows only a placeholder that makes no browser support claim.
+- `apps/web/` also contains the runtime capability-reporting foundation (Phase 1C): a local report of which browser API surfaces the page observes, for the current foundation and for later-phase prerequisites. It reports observations only. It derives no browser support status and no mode eligibility; mode gating, including the Progressive Watch runtime checks of media, codecs, storage, and protocol, is not implemented.
 - Room/session UI is not implemented.
 - `services/signaling/`, `packages/protocol/`, `packages/sync-engine/`, and `packages/transfer-engine/` are empty; signaling, synchronization, and media transfer, including the production Progressive Watch components, are not implemented.
 

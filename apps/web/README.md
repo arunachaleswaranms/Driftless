@@ -2,7 +2,7 @@
 
 The production Driftless web client: React, TypeScript, and Vite, delivered as a Progressive Web App.
 
-This is the Phase 1 foundation. It contains the application shell, PWA installability metadata, service worker registration, a local video player, and the automated test baseline. Capability detection is not implemented yet. No synchronization, signaling, WebRTC, or media-transfer behavior exists here.
+This is the Phase 1 foundation. It contains the application shell, PWA installability metadata, service worker registration, a local video player, a browser capability report, and the automated test baseline. No synchronization, signaling, WebRTC, or media-transfer behavior exists here.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ src/
   main.tsx                 entry point; renders the shell and registers the service worker
   app/                     application shell and global styles
   features/local-media/    local video player: file choice, object URL lifecycle, metadata, errors
-  features/capabilities/   browser capability area (placeholder)
+  features/capabilities/   browser capability report: observed API surfaces, no support claims
   pwa/                     service worker registration
 public/
   manifest.webmanifest     web app manifest
@@ -72,6 +72,17 @@ e2e/media/                 synthetic test videos and their provenance
 - **Content Security Policy.** Production builds allow `media-src 'self' blob:` so the element can load object URLs. Nothing else in the policy changed.
 
 The file chooser suggests video files, but whether a file plays is decided only by the browser. Browser test results with the synthetic fixtures are development evidence, not a compatibility claim.
+
+## Capability report
+
+`src/features/capabilities/` reports which browser API surfaces this page can observe. It is a local diagnostic, not a compatibility check.
+
+- **Observations, not support.** Each entry is `Available`, `Not available`, or `Not evaluated` (the secure-context flag is `Yes` or `No`), with every API check it made listed in text. API presence is not browser or product support, and the report never uses the words supported or compatible. Compatibility statuses live only in [COMPATIBILITY.md](../../docs/COMPATIBILITY.md) and require tested evidence.
+- **Two groups.** _Current foundation_ covers the secure-context flag, `File`/`Blob`, object URLs, HTML video, and the Service Worker API. _Later-phase prerequisites_ covers `RTCPeerConnection`, data channel creation, Media Source Extensions, the OPFS entry point, and Web Crypto digest. This build does not use the later-phase APIs, and their presence establishes no mode, including Progressive Watch.
+- **Declarations only for media types.** `canPlayType()` is asked about `video/mp4` and `video/webm` without codec parameters, and its answer is shown as the browser's own declaration. No codec or profile is probed.
+- **Structure.** `capabilityModel.ts` defines the observation types. `capabilityScope.ts` reads property paths from a global-scope object without throwing. `detectCapabilities.ts` turns a scope into a report, `capabilityText.ts` holds the wording, and `CapabilityPanel.tsx` and `CapabilityList.tsx` render it. The panel detects once, when it mounts, and accepts a synthetic scope in tests, so nothing reads browser globals at import time.
+- **No side effects.** Detection only reads properties and asks `canPlayType()` of a detached element with no source. It does not construct a peer connection or MediaSource, open OPFS, request persistence or permissions, hash anything, make requests, or store anything. Results stay on the page. The browser tests instrument these APIs and inspect storage and requests to confirm it.
+- **No user-agent sniffing.** Nothing depends on the browser's name or version.
 
 ## PWA behavior
 

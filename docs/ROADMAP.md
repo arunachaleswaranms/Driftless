@@ -41,7 +41,7 @@ Technical spikes:
 - Capability detection.
 - Automated test baseline.
 
-**Status — IN PROGRESS:** Phase 1A, the web/PWA skeleton and automated test baseline, and Phase 1B, the local player with file selection, native playback controls, media metadata, and error and lifecycle handling, exist in `apps/web/`. Phase 1C, capability detection, has not started. The exit gate has not been evaluated and has not passed.
+**Status — IN PROGRESS:** Phase 1A, the web/PWA skeleton and automated test baseline, and Phase 1B, the local player with file selection, native playback controls, media metadata, and error and lifecycle handling, exist in `apps/web/`. Phase 1C, capability detection, is implemented as a local report of runtime API observations; it makes no browser support claim and enables or disables no mode. Phase 1D, qualification and closure, has not started. The exit gate has not been evaluated and has not passed.
 
 **Exit gate:** The installable web foundation can select and play representative local media on target development browsers, reports capabilities accurately, and has an automated test baseline. No synchronized or progressive behavior is implied.
 

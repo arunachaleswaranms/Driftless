@@ -79,6 +79,8 @@ MP4 is a container, not a codec guarantee. Browser decoding may vary with operat
 
 ## Capability Evaluation
 
+The Phase 1 capability report in `apps/web/` shows runtime observations of API presence only. It does not assign or change any status in this document and does not enable or disable a mode.
+
 Before enabling a mode, the client should evaluate the necessary browser APIs, negotiated protocol features, codec declarations, actual media inspection results, storage conditions, and runtime errors. Positive feature detection is necessary but not sufficient; known-bad combinations and measured limitations may still require a safe fallback.
 
 ## Changing a Status

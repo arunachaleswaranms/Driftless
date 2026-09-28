@@ -29,10 +29,16 @@ describe('App shell', () => {
     expect(within(region).getByRole('status').textContent).toBe('No video selected.');
   });
 
-  it('renders the browser capabilities placeholder as a labelled region', () => {
+  it('renders the browser capability report as a labelled region', () => {
     render(<App />);
 
     const region = screen.getByRole('region', { name: 'Browser capabilities' });
-    expect(within(region).getByText(/makes no browser support claims/)).toBeDefined();
+    expect(
+      within(region).getByText(/API presence is not browser or product support/),
+    ).toBeDefined();
+    expect(within(region).getByRole('heading', { name: 'Current foundation' })).toBeDefined();
+    expect(
+      within(region).getByRole('heading', { name: 'Later-phase prerequisites' }),
+    ).toBeDefined();
   });
 });
