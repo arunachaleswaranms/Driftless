@@ -43,8 +43,11 @@ These responsibilities remain the accepted target architecture. Current implemen
 - `apps/web/` contains the Phase 1 production web foundation: the application shell, PWA foundation, and test tooling, plus the local media player — local file selection, browser-local object URL lifecycle, HTML5 video integration, reported media metadata, and playback, error, and reset behavior.
 - `apps/web/` also contains the runtime capability-reporting foundation (Phase 1C): a local report of which browser API surfaces the page observes, for the current foundation and for later-phase prerequisites. It reports observations only. It derives no browser support status and no mode eligibility; mode gating, including the Progressive Watch runtime checks of media, codecs, storage, and protocol, is not implemented.
 - Phase 1 — Application Foundation is closed with its exit gate passed; see [PHASE1_QUALIFICATION.md](PHASE1_QUALIFICATION.md). The qualification changed no architecture and no product code.
-- Room/session UI is not implemented.
-- `services/signaling/`, `packages/protocol/`, `packages/sync-engine/`, and `packages/transfer-engine/` are empty; signaling, synchronization, and media transfer, including the production Progressive Watch components, are not implemented.
+- Room/session UI is not implemented, and the web client does not connect to signaling.
+- `packages/protocol/` (Phase 2A) contains the shared, transport-neutral contract implemented so far: the versioned JSON envelope, the client ↔ signaling room messages, identifier formats, the signaling error vocabulary, and strict parsing. Other message families remain conceptual; see [PROTOCOL.md](PROTOCOL.md).
+- `services/signaling/` (Phase 2A) contains an ephemeral signaling service: Node's HTTP server, a `ws` WebSocket endpoint at `/v1/signaling`, a health endpoint, and an in-memory store of two-person rooms with room creation, invite-secret join, leave, disconnect cleanup, and expiry. Room state is kept separate from the transport (socket → protocol parser → connection controller → room store). It performs no WebRTC offer/answer/ICE exchange yet, has no persistence, and never handles media.
+- `packages/sync-engine/` and `packages/transfer-engine/` are empty; synchronization, WebRTC, and media transfer, including the production Progressive Watch components, are not implemented.
+- The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root lockfile.
 
 ## Web Client Components
 

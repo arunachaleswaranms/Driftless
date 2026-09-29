@@ -2,7 +2,27 @@
 
 ## Status
 
-This document defines design requirements for future implementation. It does not claim that controls have been implemented, audited, or tested. Security issues and reporting channels will be documented before public testing.
+This document defines design requirements. Except for the Phase 2A signaling controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
+
+## Implemented in Phase 2A
+
+The signaling foundation ([`services/signaling/`](../services/signaling/) and [`packages/protocol/`](../packages/protocol/)) implements these controls. They are covered by Node unit and loopback integration tests only; no deployment, browser, device, or real-network testing has occurred.
+
+- **Separate room identifier and invite secret.** The loggable 128-bit `roomId` authorizes nothing. Joining requires a separate 256-bit `inviteSecret`. Both, and the 96-bit participant IDs, come from Node's `crypto.randomBytes`; no timestamp, counter, or `Math.random` is involved.
+- **Secret handling.** The secret is returned once, to the room's creator, inside a WebSocket message. The service retains only its SHA-256 digest and compares digests with `timingSafeEqual`. It never appears in logs, errors, the health response, notifications to other participants, or URLs; the WebSocket upgrade refuses any query string.
+- **Enumeration resistance.** A missing room, an expired room, and a wrong secret produce the same `ROOM_UNAVAILABLE` response by the same comparison path. `ROOM_FULL` is revealed only to a caller with the correct secret. Unauthorized callers receive no room metadata.
+- **Room expiry.** Rooms have a finite, validated lifetime (60 s–24 h, default one hour, provisional) and are removed by a periodic sweep; joins are refused at expiry even before the sweep. A room also closes, invalidating its invite, when its host leaves or disconnects.
+- **Participant limit.** Rooms hold one host and one guest; a third participant is never admitted. One connection belongs to at most one room. Clients cannot claim a participant ID or role.
+- **Strict protocol validation.** Versioned envelope, exact fields at every level, bounded canonical identifiers, no coercion, unknown versions rejected, prototype-pollution keys rejected, typed results constructed only from validated values. Parser errors and exception text are never exposed.
+- **Bounds.** 4096-byte WebSocket messages; binary messages refused; per-connection token-bucket rate limit (burst 20, 5 per second); at most 5 invalid messages per connection; strictly increasing per-connection sequences; at most 256 connections; `perMessageDeflate` disabled. These are provisional implementation bounds.
+- **Origin policy.** WebSocket upgrades require an `Origin` exactly matching a configured list. Development defaults to the local Vite origins; production requires an explicit `https` list and never accepts `*` or `null`. Origin is a browser policy layer, not authentication.
+- **Conservative exposure.** The service binds to `127.0.0.1` by default. `GET /healthz` returns only `{"status":"ok"}`.
+- **Sanitized logging.** A closed set of structured events whose fields are numbers or fixed tokens. No secrets, room or participant IDs, payloads, URLs, headers, or IP addresses are logged.
+- **Ephemeral state, no media.** Rooms exist only in memory and are lost on restart. The service accepts only small JSON control messages and never receives, stores, or proxies media.
+
+Plain `ws://` is a development-only exception. Production must use HTTPS and WSS through TLS termination in front of the service; no deployment exists yet.
+
+Still future, not implemented: SDP and ICE validation, STUN/TURN credentials, reconnect authentication and session resumption, per-IP or per-room abuse controls beyond the per-connection bounds, idle-connection timeouts and liveness checks, peer data-channel protocol validation, media integrity, transfer and cache resource controls, and every browser-side control for these features.
 
 ## Threat Model Scope
 

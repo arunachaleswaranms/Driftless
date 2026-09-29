@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: NEXT — NOT STARTED.**
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: IN PROGRESS** — Phase 2A implemented, Phase 2B next; the Phase 2 exit gate has not passed.
 
 - Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
 - Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
@@ -63,7 +63,16 @@ The pass is a development gate. It changes no [compatibility](COMPATIBILITY.md) 
 - Disconnect/reconnect.
 - Diagnostics.
 
-**Status — NEXT — NOT STARTED.**
+**Status — IN PROGRESS.** Phase 2 is delivered in four parts:
+
+| Part | Scope | Status |
+| --- | --- | --- |
+| Phase 2A | Protocol & signaling foundation | Implemented |
+| Phase 2B | Room join & WebRTC negotiation | Next — not started |
+| Phase 2C | Connection lifecycle & reconnect | Not started |
+| Phase 2D | Diagnostics / real-network closure | Not started |
+
+Phase 2A added the shared protocol package (versioned envelope, room messages, strict validation), an ephemeral in-memory signaling service with two-person rooms, separate room IDs and 256-bit invite secrets, expiry, and bounded, origin-checked WebSocket traffic, and a root npm workspace. It has only Node unit and loopback integration evidence. There is no WebRTC negotiation, STUN, TURN, data channel, reconnect, or browser integration, and no real device or network has been tested. **No Phase 2 exit criterion has passed.** Phase 2D will own the qualification record.
 
 **Exit gate:** Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay.
 

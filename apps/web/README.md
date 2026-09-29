@@ -2,22 +2,25 @@
 
 The production Driftless web client: React, TypeScript, and Vite, delivered as a Progressive Web App.
 
-This is the Phase 1 foundation. It contains the application shell, PWA installability metadata, service worker registration, a local video player, a browser capability report, and the automated test baseline. No synchronization, signaling, WebRTC, or media-transfer behavior exists here.
+This is the Phase 1 foundation. It contains the application shell, PWA installability metadata, service worker registration, a local video player, a browser capability report, and the automated test baseline. No synchronization, signaling, WebRTC, or media-transfer behavior exists here. The Phase 2A signaling service in [`services/signaling/`](../../services/signaling/) exists, but this client does not connect to it yet; that begins in Phase 2B.
 
 Phase 1 is closed: its exit gate passed at revision `4bf6e31` in Playwright Chromium 153 and Google Chrome 154. That is development-browser evidence, not a support claim; see [PHASE1_QUALIFICATION.md](../../docs/PHASE1_QUALIFICATION.md).
 
 ## Requirements
 
 - Node.js 22.12 or later (developed with Node.js 26.3.0 and npm 11.16.0)
-- npm, using the committed `package-lock.json`
+- npm, using the repository's single root `package-lock.json` (this package is an npm workspace)
 
 ## Setup
 
+From the repository root:
+
 ```sh
-cd apps/web
-npm ci
-npx playwright install chromium   # once per machine, for test:e2e
+npm ci                                      # installs every workspace from the root lockfile
+npx playwright install chromium             # once per machine, for test:e2e
 ```
+
+Run the scripts below from `apps/web/`, or from the root with `--workspace @driftless/web` (for example `npm run test:e2e --workspace @driftless/web`). The root `npm run check` includes this package's `check`, and the root `npm run test:e2e` runs its browser tests.
 
 ## Scripts
 
@@ -36,7 +39,7 @@ npx playwright install chromium   # once per machine, for test:e2e
 | `npm run test-media`     | Regenerates the synthetic WebM browser-test videos; see `e2e/media/README.md`.           |
 | `npm run test-media:mp4` | Regenerates the synthetic MP4 (H.264/AAC) browser-test video; see `e2e/media/README.md`. |
 
-Every script exits non-zero on failure. CI can run `npm ci && npm run check && npm run test:e2e`.
+Every script exits non-zero on failure. CI can run `npm ci && npm run check && npm run test:e2e` from the repository root.
 
 `npm run test:e2e` runs in Playwright's Chromium. With `DRIFTLESS_E2E_CHROME=1` it also runs every test in the Google Chrome installed on the machine, as additional development-browser evidence. Neither run is a browser support claim.
 
@@ -59,7 +62,7 @@ e2e/media/                 synthetic test videos and their provenance
 
 ## Tooling decisions
 
-- **Standalone package, no workspace.** `apps/web` has its own `package.json` and lockfile. A repository-level workspace is deferred until a second package, such as `packages/protocol`, actually exists.
+- **npm workspace package.** Phase 1 kept `apps/web` standalone with its own lockfile. Phase 2A added `packages/protocol` and `services/signaling` and introduced a root npm workspace; the root now owns the only `package-lock.json`, and the Prettier configuration moved to the root `.prettierrc.json` unchanged. The migration kept every locked package at its Phase 1 version and produced a byte-identical production build. The Phase 1 qualification remains the record for its standalone revision, `4bf6e31`.
 - **TypeScript 6.0.** TypeScript 7 is the current release, but typescript-eslint's type-aware rules support only TypeScript versions below 6.1.
 - **No `eslint-plugin-jsx-a11y`.** Its latest release does not support ESLint 10. Accessibility is exercised through role-based queries in the component and browser tests instead.
 - **No PWA plugin.** The manifest and service worker are small hand-written static files, so no Workbox build dependency or generated precache is involved.

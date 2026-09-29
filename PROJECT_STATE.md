@@ -24,15 +24,26 @@ Driftless
 
 ## Current Development Stage
 
+Phase 0 — Architecture & Feasibility: **CLOSED / PASS** (software feasibility; physical qualification deferred).
+
 Phase 1 — Application Foundation: **CLOSED / PASS**. Phase 1 exit gate: **PASS** (see [Phase 1 qualification](docs/PHASE1_QUALIFICATION.md)).
 
-Phase 2 — Internet P2P Foundation: **NEXT — NOT STARTED**.
+Phase 2 — Internet P2P Foundation: **IN PROGRESS**.
+
+| Part | Scope | Status |
+| --- | --- | --- |
+| Phase 2A | Protocol & signaling foundation | **IMPLEMENTED** |
+| Phase 2B | Room join & WebRTC negotiation | **NEXT — NOT STARTED** |
+| Phase 2C | Connection lifecycle & reconnect | NOT STARTED |
+| Phase 2D | Diagnostics / real-network closure | NOT STARTED |
+
+Phase 2 exit gate: **NOT PASSED**. No real device or real network has been tested in Phase 2.
 
 ## Current Branch
 
-`phase/1-application-foundation`
+`phase/2-internet-p2p-foundation`
 
-Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 work proceeds on `phase/1-application-foundation`, created from `main` at `4c15a54`.
+Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 was merged through PR #3 at `4559bf4f0692f3b491819229d3596a81c0d319be`. Phase 2 work proceeds on `phase/2-internet-p2p-foundation`, created from `main` at `4559bf4`.
 
 ## Repository Status
 
@@ -47,7 +58,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). No signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `services/signaling/`, `packages/protocol/`, `packages/sync-engine/`, and `packages/transfer-engine/` remain empty.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The Phase 2A shared protocol package exists under `packages/protocol/` and the Phase 2A signaling service under `services/signaling/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. No WebRTC negotiation, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `packages/sync-engine/` and `packages/transfer-engine/` remain empty.
 
 ## Accepted Architecture
 
@@ -165,7 +176,7 @@ No product feature is complete. Spikes 0.1–0.7 completed their software-feasib
 
 ## Phase 1 — Application Foundation
 
-**Phase status:** CLOSED / PASS. **Phase 1 exit gate:** PASS, evaluated at revision `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`. The detailed evidence record is [PHASE1_QUALIFICATION.md](docs/PHASE1_QUALIFICATION.md). This is an application-foundation development gate, not a product support declaration: every [COMPATIBILITY.md](docs/COMPATIBILITY.md) status is unchanged, and `DEFERRED-PHYSICAL-001` through `007` remain open. The Phase 1 branch awaits independent review before it is merged.
+**Phase status:** CLOSED / PASS. **Phase 1 exit gate:** PASS, evaluated at revision `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`. The detailed evidence record is [PHASE1_QUALIFICATION.md](docs/PHASE1_QUALIFICATION.md). This is an application-foundation development gate, not a product support declaration: every [COMPATIBILITY.md](docs/COMPATIBILITY.md) status is unchanged, and `DEFERRED-PHYSICAL-001` through `007` remain open. The Phase 1 branch passed independent review and was merged through PR #3 at `4559bf4`.
 
 | Part | Scope | Status |
 | --- | --- | --- |
@@ -178,7 +189,7 @@ The web client lives under `apps/web/`. It is written from scratch; no Phase 0 s
 
 ### Phase 1A — foundation
 
-- React 19, TypeScript 6.0, and Vite 8 as a standalone npm package with a committed lockfile. No repository-level workspace exists yet.
+- React 19, TypeScript 6.0, and Vite 8 as a standalone npm package with a committed lockfile. No repository-level workspace existed in Phase 1; Phase 2A later moved the package into a root npm workspace without changing any locked version (see Phase 2A below).
 - A minimal application shell: application name, development-build notice, skip link, the local video area, and a browser-capabilities area (a placeholder until Phase 1C).
 - PWA foundation: a web app manifest with 192 px and 512 px placeholder icons, and a service worker registered only in production builds. The worker has no fetch handler and caches nothing, so the application has no offline behavior.
 - Production builds carry a same-origin-only Content Security Policy meta tag. The application makes no backend, analytics, telemetry, or other external requests.
@@ -247,13 +258,56 @@ This is development evidence and not a compatibility claim. Playwright's Chromiu
 - Microsoft Edge is not installed here and was `NOT EXERCISED IN THIS ENVIRONMENT`. Firefox and Safari were not exercised, and no non-Chromium engine, physical device, or real network was part of this evidence.
 - No runtime or development dependency changed; `package.json` gained only the `test-media:mp4` script. No CI workflow was added. CI readiness and the unverified Linux-runner behavior are recorded as a follow-up in the qualification record.
 
+## Phase 2 — Internet P2P Foundation
+
+**Phase status:** IN PROGRESS. **Phase 2 exit gate:** NOT PASSED — "Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay." Phase 2A does not evaluate it.
+
+### Phase 2A — Protocol & Signaling Foundation (IMPLEMENTED)
+
+Implemented on `phase/2-internet-p2p-foundation`; it awaits independent review.
+
+- **Workspace.** A root npm workspace now spans `packages/*`, `services/*`, and `apps/*`. The Phase 1 lockfile moved to the root as the single `package-lock.json`: all 253 previously locked packages kept their exact versions, and the web production build is byte-identical to one built from `main`. `apps/web/package-lock.json` is gone, and the unchanged Prettier configuration moved to the root. Every `apps/web` script is unchanged. Root scripts: `npm run check` (protocol, signaling, and web checks), `npm run test`, `npm run test:e2e`, `npm run build`, `npm run verify`. The Phase 1 qualification remains the record for its standalone revision `4bf6e31`.
+- **`packages/protocol/` (`@driftless/protocol`).** A transport-neutral TypeScript contract with no runtime dependency:
+  - the versioned envelope `{ protocolVersion: 1, type, sequence, sentAt, payload }`, with exact fields at every level;
+  - client messages `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`;
+  - server messages `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ERROR`;
+  - canonical base64url identifiers: room ID 16 bytes, invite secret 32 bytes, participant ID 12 bytes;
+  - error codes `INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `INVALID_STATE`, `ROOM_UNAVAILABLE`, `ROOM_FULL`, `RATE_LIMITED`, `SERVER_ERROR`;
+  - hand-written parsers that never throw and return typed results or fixed reason tokens. Unknown versions fail closed as `UNSUPPORTED_PROTOCOL`.
+
+  `ROOM_LEFT` was added to confirm an intentional leave. See [PROTOCOL.md](docs/PROTOCOL.md).
+- **`services/signaling/` (`@driftless/signaling`).** Node's HTTP server plus `ws` 8.22.0: `GET /healthz` returns only `{"status":"ok"}`, and the WebSocket endpoint is `/v1/signaling`. The transport, protocol parser, connection controller, and room store are separate layers; the room store never sees a socket.
+  - Rooms are in memory only and lost on restart.
+  - The creator becomes host and receives a room ID and a separate 256-bit invite secret from `crypto.randomBytes`. Only a SHA-256 digest of the secret is retained, and it is compared in constant time.
+  - A missing room, an expired room, and a wrong secret all return `ROOM_UNAVAILABLE`; `ROOM_FULL` is revealed only after a correct secret. A third participant is never admitted, and one connection belongs to at most one room.
+  - If the guest leaves or disconnects, the host is notified and the room stays open. If the host leaves or disconnects, the room closes and the guest is notified; the guest is never promoted.
+  - Rooms expire at a configurable lifetime (60 s–24 h, provisional default one hour) through one periodic sweep, and joins are refused at expiry before the sweep runs.
+  - Bounds and policy: 4096-byte messages; binary messages refused; per-connection token bucket (burst 20, 5 per second); 5 invalid messages per connection; strictly increasing client sequences; 256 connections; exact-match origin policy with development defaults for the local Vite origins and a required https list in production; no query strings on the upgrade URL; default bind `127.0.0.1`.
+  - Logging is a closed set of structured events with no secrets, identifiers, payloads, URLs, headers, or IP addresses.
+  - Environment configuration is validated and never silently replaced by defaults.
+  - Plain `ws://` is a development-only exception; production requires HTTPS/WSS through TLS termination.
+- **Web client.** No application source changed. The browser app does not connect to signaling. Only workspace tooling and documentation were adjusted.
+- **Not implemented:** WebRTC (`RTCPeerConnection`, offer/answer, ICE), STUN, TURN, `RTCDataChannel`, room UI, reconnect or session resumption, heartbeat and idle timeouts, Local Sync, playback synchronization, transfer, and any real-network evidence. A dropped connection loses its membership; Phase 2C owns reconnect.
+- **New dependencies:** runtime `ws` 8.22.0 (signaling); development `@types/ws` 8.18.x. The new packages otherwise reuse the web package's existing development tools and versions.
+
+**Phase 2A automated evidence.** `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0, from `npm ci` at the root. These are Node and loopback results, not browser, device, WebRTC, or network evidence.
+
+- `@driftless/protocol`: 62 Vitest tests passed (53 parser, 9 identifier), plus a smoke test importing the built package through its `exports` map.
+- `@driftless/signaling`: 96 Vitest tests passed (20 room store, 27 controller, 28 real-server integration, 10 configuration, 6 credential, 5 rate limiter), plus a smoke test running the built `dist/main.js` as a child process.
+- `@driftless/web`: typecheck, lint, format, 121 Vitest tests, and build pass. The production bundle is byte-identical to one built from `main`.
+- Playwright Chromium, full suite: most runs passed 29/29, including four runs of this branch alternated with four runs of a `main` worktree, where all eight passed 29/29. The two full-lifecycle tests also passed 20/20 when repeated alone.
+- Two full-suite runs of this branch each had one failure in the same test, "runs the full lifecycle from video/mp4 to video/webm". Both times, playback had not passed 1 s within the 5 s poll after the first trusted click (it reached 0 s and 0.15 s). Both happened while other applications on the machine kept the load average between 10 and 21.
+- Because the bundle is identical and `main` ran the same suite, this is recorded as an intermittent timing failure under host load, not a regression. It remains a known flakiness risk in that test; this environment does not qualify it further.
+- `npm audit`: 0 vulnerabilities.
+
 ## Open Deferred Qualification
 
-- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge.
+- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests do not satisfy `DEFERRED-PHYSICAL-002`.
 
 ## Not Started
 
-- Phase 2 — Internet P2P Foundation (**NEXT — NOT STARTED**) and later implementation: signaling, rooms, WebRTC, synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
+- Phase 2B — Room Join & WebRTC Negotiation (**NEXT — NOT STARTED**), Phase 2C — Connection Lifecycle & Reconnect, and Phase 2D — Diagnostics / Real-Network Closure: browser room flow, WebRTC negotiation, STUN/TURN, data channels, reconnect, and diagnostics.
+- Later phases: synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
 
@@ -367,7 +421,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independently review the pushed Phase 1D qualification and Phase 1 closure on `phase/1-application-foundation`. Do not open or merge the Phase 1 pull request, or begin Phase 2 — Internet P2P Foundation, before that review passes.
+Independent GitHub review of the exact pushed Phase 2A commit on `phase/2-internet-p2p-foundation`. Do not begin Phase 2B before that review passes.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -390,4 +444,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-29
+2026-09-30
