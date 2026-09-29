@@ -3,21 +3,57 @@ import { join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './support.ts';
 
-// Synthetic VP8/WebM fixtures without audio; see e2e/media/README.md.
+// Synthetic fixtures; see e2e/media/README.md. The two WebM files are VP8
+// without audio. The MP4 file is H.264 with AAC audio. They qualify local
+// playback only, not Progressive Watch.
 const MEDIA_DIRECTORY = join(import.meta.dirname, 'media');
-const VIDEO_A = {
+interface Fixture {
+  path: string;
+  name: string;
+  type: string;
+  size: string;
+  duration: string;
+  dimensions: string;
+  seconds: number;
+  width: number;
+  height: number;
+  hasAudio: boolean;
+}
+const VIDEO_A: Fixture = {
   path: join(MEDIA_DIRECTORY, 'synthetic-320x180-10s.webm'),
   name: 'synthetic-320x180-10s.webm',
+  type: 'video/webm',
   size: '15.9 KiB (16,273 bytes)',
   duration: '0:10',
   dimensions: '320 × 180 pixels',
+  seconds: 10,
+  width: 320,
+  height: 180,
+  hasAudio: false,
 };
-const VIDEO_B = {
+const VIDEO_B: Fixture = {
   path: join(MEDIA_DIRECTORY, 'synthetic-256x144-6s.webm'),
   name: 'synthetic-256x144-6s.webm',
+  type: 'video/webm',
   size: '6.34 KiB (6,496 bytes)',
   duration: '0:06',
   dimensions: '256 × 144 pixels',
+  seconds: 6,
+  width: 256,
+  height: 144,
+  hasAudio: false,
+};
+const VIDEO_MP4: Fixture = {
+  path: join(MEDIA_DIRECTORY, 'synthetic-320x180-8s-h264-aac.mp4'),
+  name: 'synthetic-320x180-8s-h264-aac.mp4',
+  type: 'video/mp4',
+  size: '181 KiB (185,070 bytes)',
+  duration: '0:08',
+  dimensions: '320 × 180 pixels',
+  seconds: 8,
+  width: 320,
+  height: 180,
+  hasAudio: true,
 };
 const READY = 'Ready. Use the video controls to play, pause, and seek.';
 
@@ -25,6 +61,7 @@ interface MediaProbe {
   created: string[];
   revoked: string[];
   fileReads: string[];
+  playCalls: number;
 }
 
 declare global {
@@ -33,10 +70,12 @@ declare global {
   }
 }
 
-// Records object URL ownership and any application-level read of file
-// contents. Installed before the application loads.
+// Records object URL ownership, any application-level read of file contents,
+// and any script call to play(). The native controls start playback without
+// calling the page's play(), so a nonzero count means the page started it.
+// Installed before the application loads.
 function installMediaProbe() {
-  const probe: MediaProbe = { created: [], revoked: [], fileReads: [] };
+  const probe: MediaProbe = { created: [], revoked: [], fileReads: [], playCalls: 0 };
   window.mediaProbe = probe;
 
   const createObjectURL = URL.createObjectURL.bind(URL);
@@ -61,6 +100,14 @@ function installMediaProbe() {
       };
     }
   }
+  const play: unknown = Reflect.get(HTMLMediaElement.prototype, 'play');
+  if (typeof play === 'function') {
+    Reflect.set(HTMLMediaElement.prototype, 'play', function (this: HTMLMediaElement) {
+      probe.playCalls += 1;
+      return Reflect.apply(play, this, []) as unknown;
+    });
+  }
+
   const OriginalFileReader = window.FileReader;
   window.FileReader = class extends OriginalFileReader {
     constructor() {
@@ -91,10 +138,10 @@ function detail(page: Page, term: string): Locator {
   return panel(page).locator('dt', { hasText: term }).locator('+ dd');
 }
 
-async function expectDetails(page: Page, video: typeof VIDEO_A) {
+async function expectDetails(page: Page, video: Fixture) {
   await expect(panel(page).getByRole('status')).toHaveText(READY);
   await expect(detail(page, 'Name')).toHaveText(video.name);
-  await expect(detail(page, 'Browser-reported type')).toHaveText('video/webm');
+  await expect(detail(page, 'Browser-reported type')).toHaveText(video.type);
   await expect(detail(page, 'Size')).toHaveText(video.size);
   await expect(detail(page, 'Duration')).toHaveText(video.duration);
   await expect(detail(page, 'Video dimensions')).toHaveText(video.dimensions);
@@ -127,6 +174,39 @@ async function seek(video: Locator, seconds: number): Promise<number> {
       }),
     seconds,
   );
+}
+
+// Playback as the element reports it. The decoded frame count shows that the
+// picture advanced, not only the clock. Chromium also counts decoded audio
+// bytes; the count is null in a browser that does not expose it.
+function playback(video: Locator) {
+  return video.evaluate((element: HTMLVideoElement) => {
+    const audioBytes: unknown = Reflect.get(element, 'webkitAudioDecodedByteCount');
+    return {
+      paused: element.paused,
+      ended: element.ended,
+      currentTime: element.currentTime,
+      frames: element.getVideoPlaybackQuality().totalVideoFrames,
+      audioBytes: typeof audioBytes === 'number' ? audioBytes : null,
+    };
+  });
+}
+
+// Starts playback with a trusted click and waits until the element has
+// played past the given time, decoding new frames on the way.
+async function playPast(video: Locator, seconds: number) {
+  const before = await playback(video);
+  expect(before.paused).toBe(true);
+  await video.click();
+  await expect.poll(() => currentTime(video)).toBeGreaterThan(seconds);
+  const after = await playback(video);
+  expect(after).toMatchObject({ paused: false, ended: false });
+  expect(after.frames).toBeGreaterThan(before.frames);
+  return after;
+}
+
+async function waitForServiceWorkerControl(page: Page): Promise<void> {
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -279,7 +359,7 @@ test('releases every object URL across rapid replace and clear cycles', async ({
   for (let cycle = 0; cycle < 5; cycle += 1) {
     // Each replacement lands before the previous file's metadata can load.
     await chooser(page).setInputFiles(VIDEO_A.path);
-    await chooser(page).setInputFiles(VIDEO_B.path);
+    await chooser(page).setInputFiles(VIDEO_MP4.path);
     await chooser(page).setInputFiles(VIDEO_A.path);
     await chooser(page).setInputFiles(VIDEO_B.path);
     await expectDetails(page, VIDEO_B);
@@ -303,6 +383,187 @@ test('releases every object URL across rapid replace and clear cycles', async ({
   expect(probe.fileReads).toEqual([]);
 });
 
+// The complete Phase 1 local-player lifecycle, once starting from each media
+// shape and replacing it with the other. Every step checks what the browser
+// actually did, and the whole flow is watched for requests and storage.
+for (const [first, second] of [
+  [VIDEO_MP4, VIDEO_A],
+  [VIDEO_A, VIDEO_MP4],
+] as const) {
+  test(`runs the full lifecycle from ${first.type} to ${second.type}`, async ({
+    page,
+    baseURL,
+  }) => {
+    const requests: { method: string; url: string; hasBody: boolean }[] = [];
+    const workerResponses: string[] = [];
+    page.on('request', (request) => {
+      requests.push({
+        method: request.method(),
+        url: request.url(),
+        hasBody: request.postDataBuffer() !== null,
+      });
+    });
+    page.on('response', (response) => {
+      if (response.fromServiceWorker()) {
+        workerResponses.push(response.url());
+      }
+    });
+    await page.reload();
+    await waitForServiceWorkerControl(page);
+    const clear = panel(page).getByRole('button', { name: 'Clear video' });
+
+    // Empty.
+    await expect(panel(page).getByRole('status')).toHaveText('No video selected.');
+    await expect(player(page)).toHaveCount(0);
+
+    // Select, and the browser reports sensible metadata.
+    await chooser(page).setInputFiles(first.path);
+    await expectDetails(page, first);
+    const video = player(page);
+    expect(
+      await video.evaluate((element: HTMLVideoElement) => ({
+        controls: element.controls,
+        playsInline: element.playsInline,
+        autoplay: element.autoplay,
+        preload: element.preload,
+        duration: element.duration,
+        width: element.videoWidth,
+        height: element.videoHeight,
+      })),
+    ).toEqual({
+      controls: true,
+      playsInline: true,
+      autoplay: false,
+      preload: 'metadata',
+      duration: expect.closeTo(first.seconds, 1) as unknown,
+      width: first.width,
+      height: first.height,
+    });
+
+    // Nothing starts playback on its own.
+    await page.waitForTimeout(500);
+    expect(await playback(video)).toMatchObject({ paused: true, currentTime: 0 });
+
+    // Play after a trusted click.
+    await playPast(video, 1);
+
+    // Pause, and time stops.
+    await video.click();
+    await expect.poll(async () => (await playback(video)).paused).toBe(true);
+    const pausedAt = await currentTime(video);
+    await page.waitForTimeout(500);
+    expect(await currentTime(video)).toBe(pausedAt);
+
+    // Seek forward while paused, then resume from the new position.
+    const forward = first.seconds - 2.5;
+    expect(await seek(video, forward)).toBeCloseTo(forward, 1);
+    const resumed = await playPast(video, forward + 0.5);
+    expect(resumed.currentTime).toBeLessThan(first.seconds);
+
+    // Seek backward while playing, and playback continues from there.
+    expect(await seek(video, 1.5)).toBeCloseTo(1.5, 1);
+    await expect.poll(() => currentTime(video)).toBeGreaterThan(2);
+    const rewound = await playback(video);
+    expect(rewound).toMatchObject({ paused: false, ended: false });
+    expect(rewound.currentTime).toBeLessThan(forward);
+    // Audio was decoded only for the file that has an audio track.
+    if (rewound.audioBytes !== null) {
+      expect(rewound.audioBytes > 0).toBe(first.hasAudio);
+    }
+
+    let probe = await readProbe(page);
+    expect(probe.created).toHaveLength(1);
+    const [firstUrl] = probe.created;
+    expect(probe.revoked).toEqual([]);
+
+    // Replace during playback: the previous file is released, and nothing
+    // of its state carries over.
+    await chooser(page).setInputFiles(second.path);
+    await expectDetails(page, second);
+    probe = await readProbe(page);
+    expect(probe.created).toHaveLength(2);
+    expect(probe.revoked).toEqual([firstUrl]);
+    expect(probe.active).toEqual([probe.created[1]]);
+    await expect(player(page)).toHaveCount(1);
+    await expect(panel(page).getByRole('alert')).toHaveCount(0);
+    expect(await mediaState(player(page))).toEqual({
+      paused: true,
+      currentTime: 0,
+      src: probe.created[1],
+    });
+
+    // The replacement plays, and its URL stays live while it does.
+    await playPast(player(page), 1);
+    expect((await readProbe(page)).active).toEqual([probe.created[1]]);
+
+    // Clear.
+    await clear.click();
+    await expect(panel(page).getByRole('status')).toHaveText('No video selected.');
+    await expect(page.locator('video')).toHaveCount(0);
+    probe = await readProbe(page);
+    expect(probe.active).toEqual([]);
+    expect(probe.revoked).toEqual(probe.created);
+
+    // Select again, play, and clear again.
+    await chooser(page).setInputFiles(first.path);
+    await expectDetails(page, first);
+    await playPast(player(page), 0.5);
+    await clear.click();
+    await expect(panel(page).getByRole('status')).toHaveText('No video selected.');
+
+    // Late events from released files must not alter the empty state.
+    await page.waitForTimeout(500);
+    await expect(panel(page).getByRole('status')).toHaveText('No video selected.');
+    await expect(page.locator('video')).toHaveCount(0);
+    probe = await readProbe(page);
+    expect(probe.created).toHaveLength(3);
+    expect(probe.active).toEqual([]);
+    expect(probe.revoked).toHaveLength(3);
+    expect(new Set(probe.revoked)).toEqual(new Set(probe.created));
+    expect(probe.fileReads).toEqual([]);
+    expect(probe.playCalls).toBe(0);
+
+    // Only the application's own static files and the browser's reads of its
+    // own object URLs were requested. No request carried a body, a query, or
+    // a chosen file name, and the service worker answered none of them.
+    const origin = new URL(baseURL ?? '').origin;
+    expect(workerResponses).toEqual([]);
+    for (const request of requests) {
+      const url = new URL(request.url);
+      expect(request.method, request.url).toBe('GET');
+      expect(request.hasBody, request.url).toBe(false);
+      expect(url.origin, request.url).toBe(origin);
+      expect(url.search, request.url).toBe('');
+      for (const name of [first.name, second.name]) {
+        expect(decodeURIComponent(request.url), request.url).not.toContain(name);
+      }
+      if (url.protocol === 'blob:') {
+        expect(probe.created, request.url).toContain(request.url);
+      } else {
+        expect(url.pathname, request.url).toMatch(
+          /^\/($|assets\/|icons\/|manifest\.webmanifest$|sw\.js$)/,
+        );
+      }
+    }
+
+    expect(
+      await page.evaluate(async () => {
+        const opfsEntries: string[] = [];
+        for await (const name of (await navigator.storage.getDirectory()).keys()) {
+          opfsEntries.push(name);
+        }
+        return {
+          caches: await caches.keys(),
+          opfsEntries,
+          databases: (await indexedDB.databases()).map(({ name }) => name),
+          localStorage: localStorage.length,
+          sessionStorage: sessionStorage.length,
+        };
+      }),
+    ).toEqual({ caches: [], opfsEntries: [], databases: [], localStorage: 0, sessionStorage: 0 });
+  });
+}
+
 test('keeps local media on the device', async ({ page, baseURL }) => {
   const requests: { method: string; url: string; hasBody: boolean }[] = [];
   const workerResponses: string[] = [];
@@ -319,7 +580,7 @@ test('keeps local media on the device', async ({ page, baseURL }) => {
     }
   });
   await page.reload();
-  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await waitForServiceWorkerControl(page);
 
   await chooser(page).setInputFiles(VIDEO_A.path);
   await expectDetails(page, VIDEO_A);

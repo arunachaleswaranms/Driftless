@@ -2,9 +2,11 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './support.ts';
 
 interface WebAppManifest {
+  id?: string;
   name?: string;
   short_name?: string;
   start_url?: string;
+  scope?: string;
   display?: string;
   icons?: { src: string; sizes: string; type: string; purpose?: string }[];
 }
@@ -102,6 +104,35 @@ test('links a web app manifest whose icons are served', async ({ page, request }
     const iconResponse = await request.get(new URL(icon.src, manifestUrl).href);
     expect(iconResponse.ok(), icon.src).toBe(true);
     expect(iconResponse.headers()['content-type']).toBe('image/png');
+    // The PNG signature, then the IHDR chunk's width and height.
+    const png = await iconResponse.body();
+    expect(png.subarray(0, 8).toString('hex'), icon.src).toBe('89504e470d0a1a0a');
+    expect(png.subarray(12, 16).toString('ascii'), icon.src).toBe('IHDR');
+    expect(`${String(png.readUInt32BE(16))}x${String(png.readUInt32BE(20))}`, icon.src).toBe(
+      icon.sizes,
+    );
+  }
+
+  const faviconHref = await page.locator('link[rel="icon"]').getAttribute('href');
+  const favicon = await request.get(new URL(faviconHref ?? '', page.url()).href);
+  expect(favicon.ok()).toBe(true);
+  expect(favicon.headers()['content-type']).toBe('image/svg+xml');
+});
+
+test('keeps the manifest identity, start URL, and scope at the application root', async ({
+  page,
+  request,
+  baseURL,
+}) => {
+  await page.goto('/');
+  const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+  const manifestUrl = new URL(manifestHref ?? '', page.url());
+  const manifest = (await (await request.get(manifestUrl.href)).json()) as WebAppManifest;
+
+  // Relative members resolve against the manifest's own URL.
+  const root = `${baseURL ?? ''}/`;
+  for (const member of ['id', 'start_url', 'scope'] as const) {
+    expect(new URL(manifest[member] ?? '', manifestUrl).href, member).toBe(root);
   }
 });
 
@@ -133,6 +164,30 @@ test('registers the service worker at the application root', async ({ page, base
     scope: `${baseURL ?? ''}/`,
     scriptURL: `${baseURL ?? ''}/sw.js`,
   });
+});
+
+test('lets the service worker control the page without serving or caching', async ({ page }) => {
+  await page.goto('/');
+  await waitForServiceWorkerControl(page);
+
+  // A controlled reload: with no fetch handler, the network answers every
+  // request and Cache Storage stays empty.
+  const responses: { url: string; fromServiceWorker: boolean }[] = [];
+  page.on('response', (response) => {
+    responses.push({ url: response.url(), fromServiceWorker: response.fromServiceWorker() });
+  });
+  await page.reload();
+  await waitForServiceWorkerControl(page);
+  await expect(page.getByRole('region', { name: 'Browser capabilities' })).toBeVisible();
+
+  expect(responses.length).toBeGreaterThan(0);
+  expect(responses.filter(({ fromServiceWorker }) => fromServiceWorker)).toEqual([]);
+  expect(
+    await page.evaluate(async () => ({
+      state: (await navigator.serviceWorker.ready).active?.state,
+      caches: await caches.keys(),
+    })),
+  ).toEqual({ state: 'activated', caches: [] });
 });
 
 test('applies the production content security policy', async ({ page }) => {

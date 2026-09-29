@@ -19,21 +19,24 @@ npx playwright install chromium   # once per machine, for test:e2e
 
 ## Scripts
 
-| Script                 | Purpose                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------- |
-| `npm run dev`          | Development server at `http://localhost:5173` (no service worker, no CSP).       |
-| `npm run build`        | Type-check, then produce the production build in `dist/`.                        |
-| `npm run preview`      | Serve `dist/` at `http://localhost:4173`.                                        |
-| `npm run typecheck`    | TypeScript project check (application and tooling configurations).               |
-| `npm run lint`         | ESLint with type-aware rules; any warning fails.                                 |
-| `npm run format:check` | Prettier check. `npm run format` rewrites files.                                 |
-| `npm test`             | Vitest unit and component tests (jsdom).                                         |
-| `npm run test:e2e`     | Builds, starts the preview server, and runs the Playwright browser tests.        |
-| `npm run check`        | `typecheck`, `lint`, `format:check`, `test`, and `build` in sequence.            |
-| `npm run icons`        | Re-renders the PNG icons from `public/icons/icon.svg` (the output is committed). |
-| `npm run test-media`   | Regenerates the synthetic browser-test videos; see `e2e/media/README.md`.        |
+| Script                   | Purpose                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `npm run dev`            | Development server at `http://localhost:5173` (no service worker, no CSP).               |
+| `npm run build`          | Type-check, then produce the production build in `dist/`.                                |
+| `npm run preview`        | Serve `dist/` at `http://localhost:4173`.                                                |
+| `npm run typecheck`      | TypeScript project check (application and tooling configurations).                       |
+| `npm run lint`           | ESLint with type-aware rules; any warning fails.                                         |
+| `npm run format:check`   | Prettier check. `npm run format` rewrites files.                                         |
+| `npm test`               | Vitest unit and component tests (jsdom).                                                 |
+| `npm run test:e2e`       | Builds, starts the preview server, and runs the Playwright browser tests.                |
+| `npm run check`          | `typecheck`, `lint`, `format:check`, `test`, and `build` in sequence.                    |
+| `npm run icons`          | Re-renders the PNG icons from `public/icons/icon.svg` (the output is committed).         |
+| `npm run test-media`     | Regenerates the synthetic WebM browser-test videos; see `e2e/media/README.md`.           |
+| `npm run test-media:mp4` | Regenerates the synthetic MP4 (H.264/AAC) browser-test video; see `e2e/media/README.md`. |
 
 Every script exits non-zero on failure. CI can run `npm ci && npm run check && npm run test:e2e`.
+
+`npm run test:e2e` runs in Playwright's Chromium. With `DRIFTLESS_E2E_CHROME=1` it also runs every test in the Google Chrome installed on the machine, as additional development-browser evidence. Neither run is a browser support claim.
 
 ## Layout
 

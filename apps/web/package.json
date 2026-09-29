@@ -20,7 +20,8 @@
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
     "icons": "node scripts/render-icons.mjs",
-    "test-media": "node scripts/generate-test-media.mjs"
+    "test-media": "node scripts/generate-test-media.mjs",
+    "test-media:mp4": "node scripts/generate-test-media-mp4.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

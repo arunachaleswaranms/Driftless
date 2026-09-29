@@ -1,8 +1,18 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
 
 const PORT = 4173;
 const baseURL = `http://localhost:${String(PORT)}`;
 const isCI = Boolean(process.env.CI);
+
+// Playwright's own Chromium always runs. DRIFTLESS_E2E_CHROME=1 also runs
+// every test in the Google Chrome installed on this machine, as additional
+// development-browser evidence. Neither is a browser support claim.
+const projects: PlaywrightTestConfig['projects'] = [
+  { name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chromium' } },
+];
+if (process.env.DRIFTLESS_E2E_CHROME === '1') {
+  projects.push({ name: 'chrome', use: { ...devices['Desktop Chrome'], channel: 'chrome' } });
+}
 
 export default defineConfig({
   testDir: 'e2e',
@@ -17,7 +27,7 @@ export default defineConfig({
   // The full Chromium build runs Chrome's new headless mode. The separate
   // headless shell does not evaluate installability, so it cannot run the
   // manifest checks meaningfully.
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chromium' } }],
+  projects,
   // Smoke tests run against a fresh production build so they exercise the
   // content security policy and service worker registration, which the
   // development server omits. The preview server uses a strict port, so a
