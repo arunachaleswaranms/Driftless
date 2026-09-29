@@ -24,15 +24,15 @@ Driftless
 
 ## Current Development Stage
 
-Phase 1 — Application Foundation: **NEXT — NOT STARTED**.
+Phase 1 — Application Foundation: **CLOSED / PASS**. Phase 1 exit gate: **PASS** (see [Phase 1 qualification](docs/PHASE1_QUALIFICATION.md)).
+
+Phase 2 — Internet P2P Foundation: **NEXT — NOT STARTED**.
 
 ## Current Branch
 
-`main`
+`phase/1-application-foundation`
 
-Phase 0 was merged through PR #1 at `17eea6a`.
-
-No Phase 1 branch exists. Phase 1 implementation has not started.
+Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 work proceeds on `phase/1-application-foundation`, created from `main` at `4c15a54`.
 
 ## Repository Status
 
@@ -47,7 +47,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. No production application, signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). No signaling service, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `services/signaling/`, `packages/protocol/`, `packages/sync-engine/`, and `packages/transfer-engine/` remain empty.
 
 ## Accepted Architecture
 
@@ -163,13 +163,97 @@ See [Architecture](docs/ARCHITECTURE.md), [Media Pipeline](docs/MEDIA_PIPELINE.m
 
 No product feature is complete. Spikes 0.1–0.7 completed their software-feasibility questions, and Phase 0 software feasibility is closed after the final independent review passed. Spike 0.2 and Spike 0.3 retain `PROVISIONAL PASS — EXTERNAL NETWORK VALIDATION DEFERRED`; Spikes 0.1, 0.4, 0.5, and 0.6 retain `PROVISIONAL PASS — PHYSICAL ANDROID DEFERRED`. Spike 0.5 real-world media coverage remains `MANUAL TEST REQUIRED`. Spike 0.6 passed independent re-review after fixes for B1, B2, and B3 and was committed at `7bbb10f`. Spike 0.7's provisional software result was accepted on final independent review after its first `REQUEST CHANGES — DO NOT COMMIT` and subsequent fixes; it was committed at `e1ea11b`. Physical Android, external-network, and real-world media qualification remain deferred.
 
+## Phase 1 — Application Foundation
+
+**Phase status:** CLOSED / PASS. **Phase 1 exit gate:** PASS, evaluated at revision `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`. The detailed evidence record is [PHASE1_QUALIFICATION.md](docs/PHASE1_QUALIFICATION.md). This is an application-foundation development gate, not a product support declaration: every [COMPATIBILITY.md](docs/COMPATIBILITY.md) status is unchanged, and `DEFERRED-PHYSICAL-001` through `007` remain open. The Phase 1 branch awaits independent review before it is merged.
+
+| Part | Scope | Status |
+| --- | --- | --- |
+| Phase 1A | Production React/Vite/PWA foundation and automated test baseline | Implemented |
+| Phase 1B | Local browser media player: file selection, playback, media metadata, errors, and lifecycle | Implemented |
+| Phase 1C | Capability detection: local runtime API observations | Implemented |
+| Phase 1D | Qualification and closure, including evaluation of the Phase 1 exit gate | Complete — exit gate PASS |
+
+The web client lives under `apps/web/`. It is written from scratch; no Phase 0 spike code was copied into it.
+
+### Phase 1A — foundation
+
+- React 19, TypeScript 6.0, and Vite 8 as a standalone npm package with a committed lockfile. No repository-level workspace exists yet.
+- A minimal application shell: application name, development-build notice, skip link, the local video area, and a browser-capabilities area (a placeholder until Phase 1C).
+- PWA foundation: a web app manifest with 192 px and 512 px placeholder icons, and a service worker registered only in production builds. The worker has no fetch handler and caches nothing, so the application has no offline behavior.
+- Production builds carry a same-origin-only Content Security Policy meta tag. The application makes no backend, analytics, telemetry, or other external requests.
+- Tooling: `tsc -b` type checking, ESLint 10 with type-aware typescript-eslint rules, Prettier, Vitest with Testing Library and jsdom, and Playwright on Chromium.
+
+### Phase 1B — local browser media player
+
+- `apps/web/src/features/local-media/` plays one user-chosen local video file in a native `<video>` element with the browser's own controls (`controls`, `playsInline`, `preload="metadata"`, no autoplay). The user can choose, replace, and clear the file.
+- The `File` is bound through `URL.createObjectURL()`. The application never reads the file contents (no `arrayBuffer()`, `FileReader`, or similar), and never uploads, caches, or stores it. The browser's media stack reads it on demand.
+- Each selection owns one object URL and one media element, keyed by a selection id. On replacement, clear, or unmount, the element is paused and detached before the URL is revoked. Media events from a previous selection are ignored.
+- The panel shows the file name, browser-reported type, and size, then the browser-reported duration and dimensions. Unknown or infinite durations are shown as not reported. The browser-reported type is not treated as a compatibility signal, and no local path is available to or shown by the page.
+- `MediaError` codes are mapped to safe categories. The user-facing message says that this browser could not play the selected media, without naming a codec or exposing the browser's internal message.
+- The production CSP now also allows `media-src 'self' blob:`, which the object URL requires. Without it, Chromium blocked the object URL under the `default-src 'self'` fallback. No other directive changed.
+- The service worker is unchanged. Browsers do not dispatch `blob:` requests to service workers, and the browser tests confirm that no response came from the worker and that Cache Storage, OPFS, and IndexedDB stayed empty.
+- Browser tests use two synthetic, generated VP8/WebM fixtures without audio (16,273 B and 6,496 B) under `apps/web/e2e/media/`, with their generator script, command, tool versions, and SHA-256 digests recorded there. They are not part of the production build.
+- No runtime or development dependency was added.
+
+### Phase 1C — capability detection
+
+- `apps/web/src/features/capabilities/` replaces the placeholder with a local report of **runtime API observations**. A detector reads properties from an injectable global-scope object (the page's `window` by default) when the panel mounts, never at module import. Missing APIs are reported, not assumed; a getter that throws is reported as not evaluated instead of breaking the page.
+- Each entry is reported as `Available`, `Not available`, or `Not evaluated` (the secure-context flag as `Yes` or `No`), with each individual API check listed in text.
+- Current foundation: secure context (`window.isSecureContext`; browsers count localhost as secure, so this says nothing about a deployment), `File` and `Blob`, `URL.createObjectURL` and `URL.revokeObjectURL`, `HTMLVideoElement` with `HTMLMediaElement.prototype` `play`, `pause`, and `canPlayType`, and `navigator.serviceWorker`. The `canPlayType()` answers for `video/mp4` and `video/webm`, asked without codec parameters, are shown only as the browser's own declarations. No codec, profile, or H.264/AAC probe string is used.
+- Later-phase prerequisites, informational only and unused by this build: `RTCPeerConnection`, `RTCPeerConnection.prototype.createDataChannel` and `RTCDataChannel`, `MediaSource`, `MediaSource.isTypeSupported`, and `SourceBuffer`, `navigator.storage.getDirectory`, and `crypto.subtle.digest`.
+- Detection only reads properties and asks `canPlayType()` of a detached, source-less video element. It constructs no peer connection or MediaSource, opens no OPFS directory, requests no permission or storage persistence, hashes nothing, makes no request, and writes no storage. Results stay on the page and are neither transmitted nor persisted. There is no user-agent inspection.
+- **Runtime observation is not product compatibility.** The report derives no browser support status and no mode eligibility; in particular there is no Progressive Watch availability result. Product compatibility remains governed by [COMPATIBILITY.md](docs/COMPATIBILITY.md), whose statuses are unchanged (`NOT TESTED`). Enabling Local Sync or Progressive Watch later requires their own runtime checks (negotiated protocol features, actual media inspection, storage conditions, runtime errors) and the evidence of their phase gates. Mode gating is not implemented.
+- The CSP and service worker are unchanged. No runtime or development dependency was added.
+
+### Phase 1A–1C automated evidence (recorded at `f2de4ea`)
+
+This is the pre-qualification record; Phase 1D below supersedes its counts and adds MP4/H.264/AAC and installed-Chrome evidence.
+
+`AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0: 121 Vitest unit/component tests and 25 Playwright tests against the production build in Playwright's Chromium 153.0.8010.12.
+
+- The Phase 1A smoke tests cover shell rendering, keyboard skip-link focus, narrow and desktop layout, manifest and icon delivery, service worker registration and control, the complete CSP, and zero Chromium manifest/installability errors other than the automation-only `in-incognito`.
+- The Phase 1B unit/component tests cover the empty state, object URL binding, metadata, unknown durations, replacement, clear, same-file reselection, unmount, stale-event rejection, conservative errors, StrictMode and repeated-cycle URL balance, and the absence of file-content reads.
+- The Phase 1B browser tests cover: metadata; playback that starts only after a trusted click and advances; pause; forward and backward seeks set through `currentTime`; keyboard play/pause; replacement and clear with URL revocation; an unplayable file; 5 rapid replace/clear cycles with every URL revoked exactly once; same-origin `GET`-only requests; and narrow and desktop fit.
+- The Phase 1C unit/component tests use synthetic global scopes: fully populated, empty, and each API removed in turn, plus a throwing getter, wrong-typed values, and every `canPlayType()` answer. They verify that detection never calls the APIs it observes, gives identical reports on repeated runs without changing the scope, and that the panel uses only observation wording, including its explicit statement that API presence is not browser or product support.
+- The Phase 1C browser tests compare every reported check and `canPlayType()` answer with the test browser's own globals, observed independently in the page. They also confirm the disclaimer, identical reports after a reload, and narrow and desktop fit. An instrumented load and reload recorded no peer connection, MediaSource, worker, socket, `fetch`, OPFS, persistence, permission, media-device, Cache Storage, IndexedDB, or Web Storage call and no dialog, and requests only for the application's own static files. Cache Storage, IndexedDB, OPFS, and Web Storage stayed empty from a same-origin baseline page through load and reload.
+- In Chromium 153.0.8010.12 every observed API surface was present, the secure-context flag was true on `localhost`, and `canPlayType()` answered `maybe` for both `video/mp4` and `video/webm`. These are observations of one automation browser, not a compatibility result.
+- Every browser test fails on any console error or warning, uncaught exception, or cross-origin request.
+
+This is development evidence and not a compatibility claim. Playwright's Chromium reported sticky user activation at page load, and the fixtures have no audio, so the browser autoplay restriction itself was not exercised. The tests show only that the application never starts playback on its own. No physical device, other browser engine, MP4/H.264/AAC file, large file, or memory measurement was part of this evidence. `DEFERRED-PHYSICAL-001` remains open.
+
+### Phase 1D — qualification and closure
+
+- The exit gate was divided into five criteria, each evaluated at the committed candidate `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`. All five pass:
+  - G1, the installable web foundation;
+  - G2, local media selection;
+  - G3, local playback;
+  - G4, accurate capability reporting;
+  - G5, the automated baseline.
+- Qualification found no product defect, and no product source changed. It closed qualification gaps with tests and a fixture:
+  - a synthetic MP4/H.264 High/AAC-LC fixture (185,070 B, 8 s, 320 × 180, `moov` first), with its generator and provenance;
+  - two full-lifecycle browser tests, WebM→MP4 and MP4→WebM. They check decoded frames, pause, forward and backward seeks with continued playback, decoded audio, replacement during playback, clear, reselection, object URL ownership, 0 script `play()` calls, requests, and storage;
+  - the MP4 fixture in the rapid-replacement test;
+  - a PNG IHDR check of icon dimensions, and a check that the manifest `id`, `start_url`, and `scope` resolve to the application root;
+  - a test that the controlling service worker serves nothing and caches nothing;
+  - an opt-in Playwright project, `DRIFTLESS_E2E_CHROME=1`, that runs the suite in the installed Google Chrome.
+- Mutation checks confirmed that the new tests fail when the app calls `play()`, revokes its current URL prematurely, or gains a service worker fetch handler or install-time cache.
+- `AUTOMATED DESKTOP / DEVELOPMENT BROWSER` results on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0, from `npm ci` at the qualification revision:
+  - `npm run check`: typecheck, lint, format, and build pass, and Vitest has 121 passed, 0 failed, 0 skipped;
+  - `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities;
+  - three consecutive `npm run test:e2e -- --retries=0` runs: 29/29 passed in Playwright Chromium 153.0.8010.12;
+  - two `DRIFTLESS_E2E_CHROME=1` runs: 58/58 passed, adding Google Chrome 154.0.8037.58;
+  - 0 flaky tests, 0 console messages or page errors, and no leaked preview server.
+- Microsoft Edge is not installed here and was `NOT EXERCISED IN THIS ENVIRONMENT`. Firefox and Safari were not exercised, and no non-Chromium engine, physical device, or real network was part of this evidence.
+- No runtime or development dependency changed; `package.json` gained only the `test-media:mp4` script. No CI workflow was added. CI readiness and the unverified Linux-runner behavior are recorded as a follow-up in the qualification record.
+
 ## Open Deferred Qualification
 
 - Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge.
 
 ## Not Started
 
-- Phase 1 implementation and production application work have not started. The Phase 0 software-feasibility gate passed; physical and real-network qualification remains deferred.
+- Phase 2 — Internet P2P Foundation (**NEXT — NOT STARTED**) and later implementation: signaling, rooms, WebRTC, synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
 
@@ -283,7 +367,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Phase 1 — Application Foundation is **NEXT — NOT STARTED**.
+Independently review the pushed Phase 1D qualification and Phase 1 closure on `phase/1-application-foundation`. Do not open or merge the Phase 1 pull request, or begin Phase 2 — Internet P2P Foundation, before that review passes.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -306,4 +390,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-27
+2026-09-29

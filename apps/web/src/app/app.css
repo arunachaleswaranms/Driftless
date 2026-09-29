@@ -1,0 +1,324 @@
+:root {
+  color-scheme: light dark;
+  --color-background: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-text: #1a1d23;
+  --color-text-muted: #4a5160;
+  --color-border: #d5d9e0;
+  --color-focus: #2f5fd0;
+  --color-accent: #2f5fd0;
+  --color-accent-text: #ffffff;
+  --color-error: #b3261e;
+  --color-error-surface: #fdecea;
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --radius: 0.5rem;
+  --content-width: 64rem;
+
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-background);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #14171c;
+    --color-surface: #1d2127;
+    --color-text: #e8eaee;
+    --color-text-muted: #aab1bd;
+    --color-border: #343a44;
+    --color-focus: #8fb0ff;
+    --color-accent: #8fb0ff;
+    --color-accent-text: #0e1420;
+    --color-error: #f2b8b5;
+    --color-error-surface: #3a1f1e;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+main:focus {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  z-index: 1;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  background: var(--color-surface);
+  transform: translateY(calc(-100% - var(--space-2)));
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.app-container {
+  width: 100%;
+  max-width: var(--content-width);
+  margin-inline: auto;
+  padding-inline: var(--space-2);
+}
+
+.app-header {
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-title {
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.app-build-status {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.app-main {
+  display: grid;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+}
+
+/* Grid items may shrink below their content's width, so long file names wrap
+   and the video scales instead of widening the column. */
+.app-main > * {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .app-main {
+    grid-template-columns: 3fr 2fr;
+    align-items: start;
+    gap: var(--space-3);
+  }
+}
+
+.panel {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.panel h2 {
+  font-size: 1.125rem;
+  line-height: 1.3;
+}
+
+.panel-status {
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+/* Hidden from view but still focusable and announced. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.button {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--color-accent-text);
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
+.button-secondary {
+  border-color: var(--color-border);
+  color: var(--color-text);
+  background: transparent;
+}
+
+/* The file input itself is visually hidden; its label is the visible control. */
+.visually-hidden:focus-visible + .button {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.local-media {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.local-media-actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.local-media-error {
+  padding: var(--space-2);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  background: var(--color-error-surface);
+}
+
+.local-media-error-summary {
+  font-weight: 600;
+}
+
+.local-media-video {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius);
+  background: #000;
+}
+
+.local-media-video[hidden] {
+  display: none;
+}
+
+.local-media-details h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.local-media-details dl {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+@media (min-width: 30rem) {
+  .local-media-details dl > div {
+    display: grid;
+    grid-template-columns: 12rem 1fr;
+    gap: var(--space-2);
+  }
+}
+
+.local-media-details dt {
+  color: var(--color-text-muted);
+}
+
+.local-media-file-name {
+  overflow-wrap: anywhere;
+}
+
+.capabilities {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.capability-group h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.capability-note {
+  color: var(--color-text-muted);
+}
+
+.capability-group > .capability-note {
+  margin-top: var(--space-1);
+}
+
+.capability-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.capability {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.capability-name {
+  font-weight: 600;
+}
+
+.capability-status {
+  font-weight: 600;
+  text-align: end;
+}
+
+.capability > dd:not(.capability-status) {
+  grid-column: 1 / -1;
+}
+
+.capability-description {
+  color: var(--color-text-muted);
+}
+
+.capability-checks {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding-left: var(--space-2);
+}
+
+.capability-checks + .capability-note,
+.capability-note + .capability-checks {
+  margin-top: 0.25rem;
+}
+
+/* API names such as HTMLMediaElement.prototype.canPlayType have no break
+   opportunities, so they may wrap anywhere rather than widen the panel. */
+.capabilities code {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skip-link {
+    transition: transform 0.15s ease-out;
+  }
+}

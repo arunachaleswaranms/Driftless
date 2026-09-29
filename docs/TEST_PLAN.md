@@ -2,7 +2,7 @@
 
 ## Status and Purpose
 
-This is the planned product verification strategy. No production application test framework or suite has been initialized. Phase 0 has separate passing spike tests and controlled desktop browser evidence in [the result records](../spikes/phase0/), but those results do not satisfy physical-device or real-network gates. Each future product result must record application revision, browser/device versions, network conditions, media characteristics, and whether WebRTC used direct P2P or TURN relay.
+This is the planned product verification strategy. The production web client in `apps/web/` has a Phase 1 automated baseline of Vitest unit/component tests and Playwright Chromium tests covering the application foundation, the local media player, and capability reporting: local file selection, reported metadata, playback, pause, seek, replacement, clear/reset, object URL lifecycle and resource release, application-shell smoke coverage, and capability detection. Capability tests check the detector against synthetic environments with APIs present, absent, or blocked, compare the report with the test browser's own globals, and confirm that detection causes no request, prompt, WebRTC connection, or storage change. These Chromium results are development-browser evidence only; they do not satisfy physical-device, broad-browser, real-network, or product-support gates. The Phase 1 exit gate was qualified against these tests at an exact revision; see [PHASE1_QUALIFICATION.md](PHASE1_QUALIFICATION.md). The rest of this plan is not yet implemented. Phase 0 has separate passing spike tests and controlled desktop browser evidence in [the result records](../spikes/phase0/), but those results do not satisfy physical-device or real-network gates. Each future product result must record application revision, browser/device versions, network conditions, media characteristics, and whether WebRTC used direct P2P or TURN relay.
 
 ## Test Levels
 
@@ -26,7 +26,7 @@ Planned integration coverage includes signaling-to-WebRTC negotiation, reconnect
 
 ### Browser Automation
 
-Playwright is the planned browser-automation tool, subject to Phase 1 tooling decisions. It should exercise room flows, file selection using controlled fixtures, readiness, playback controls, reconnect UI, capability fallbacks, chat/reactions, and error states across supported desktop engines.
+Playwright was selected in Phase 1 and currently runs Chromium tests against the production build of `apps/web/`: application-shell and PWA tests, local-player tests that choose small synthetic video fixtures (VP8/WebM, and MP4 with H.264/AAC) through the file input, and capability-report tests. Setting `DRIFTLESS_E2E_CHROME=1` also runs them in a locally installed Google Chrome; that is the same engine. Other desktop engines are not yet configured. It should exercise room flows, file selection using controlled fixtures, readiness, playback controls, reconnect UI, capability fallbacks, chat/reactions, and error states across supported desktop engines.
 
 Browser automation is evidence for automated flows, not a substitute for real mobile devices, carrier networks, or codec/platform validation.
 

@@ -2,7 +2,7 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Status: Phase 0 software feasibility closed.** Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. Phase 1 — Application Foundation is next and has not started. Physical Android and real external-network qualification remain deferred. No production application implementation exists.
+> **Status: Phase 1 — Application Foundation closed (exit gate PASS); Phase 2 — Internet P2P Foundation is next and not started.** Phase 0 software feasibility closed after Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. The production web client under `apps/web/` provides an application shell, PWA foundation, automated test baseline, a local video player for a file on the same device, and a local report of the browser APIs the page can observe. It cannot synchronize or transfer media, and its capability report is not a browser support claim. Closing Phase 1 does not change any compatibility status. Physical Android and real external-network qualification remain deferred.
 
 ## Goals
 
@@ -58,9 +58,16 @@ Progressive Watch is a runtime-detected capability. A browser or device that can
 
 ## Development status
 
-The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No React/Vite production project, PWA, production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
+The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No production signaling service, synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
 
-Phase 1 — Application Foundation is **NEXT — NOT STARTED**. No production application implementation exists yet. Physical-device and real-network qualification remains deferred.
+Phase 1 — Application Foundation is **CLOSED / PASS**. Its exit gate passed at revision `4bf6e31`; see the [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md). Phase 2 — Internet P2P Foundation is **NEXT — NOT STARTED**.
+
+- **Phase 1A — implemented:** the React/TypeScript/Vite web client in [`apps/web/`](apps/web/), with an application shell, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser tests.
+- **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. The file is never uploaded or read by the application.
+- **Phase 1C — implemented:** capability detection. The capabilities area reports, on the page only, whether the API surfaces used by the current foundation and planned for later phases are present. These are runtime observations: API presence is not browser or product support, and it establishes no mode, including Progressive Watch. Product compatibility remains governed by the [compatibility policy](docs/COMPATIBILITY.md).
+- **Phase 1D — complete:** qualification and closure. It added a synthetic MP4/H.264/AAC local-playback fixture, full-lifecycle and PWA qualification tests, and an opt-in run in the installed Google Chrome. The exit gate passed in Playwright Chromium 153 and Google Chrome 154. These are development browsers, not supported browsers.
+
+Automated Chromium results are development evidence, not browser support claims. Physical-device and real-network qualification remains deferred.
 
 ## Documentation
 
@@ -72,6 +79,7 @@ Phase 1 — Application Foundation is **NEXT — NOT STARTED**. No production ap
 - [Security baseline](docs/SECURITY.md)
 - [Test plan](docs/TEST_PLAN.md)
 - [Compatibility policy](docs/COMPATIBILITY.md)
+- [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md)
 - [Authoritative project state](PROJECT_STATE.md)
 - [Architecture decision records](docs/adr/)
 - [Planning document index](docs/planning/README.md)

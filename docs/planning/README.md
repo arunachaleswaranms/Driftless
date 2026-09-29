@@ -18,5 +18,6 @@
 | Test strategy | [TEST_PLAN.md](../TEST_PLAN.md) |
 | Product compatibility policy | [COMPATIBILITY.md](../COMPATIBILITY.md) |
 | Phase 0 empirical feasibility evidence | [Spike results](../../spikes/phase0/) |
+| Phase 1 exit-gate qualification evidence | [PHASE1_QUALIFICATION.md](../PHASE1_QUALIFICATION.md) |
 
 The master plan remains the historical baseline. Accepted architecture decisions live in the ADRs; current execution state lives in `PROJECT_STATE.md`; detailed phase progression lives in `ROADMAP.md`; and observed Phase 0 results live with the spikes. A controlled spike result does not establish product compatibility or close deferred physical and network qualification.
