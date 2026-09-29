@@ -4,6 +4,8 @@ The production Driftless web client: React, TypeScript, and Vite, delivered as a
 
 This is the Phase 1 foundation. It contains the application shell, PWA installability metadata, service worker registration, a local video player, a browser capability report, and the automated test baseline. No synchronization, signaling, WebRTC, or media-transfer behavior exists here.
 
+Phase 1 is closed: its exit gate passed at revision `4bf6e31` in Playwright Chromium 153 and Google Chrome 154. That is development-browser evidence, not a support claim; see [PHASE1_QUALIFICATION.md](../../docs/PHASE1_QUALIFICATION.md).
+
 ## Requirements
 
 - Node.js 22.12 or later (developed with Node.js 26.3.0 and npm 11.16.0)

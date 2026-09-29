@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: IN PROGRESS.**
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: NEXT — NOT STARTED.**
 
 - Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
 - Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
@@ -41,7 +41,15 @@ Technical spikes:
 - Capability detection.
 - Automated test baseline.
 
-**Status — IN PROGRESS:** Phase 1A, the web/PWA skeleton and automated test baseline, and Phase 1B, the local player with file selection, native playback controls, media metadata, and error and lifecycle handling, exist in `apps/web/`. Phase 1C, capability detection, is implemented as a local report of runtime API observations; it makes no browser support claim and enables or disables no mode. Phase 1D, qualification and closure, has not started. The exit gate has not been evaluated and has not passed.
+**Status — CLOSED / PASS:** The following exist in `apps/web/`:
+
+- Phase 1A: the web/PWA skeleton and automated test baseline.
+- Phase 1B: the local player, with file selection, native playback controls, media metadata, and error and lifecycle handling.
+- Phase 1C: capability detection, as a local report of runtime API observations that makes no browser support claim and enables or disables no mode.
+
+Phase 1D qualification evaluated the exit gate at revision `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`, as five criteria: installable foundation, selection, playback, capability reporting, and automated baseline. All five passed, with synthetic VP8/WebM and MP4/H.264/AAC local media, in the repository's development browsers, Playwright Chromium 153 and Google Chrome 154. See [PHASE1_QUALIFICATION.md](PHASE1_QUALIFICATION.md).
+
+The pass is a development gate. It changes no [compatibility](COMPATIBILITY.md) status and closes no `DEFERRED-PHYSICAL` debt. It includes no Edge, Firefox, Safari, Android, or real-network result.
 
 **Exit gate:** The installable web foundation can select and play representative local media on target development browsers, reports capabilities accurately, and has an automated test baseline. No synchronized or progressive behavior is implied.
 
@@ -54,6 +62,8 @@ Technical spikes:
 - RTCDataChannel.
 - Disconnect/reconnect.
 - Diagnostics.
+
+**Status — NEXT — NOT STARTED.**
 
 **Exit gate:** Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay.
 

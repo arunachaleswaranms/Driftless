@@ -24,7 +24,9 @@ Driftless
 
 ## Current Development Stage
 
-Phase 1 — Application Foundation: **IN PROGRESS**.
+Phase 1 — Application Foundation: **CLOSED / PASS**. Phase 1 exit gate: **PASS** (see [Phase 1 qualification](docs/PHASE1_QUALIFICATION.md)).
+
+Phase 2 — Internet P2P Foundation: **NEXT — NOT STARTED**.
 
 ## Current Branch
 
@@ -163,14 +165,14 @@ No product feature is complete. Spikes 0.1–0.7 completed their software-feasib
 
 ## Phase 1 — Application Foundation
 
-**Phase status:** IN PROGRESS. The Phase 1 exit gate has not been evaluated and has NOT YET PASSED.
+**Phase status:** CLOSED / PASS. **Phase 1 exit gate:** PASS, evaluated at revision `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`. The detailed evidence record is [PHASE1_QUALIFICATION.md](docs/PHASE1_QUALIFICATION.md). This is an application-foundation development gate, not a product support declaration: every [COMPATIBILITY.md](docs/COMPATIBILITY.md) status is unchanged, and `DEFERRED-PHYSICAL-001` through `007` remain open. The Phase 1 branch awaits independent review before it is merged.
 
 | Part | Scope | Status |
 | --- | --- | --- |
 | Phase 1A | Production React/Vite/PWA foundation and automated test baseline | Implemented |
 | Phase 1B | Local browser media player: file selection, playback, media metadata, errors, and lifecycle | Implemented |
 | Phase 1C | Capability detection: local runtime API observations | Implemented |
-| Phase 1D | Qualification and closure, including evaluation of the Phase 1 exit gate | NOT STARTED (next) |
+| Phase 1D | Qualification and closure, including evaluation of the Phase 1 exit gate | Complete — exit gate PASS |
 
 The web client lives under `apps/web/`. It is written from scratch; no Phase 0 spike code was copied into it.
 
@@ -204,7 +206,9 @@ The web client lives under `apps/web/`. It is written from scratch; no Phase 0 s
 - **Runtime observation is not product compatibility.** The report derives no browser support status and no mode eligibility; in particular there is no Progressive Watch availability result. Product compatibility remains governed by [COMPATIBILITY.md](docs/COMPATIBILITY.md), whose statuses are unchanged (`NOT TESTED`). Enabling Local Sync or Progressive Watch later requires their own runtime checks (negotiated protocol features, actual media inspection, storage conditions, runtime errors) and the evidence of their phase gates. Mode gating is not implemented.
 - The CSP and service worker are unchanged. No runtime or development dependency was added.
 
-### Phase 1 automated evidence
+### Phase 1A–1C automated evidence (recorded at `f2de4ea`)
+
+This is the pre-qualification record; Phase 1D below supersedes its counts and adds MP4/H.264/AAC and installed-Chrome evidence.
 
 `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0: 121 Vitest unit/component tests and 25 Playwright tests against the production build in Playwright's Chromium 153.0.8010.12.
 
@@ -218,7 +222,30 @@ The web client lives under `apps/web/`. It is written from scratch; no Phase 0 s
 
 This is development evidence and not a compatibility claim. Playwright's Chromium reported sticky user activation at page load, and the fixtures have no audio, so the browser autoplay restriction itself was not exercised. The tests show only that the application never starts playback on its own. No physical device, other browser engine, MP4/H.264/AAC file, large file, or memory measurement was part of this evidence. `DEFERRED-PHYSICAL-001` remains open.
 
-Not yet done in Phase 1: Phase 1D qualification and closure, including evaluation of the Phase 1 exit gate.
+### Phase 1D — qualification and closure
+
+- The exit gate was divided into five criteria, each evaluated at the committed candidate `4bf6e311723ff3c59dc47d9b3b108c9006f0d7a3`. All five pass:
+  - G1, the installable web foundation;
+  - G2, local media selection;
+  - G3, local playback;
+  - G4, accurate capability reporting;
+  - G5, the automated baseline.
+- Qualification found no product defect, and no product source changed. It closed qualification gaps with tests and a fixture:
+  - a synthetic MP4/H.264 High/AAC-LC fixture (185,070 B, 8 s, 320 × 180, `moov` first), with its generator and provenance;
+  - two full-lifecycle browser tests, WebM→MP4 and MP4→WebM. They check decoded frames, pause, forward and backward seeks with continued playback, decoded audio, replacement during playback, clear, reselection, object URL ownership, 0 script `play()` calls, requests, and storage;
+  - the MP4 fixture in the rapid-replacement test;
+  - a PNG IHDR check of icon dimensions, and a check that the manifest `id`, `start_url`, and `scope` resolve to the application root;
+  - a test that the controlling service worker serves nothing and caches nothing;
+  - an opt-in Playwright project, `DRIFTLESS_E2E_CHROME=1`, that runs the suite in the installed Google Chrome.
+- Mutation checks confirmed that the new tests fail when the app calls `play()`, revokes its current URL prematurely, or gains a service worker fetch handler or install-time cache.
+- `AUTOMATED DESKTOP / DEVELOPMENT BROWSER` results on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0, from `npm ci` at the qualification revision:
+  - `npm run check`: typecheck, lint, format, and build pass, and Vitest has 121 passed, 0 failed, 0 skipped;
+  - `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities;
+  - three consecutive `npm run test:e2e -- --retries=0` runs: 29/29 passed in Playwright Chromium 153.0.8010.12;
+  - two `DRIFTLESS_E2E_CHROME=1` runs: 58/58 passed, adding Google Chrome 154.0.8037.58;
+  - 0 flaky tests, 0 console messages or page errors, and no leaked preview server.
+- Microsoft Edge is not installed here and was `NOT EXERCISED IN THIS ENVIRONMENT`. Firefox and Safari were not exercised, and no non-Chromium engine, physical device, or real network was part of this evidence.
+- No runtime or development dependency changed; `package.json` gained only the `test-media:mp4` script. No CI workflow was added. CI readiness and the unverified Linux-runner behavior are recorded as a follow-up in the qualification record.
 
 ## Open Deferred Qualification
 
@@ -226,7 +253,7 @@ Not yet done in Phase 1: Phase 1D qualification and closure, including evaluatio
 
 ## Not Started
 
-- Phase 2 and later implementation: signaling, rooms, WebRTC, synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
+- Phase 2 — Internet P2P Foundation (**NEXT — NOT STARTED**) and later implementation: signaling, rooms, WebRTC, synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
 
@@ -340,7 +367,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Continue Phase 1 — Application Foundation with Phase 1D qualification and closure: evaluate the Phase 1 exit gate against recorded evidence. Phase 1 is not complete until its exit gate is evaluated.
+Independently review the pushed Phase 1D qualification and Phase 1 closure on `phase/1-application-foundation`. Do not open or merge the Phase 1 pull request, or begin Phase 2 — Internet P2P Foundation, before that review passes.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -363,4 +390,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-28
+2026-09-29
