@@ -108,6 +108,8 @@ const PEER_FAILURES: Readonly<Record<PeerFailure, string>> = {
   peer_protocol: 'The other browser sent an unexpected message, so the connection was closed.',
   candidate_limit: 'The other browser sent too much connection data, so the connection was closed.',
   signaling_unavailable: 'Connection details could not be sent through the signaling service.',
+  relay_unavailable:
+    'This build allows only relayed connections, and no relay server was available.',
 };
 
 /**

@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
+import { iceServerUrlKind, type IceServerUrlKind } from '@driftless/protocol';
+import type { RtcConfigPolicy } from './rtcConfig.js';
 
 /** Validated service configuration. */
 export interface SignalingConfig {
@@ -9,6 +12,8 @@ export interface SignalingConfig {
   readonly roomTtlMs: number;
   readonly reconnectGraceMs: number;
   readonly heartbeatIntervalMs: number;
+  /** ICE servers for admitted room members, and the TURN secret. */
+  readonly rtc: RtcConfigPolicy;
 }
 
 export type ConfigResult =
@@ -34,6 +39,30 @@ export const MIN_HEARTBEAT_SECONDS = 5;
 export const MAX_HEARTBEAT_SECONDS = 60;
 
 /**
+ * Provisional lifetime of an issued ICE configuration and its TURN
+ * credential: one hour, the default room lifetime. The TURN server checks a
+ * credential's expiry on authenticated requests, which may include refreshes
+ * of an allocation in use, so a lifetime shorter than a relayed session can
+ * end that session; peer recovery then fetches a fresh credential. Every
+ * credential is also capped at its room's expiry.
+ */
+export const DEFAULT_TURN_CREDENTIAL_TTL_SECONDS = 3600;
+export const MIN_TURN_CREDENTIAL_TTL_SECONDS = 60;
+export const MAX_TURN_CREDENTIAL_TTL_SECONDS = 86_400;
+
+/** At most this many STUN URLs, and this many TURN URLs. */
+export const MAX_ICE_URLS = 4;
+
+/** Bounds on the TURN shared secret, in characters of printable ASCII. */
+export const MIN_TURN_SECRET_LENGTH = 32;
+export const MAX_TURN_SECRET_LENGTH = 512;
+
+/** Reads a secret file. Injectable so tests need no file system. */
+export type ReadSecretFile = (path: string) => string;
+
+const readSecretFileFromDisk: ReadSecretFile = (path) => readFileSync(path, 'utf8');
+
+/**
  * Development-only defaults: the web client's Vite development server and
  * preview server on loopback. Production has no default; it must list its
  * origins explicitly.
@@ -55,7 +84,10 @@ type Environment = Readonly<Record<string, string | undefined>>;
  * are rejected, never replaced by defaults. Error messages name the variable
  * but do not echo its value.
  */
-export function loadConfig(env: Environment): ConfigResult {
+export function loadConfig(
+  env: Environment,
+  readSecretFile: ReadSecretFile = readSecretFileFromDisk,
+): ConfigResult {
   const nodeEnv = env.NODE_ENV;
   const mode = nodeEnv === 'production' ? 'production' : 'development';
 
@@ -118,6 +150,9 @@ export function loadConfig(env: Environment): ConfigResult {
     allowedOrigins = parsed;
   }
 
+  const rtc = loadRtcPolicy(env, readSecretFile);
+  if (typeof rtc === 'string') return fail(rtc);
+
   return {
     ok: true,
     config: {
@@ -128,8 +163,84 @@ export function loadConfig(env: Environment): ConfigResult {
       roomTtlMs: ttlSeconds * 1000,
       reconnectGraceMs: graceSeconds * 1000,
       heartbeatIntervalMs: heartbeatSeconds * 1000,
+      rtc,
     },
   };
+}
+
+/**
+ * The ICE servers for admitted room members. TURN needs both its URLs and
+ * exactly one source of the shared secret: `SIGNALING_TURN_SECRET_FILE`, a
+ * file holding it (preferred, for a secret store or a mounted secret), or
+ * `SIGNALING_TURN_SECRET`. No message echoes the secret or the file's
+ * contents.
+ */
+function loadRtcPolicy(env: Environment, readSecretFile: ReadSecretFile): RtcConfigPolicy | string {
+  const stunUrls = parseIceUrls(env.SIGNALING_STUN_URLS, 'stun');
+  if (stunUrls === undefined) {
+    return `SIGNALING_STUN_URLS must be a comma-separated list of at most ${String(MAX_ICE_URLS)} stun: or stuns: URLs.`;
+  }
+  const turnUrls = parseIceUrls(env.SIGNALING_TURN_URLS, 'turn');
+  if (turnUrls === undefined) {
+    return `SIGNALING_TURN_URLS must be a comma-separated list of at most ${String(MAX_ICE_URLS)} turn: or turns: URLs.`;
+  }
+  const ttlSeconds = readInteger(
+    env.SIGNALING_TURN_CREDENTIAL_TTL_SECONDS,
+    DEFAULT_TURN_CREDENTIAL_TTL_SECONDS,
+    MIN_TURN_CREDENTIAL_TTL_SECONDS,
+    MAX_TURN_CREDENTIAL_TTL_SECONDS,
+  );
+  if (ttlSeconds === undefined) {
+    return `SIGNALING_TURN_CREDENTIAL_TTL_SECONDS must be an integer from ${String(MIN_TURN_CREDENTIAL_TTL_SECONDS)} to ${String(MAX_TURN_CREDENTIAL_TTL_SECONDS)}.`;
+  }
+
+  const inline = env.SIGNALING_TURN_SECRET;
+  const file = env.SIGNALING_TURN_SECRET_FILE;
+  if (inline !== undefined && file !== undefined) {
+    return 'Set only one of SIGNALING_TURN_SECRET and SIGNALING_TURN_SECRET_FILE.';
+  }
+  if (turnUrls.length === 0) {
+    if (inline !== undefined || file !== undefined) {
+      return 'A TURN secret is set but SIGNALING_TURN_URLS is not.';
+    }
+    return { stunUrls, turn: undefined, ttlMs: ttlSeconds * 1000 };
+  }
+
+  let secret: string;
+  if (file !== undefined) {
+    if (file === '') return 'SIGNALING_TURN_SECRET_FILE must name a file.';
+    try {
+      // One trailing line break, as an editor or `echo` leaves it, is not
+      // part of the secret.
+      secret = readSecretFile(file).replace(/\r?\n$/, '');
+    } catch {
+      return 'SIGNALING_TURN_SECRET_FILE could not be read.';
+    }
+  } else if (inline !== undefined) {
+    secret = inline;
+  } else {
+    return 'SIGNALING_TURN_URLS requires SIGNALING_TURN_SECRET_FILE or SIGNALING_TURN_SECRET.';
+  }
+  if (!isTurnSecret(secret)) {
+    return `The TURN secret must be ${String(MIN_TURN_SECRET_LENGTH)} to ${String(MAX_TURN_SECRET_LENGTH)} characters of printable ASCII without spaces.`;
+  }
+  return { stunUrls, turn: { urls: turnUrls, secret }, ttlMs: ttlSeconds * 1000 };
+}
+
+function parseIceUrls(raw: string | undefined, kind: IceServerUrlKind): string[] | undefined {
+  if (raw === undefined || raw.trim() === '') return [];
+  const entries = raw.split(',').map((entry) => entry.trim());
+  if (entries.length > MAX_ICE_URLS) return undefined;
+  if (!entries.every((entry) => iceServerUrlKind(entry) === kind)) return undefined;
+  return [...new Set(entries)];
+}
+
+function isTurnSecret(value: string): boolean {
+  return (
+    value.length >= MIN_TURN_SECRET_LENGTH &&
+    value.length <= MAX_TURN_SECRET_LENGTH &&
+    /^[\x21-\x7e]+$/.test(value)
+  );
 }
 
 /**

@@ -78,6 +78,8 @@ export {
   type RoomParticipantJoinedMessage,
   type RoomParticipantLeftMessage,
   type RtcAnswerMessage,
+  type RtcConfigMessage,
+  type RtcConfigRequestMessage,
   type RtcOfferMessage,
   type RtcRecoverMessage,
   type RtcRecoveryRequestMessage,
@@ -99,6 +101,18 @@ export {
   type ParseResult,
   type ParseSuccess,
 } from './parse.js';
+export {
+  MAX_ICE_SERVER_CREDENTIAL_BYTES,
+  MAX_ICE_SERVER_URL_BYTES,
+  MAX_ICE_SERVER_USERNAME_BYTES,
+  MAX_RTC_CONFIG_TTL_MS,
+  MAX_RTC_ICE_SERVERS,
+  MAX_RTC_ICE_SERVER_URLS,
+  iceServerUrlKind,
+  toRtcIceServer,
+  type IceServerUrlKind,
+  type RtcIceServer,
+} from './rtcConfig.js';
 export {
   RESUME_PROOF_DOMAIN,
   RESUME_PROOF_INPUT_BYTES,

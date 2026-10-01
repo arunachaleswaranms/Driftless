@@ -8,6 +8,7 @@ import type { RandomSource } from './credentials.js';
 import { silentLogger, type Logger } from './logger.js';
 import type { RateLimit } from './rateLimiter.js';
 import { RoomStore } from './roomStore.js';
+import type { RtcConfigIssuer } from './rtcConfig.js';
 import { timerScheduler, type ScheduledTask, type Scheduler } from './scheduler.js';
 
 /** Versioned WebSocket endpoint. Room credentials never appear in the URL. */
@@ -55,6 +56,8 @@ export interface SignalingServerOptions {
   readonly maxConnections?: number;
   readonly rateLimit?: RateLimit;
   readonly shutdownGraceMs?: number;
+  /** Issues ICE configurations, including TURN credentials, to room members. */
+  readonly rtcConfig?: RtcConfigIssuer;
 }
 
 export interface SignalingServer {
@@ -103,6 +106,7 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
     clock,
     ...(options.random === undefined ? {} : { random: options.random }),
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
+    ...(options.rtcConfig === undefined ? {} : { rtcConfig: options.rtcConfig }),
   });
 
   const httpServer = createServer(handleRequest);

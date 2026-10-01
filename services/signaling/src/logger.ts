@@ -16,6 +16,7 @@ export type RejectionDetail =
   | 'room_request'
   | 'negotiation_request'
   | 'resume_request'
+  | 'rtc_config_request'
   | 'relay_too_large';
 
 /** Transport-level failure classes. Fixed tokens only. */
@@ -27,7 +28,8 @@ export type TransportErrorDetail = 'oversized' | 'invalid_frame' | 'socket' | 'l
  * IP address cannot be logged without changing this type. Connections are
  * identified only by a process-local counter; room, session, participant,
  * and negotiation IDs are never logged, nor is any session description, ICE
- * candidate, username fragment, resume secret, challenge, or proof.
+ * candidate, username fragment, resume secret, challenge, proof, TURN
+ * username, TURN credential, or TURN secret.
  * Individual candidates are not logged at all.
  */
 export type LogEvent =
@@ -59,6 +61,16 @@ export type LogEvent =
       readonly event: 'negotiation_relayed';
       readonly connection: number;
       readonly step: Exclude<NegotiationStep, 'candidate'>;
+    }
+  /**
+   * An ICE configuration was issued to a room member. Whether it included a
+   * TURN credential is a fixed token; the URLs, username, and credential are
+   * never logged.
+   */
+  | {
+      readonly event: 'rtc_config_issued';
+      readonly connection: number;
+      readonly turn: 'issued' | 'not_configured';
     }
   | {
       readonly event: 'message_rejected';

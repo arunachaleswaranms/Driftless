@@ -119,6 +119,15 @@ assert.equal(resumedMessage.payload.activeNegotiationId, offer.negotiationId);
 const [backData] = await withTimeout(backNotice, 'CONNECTED notice');
 assert.equal(JSON.parse(backData.toString('utf8')).payload.signaling, 'CONNECTED');
 
+// The resumed member may ask for its ICE configuration; without TURN or STUN
+// configured, the list is empty and expires no later than the room.
+resumed.send(envelope('RTC_CONFIG_REQUEST', 2, {}));
+const [configData] = await withTimeout(once(resumed, 'message'), 'RTC_CONFIG');
+const config = JSON.parse(configData.toString('utf8'));
+assert.equal(config.type, 'RTC_CONFIG');
+assert.deepEqual(config.payload.iceServers, []);
+assert.ok(config.payload.expiresAt <= resumedMessage.payload.expiresAt);
+
 const closed = once(socket, 'close');
 const guestClosed = once(resumed, 'close');
 
@@ -152,6 +161,7 @@ assert.deepEqual(
     'connection_opened',
     'resume_challenge_issued',
     'participant_resumed',
+    'rtc_config_issued',
     'connection_closed',
     'connection_closed',
     'server_stopped',

@@ -14,9 +14,20 @@ import {
   type RoomId,
   type ServerMessage,
   type SessionId,
+  type RtcConfigMessage,
   type SessionResumedMessage,
 } from '@driftless/protocol';
-import type { IceServersResult } from './iceServers.ts';
+import { classifySelectedPath } from './connectionStats.ts';
+import {
+  NO_DIAGNOSTICS,
+  type ConnectionDiagnostics,
+  type TurnAvailability,
+} from './diagnostics.ts';
+import type {
+  IceServersResult,
+  IceTransportPolicy,
+  IceTransportPolicyResult,
+} from './iceServers.ts';
 import {
   PeerSession,
   type CreatePeerConnection,
@@ -33,6 +44,12 @@ import {
   type Timers,
 } from './reconnectSchedule.ts';
 import type { ProveResume } from './resumeProof.ts';
+import {
+  RTC_CONFIG_REFRESH_MARGIN_MS,
+  RTC_CONFIG_WAIT_MS,
+  acceptRtcConfig,
+  type RuntimeIceConfig,
+} from './rtcConfig.ts';
 import {
   ABANDONED_CLOSURE_CODE,
   SignalingClient,
@@ -128,7 +145,18 @@ type InRoomState = Extract<RoomState, { phase: 'in-room' }>;
 
 export interface RoomControllerOptions {
   readonly signalingUrl: SignalingUrlResult;
+  /** Build-time STUN servers. */
   readonly iceServers: IceServersResult;
+  /** The ICE transport policy; `all` unless a qualification build sets `relay`. */
+  readonly iceTransportPolicy?: IceTransportPolicyResult;
+  /**
+   * `service`: after admission, and before a peer connection when needed,
+   * ask the signaling service for ICE servers, including short-lived TURN
+   * credentials, and use them with the build-time STUN servers. `none` (the
+   * default) uses the build-time STUN servers only. The browser uses
+   * `service`.
+   */
+  readonly rtcConfigSource?: 'service' | 'none';
   readonly createWebSocket: CreateWebSocket;
   readonly createPeerConnection: CreatePeerConnection;
   readonly createNegotiationId: () => NegotiationId;
@@ -215,6 +243,8 @@ export class RoomController {
   readonly #options: RoomControllerOptions;
   readonly #timers: Timers;
   readonly #listeners = new Set<() => void>();
+  /** Separate, so room-state subscribers are notified only of room-state changes. */
+  readonly #diagnosticsListeners = new Set<() => void>();
   #state: RoomState = IDLE;
   #signaling: SignalingClient | undefined;
   /** Whether `#signaling` carries the membership, rather than resuming it. */
@@ -242,12 +272,78 @@ export class RoomController {
   /** The notice to show if the service closes the connection after an error. */
   #closingNotice: RoomNotice | undefined;
 
+  readonly #icePolicy: IceTransportPolicy;
+  readonly #rtcConfigSource: 'service' | 'none';
+  /** The service's latest usable ICE configuration, in memory only. */
+  #runtimeIce: RuntimeIceConfig | undefined;
+  /** The connection with an unanswered RTC_CONFIG_REQUEST, if any. */
+  #rtcConfigOutstanding: SignalingClient | undefined;
+  /** Peer connection starts waiting for the service's ICE configuration. */
+  #rtcConfigWaiters: (() => void)[] = [];
+  #cancelRtcConfigWait: Cancel | undefined;
+  /** What each peer session's configuration offered, for diagnostics. */
+  readonly #peerTurn = new WeakMap<PeerSession, TurnAvailability>();
+
+  #diagnostics: ConnectionDiagnostics;
+  /** Increases whenever a snapshot is started or discarded, so a late one is dropped. */
+  #diagnosticsGeneration = 0;
+
   constructor(options: RoomControllerOptions) {
     this.#options = options;
     this.#timers = options.timers ?? browserTimers;
+    const policy = options.iceTransportPolicy;
+    this.#icePolicy = policy?.ok === true ? policy.policy : 'all';
+    this.#rtcConfigSource = options.rtcConfigSource ?? 'none';
+    this.#diagnostics = NO_DIAGNOSTICS(this.#icePolicy);
   }
 
   getState = (): RoomState => this.#state;
+
+  /** The current peer connection's diagnostics; see `ConnectionDiagnostics`. */
+  getDiagnostics = (): ConnectionDiagnostics => this.#diagnostics;
+
+  subscribeDiagnostics = (listener: () => void): (() => void) => {
+    this.#diagnosticsListeners.add(listener);
+    return () => {
+      this.#diagnosticsListeners.delete(listener);
+    };
+  };
+
+  /**
+   * Reads the current peer connection's states and statistics again. It is
+   * observational only: it never restarts ICE, creates or closes a
+   * connection, changes the ICE policy, or triggers recovery, and a failure
+   * to read statistics only leaves the path `UNKNOWN`. Also run once each
+   * time a peer connection becomes connected, including after recovery.
+   */
+  refreshDiagnostics(): void {
+    const peer = this.#peer;
+    if (peer === undefined) {
+      this.#resetDiagnostics();
+      return;
+    }
+    const generation = ++this.#diagnosticsGeneration;
+    const previous = this.#diagnostics;
+    this.#setDiagnostics({
+      ...this.#observeDiagnostics(peer),
+      status: 'collecting',
+      // Same session, so the previous path still describes it until replaced.
+      path: previous.path,
+      collectedAt: previous.collectedAt,
+    });
+    peer.getStats().then(
+      (report) => {
+        if (generation !== this.#diagnosticsGeneration || this.#peer !== peer) return;
+        this.#setDiagnostics({
+          ...this.#observeDiagnostics(peer),
+          status: 'ready',
+          path: classifySelectedPath(report),
+          collectedAt: this.#options.clock(),
+        });
+      },
+      () => undefined,
+    );
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -353,7 +449,7 @@ export class RoomController {
   #configured(): boolean {
     const notice: RoomNotice | undefined = !this.#options.signalingUrl.ok
       ? 'insecure_origin'
-      : !this.#options.iceServers.ok
+      : !this.#options.iceServers.ok || this.#options.iceTransportPolicy?.ok === false
         ? 'invalid_ice_config'
         : undefined;
     if (notice === undefined) return true;
@@ -430,6 +526,7 @@ export class RoomController {
             peer: null,
             notice: null,
           });
+          this.#requestRtcConfig();
         }
         return;
       case 'ROOM_JOINED':
@@ -451,6 +548,7 @@ export class RoomController {
             },
             notice: null,
           });
+          this.#requestRtcConfig();
         }
         return;
       case 'ROOM_PARTICIPANT_JOINED':
@@ -500,6 +598,12 @@ export class RoomController {
         return;
       case 'ERROR':
         this.#error(message.payload.code, message.payload.recoverable);
+        return;
+      case 'RTC_CONFIG':
+        // Only the answer to this membership's own request on this connection.
+        if (state.phase === 'in-room' && this.#rtcConfigOutstanding === this.#signaling) {
+          this.#rtcConfigReceived(message);
+        }
         return;
       case 'RTC_OFFER':
         if (
@@ -582,6 +686,8 @@ export class RoomController {
   }
 
   #signalingClosed(reason: SignalingCloseReason): void {
+    // An unanswered configuration request is lost with its connection.
+    this.#dropRtcConfigWait();
     if (this.#reconnect?.purpose === 'leave') {
       // A terminal-leave connection ended: before or after the resume, and
       // possibly before ROOM_LEAVE took effect. Try again within the
@@ -922,7 +1028,9 @@ export class RoomController {
       ...state,
       peer: { ...state.peer, connection: this.#recovering ? 'recovering' : 'negotiating' },
     });
-    void peer.start();
+    this.#withRtcConfig(() => {
+      if (this.#peer === peer) void peer.start();
+    });
   }
 
   /** Guest: a fresh session for the host's first or recovery offer. */
@@ -938,7 +1046,11 @@ export class RoomController {
       ...state,
       peer: { ...state.peer, connection: this.#recovering ? 'recovering' : 'negotiating' },
     });
-    void peer.acceptOffer(sdp);
+    // The session exists already, so the host's trickled candidates are held
+    // in its bounded queue while the configuration is awaited.
+    this.#withRtcConfig(() => {
+      if (this.#peer === peer) void peer.acceptOffer(sdp);
+    });
   }
 
   #createPeer(
@@ -949,7 +1061,6 @@ export class RoomController {
   ): PeerSession {
     const membership = this.#membership;
     if (membership === undefined) throw new Error('No membership for a peer session.');
-    const { iceServers } = this.#options;
     const peer: PeerSession = new PeerSession({
       role,
       sessionId: membership.sessionId,
@@ -957,7 +1068,7 @@ export class RoomController {
       ...(previousNegotiationId === undefined ? {} : { previousNegotiationId }),
       localParticipantId: membership.participantId,
       remoteParticipantId,
-      configuration: { iceServers: iceServers.ok ? [...iceServers.iceServers] : [] },
+      configuration: () => this.#peerConfiguration(peer),
       createPeerConnection: this.#options.createPeerConnection,
       clock: this.#options.clock,
       // Signaling carries a session's messages only while it carries the
@@ -969,7 +1080,138 @@ export class RoomController {
       },
     });
     this.#peer = peer;
+    this.#resetDiagnostics();
     return peer;
+  }
+
+  /**
+   * The configuration for one peer connection, built when it is created:
+   * the build-time STUN servers, plus the service's ICE servers if a usable
+   * configuration is held, and the ICE transport policy if it is `relay`.
+   */
+  #peerConfiguration(peer: PeerSession): RTCConfiguration {
+    const { iceServers } = this.#options;
+    const runtime = this.#usableRuntimeIce(0);
+    const turn: TurnAvailability =
+      this.#rtcConfigSource === 'none'
+        ? 'not_requested'
+        : runtime === undefined
+          ? 'unavailable'
+          : runtime.turn
+            ? 'offered'
+            : 'not_configured';
+    this.#peerTurn.set(peer, turn);
+    return {
+      iceServers: [...(iceServers.ok ? iceServers.iceServers : []), ...(runtime?.iceServers ?? [])],
+      ...(this.#icePolicy === 'relay' ? { iceTransportPolicy: 'relay' } : {}),
+    };
+  }
+
+  /** The held configuration, if it stays usable for more than `marginMs`. */
+  #usableRuntimeIce(marginMs: number): RuntimeIceConfig | undefined {
+    const config = this.#runtimeIce;
+    return config !== undefined && config.expiresAt - this.#options.clock() > marginMs
+      ? config
+      : undefined;
+  }
+
+  /**
+   * Runs `start` once ICE servers are settled: at once without a service
+   * configuration or with a usable one; otherwise after the service answers
+   * a fresh request, or after RTC_CONFIG_WAIT_MS without TURN.
+   */
+  #withRtcConfig(start: () => void): void {
+    if (
+      this.#rtcConfigSource === 'none' ||
+      this.#usableRuntimeIce(RTC_CONFIG_REFRESH_MARGIN_MS) !== undefined
+    ) {
+      start();
+      return;
+    }
+    this.#rtcConfigWaiters.push(start);
+    this.#requestRtcConfig();
+    this.#cancelRtcConfigWait ??= this.#timers.schedule(RTC_CONFIG_WAIT_MS, () => {
+      this.#cancelRtcConfigWait = undefined;
+      this.#flushRtcConfigWaiters();
+    });
+  }
+
+  /** Asks for this membership's ICE configuration, once per unanswered request. */
+  #requestRtcConfig(): void {
+    const client = this.#signaling;
+    if (
+      this.#rtcConfigSource !== 'service' ||
+      client === undefined ||
+      !this.#signalingReady ||
+      this.#rtcConfigOutstanding === client
+    ) {
+      return;
+    }
+    if (client.send({ type: 'RTC_CONFIG_REQUEST', payload: {} })) {
+      this.#rtcConfigOutstanding = client;
+    }
+  }
+
+  #rtcConfigReceived(message: RtcConfigMessage): void {
+    this.#rtcConfigOutstanding = undefined;
+    // An unusable answer does not replace a configuration that is still usable.
+    const accepted = acceptRtcConfig(message, this.#options.clock());
+    if (accepted !== undefined) this.#runtimeIce = accepted;
+    this.#flushRtcConfigWaiters();
+  }
+
+  #flushRtcConfigWaiters(): void {
+    this.#cancelRtcConfigWait?.();
+    this.#cancelRtcConfigWait = undefined;
+    for (const start of this.#rtcConfigWaiters.splice(0)) start();
+  }
+
+  /** Forgets any unanswered request and pending start; their sessions are gone. */
+  #dropRtcConfigWait(): void {
+    this.#rtcConfigOutstanding = undefined;
+    this.#rtcConfigWaiters.length = 0;
+    this.#cancelRtcConfigWait?.();
+    this.#cancelRtcConfigWait = undefined;
+  }
+
+  /** Browser-reported states and counts of a session, without statistics. */
+  #observeDiagnostics(
+    peer: PeerSession | undefined,
+  ): Omit<ConnectionDiagnostics, 'status' | 'path' | 'collectedAt'> {
+    const observed = peer?.observe();
+    return {
+      peerConnection: observed?.connectionState ?? null,
+      iceConnection: observed?.iceConnectionState ?? null,
+      dataChannel: observed?.channelState ?? null,
+      negotiation:
+        peer === undefined
+          ? null
+          : { count: this.#negotiationCount, max: MAX_NEGOTIATIONS_PER_MEMBERSHIP },
+      turn: peer === undefined ? null : (this.#peerTurn.get(peer) ?? null),
+      icePolicy: this.#icePolicy,
+    };
+  }
+
+  /**
+   * Discards the snapshot when the peer session it described is replaced or
+   * closed, so diagnostics never show an earlier connection's path; any
+   * statistics still being read for it are dropped when they arrive.
+   */
+  #resetDiagnostics(): void {
+    this.#diagnosticsGeneration += 1;
+    this.#setDiagnostics({
+      ...this.#observeDiagnostics(this.#peer),
+      status: 'none',
+      path: NO_DIAGNOSTICS(this.#icePolicy).path,
+      collectedAt: null,
+    });
+  }
+
+  #setDiagnostics(diagnostics: ConnectionDiagnostics): void {
+    // Every field is a state, token, or number, so this compares them all.
+    if (JSON.stringify(diagnostics) === JSON.stringify(this.#diagnostics)) return;
+    this.#diagnostics = diagnostics;
+    for (const listener of [...this.#diagnosticsListeners]) listener();
   }
 
   #currentPeer(negotiationId: NegotiationId): PeerSession | undefined {
@@ -995,6 +1237,7 @@ export class RoomController {
       }
       this.#offering = undefined;
       this.#peer = undefined;
+      this.#resetDiagnostics();
       this.#recovering = true;
       this.#setInRoom({
         ...state,
@@ -1016,6 +1259,8 @@ export class RoomController {
     const connection: PeerConnectionView =
       peerState !== 'connected' && this.#recovering ? 'recovering' : peerState;
     this.#setInRoom({ ...state, peer: { ...state.peer, connection } });
+    // One snapshot per connected session, including each recovered one.
+    if (peerState === 'connected') this.refreshDiagnostics();
   }
 
   /** Closes a peer session that is not connected; its negotiation cannot finish. */
@@ -1060,6 +1305,9 @@ export class RoomController {
     this.#membership = undefined;
     this.#resetNegotiation();
     this.#disrupted = false;
+    // The configuration and its TURN credential belong to this membership.
+    this.#runtimeIce = undefined;
+    this.#dropRtcConfigWait();
   }
 
   /**
@@ -1084,12 +1332,14 @@ export class RoomController {
     const peer = this.#peer;
     this.#peer = undefined;
     peer?.close();
+    if (peer !== undefined) this.#resetDiagnostics();
   }
 
   #closeSignaling(code?: number): void {
     const client = this.#signaling;
     this.#signaling = undefined;
     this.#signalingReady = false;
+    this.#dropRtcConfigWait();
     client?.close(code);
   }
 

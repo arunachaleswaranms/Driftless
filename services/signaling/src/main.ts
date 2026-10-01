@@ -1,5 +1,6 @@
 import { loadConfig } from './config.js';
 import { createJsonLogger } from './logger.js';
+import { RtcConfigIssuer } from './rtcConfig.js';
 import { createSignalingServer } from './server.js';
 
 const result = loadConfig(process.env);
@@ -23,6 +24,7 @@ const server = createSignalingServer({
   roomTtlMs: config.roomTtlMs,
   reconnectGraceMs: config.reconnectGraceMs,
   heartbeatIntervalMs: config.heartbeatIntervalMs,
+  rtcConfig: new RtcConfigIssuer(config.rtc),
   logger: createJsonLogger(),
 });
 

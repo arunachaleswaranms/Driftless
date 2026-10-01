@@ -4,8 +4,8 @@
 
 This is the design specification for `protocolVersion: 1`.
 
-- **Implemented through Phase 2C:** the common JSON envelope; the client ↔ signaling-service room lifecycle messages (Phase 2A); the negotiation ID and the relayed WebRTC negotiation messages `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, and `ICE_COMPLETE`, and a two-message peer connection handshake on the data channel (Phase 2B); and the room session ID, the per-participant resume credential, challenge-response session resume (`SESSION_RESUME_BEGIN`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUME_PROVE`, `SESSION_RESUMED`), signaling presence (`ROOM_PARTICIPANT_CONNECTION`), the reconnect grace period, and fresh-negotiation peer recovery (`RTC_RECOVERY_REQUEST`, `RTC_RECOVER`) (Phase 2C). All are strictly validated in [`packages/protocol/`](../packages/protocol/), specified exactly in [Implemented through Phase 2C](#implemented-through-phase-2c-signaling-rooms-negotiation-and-recovery) below, and used by [`services/signaling/`](../services/signaling/) and the web client.
-- **Still conceptual:** every other message family in this document — readiness, media identity, host-authoritative playback, synchronization, social, transfer, Progressive Watch, connection diagnostics beyond the minimal recovery state, and TURN credential issuance — and binary framing. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, playback heartbeat intervals, and drift thresholds, remain undecided. The Phase 2C reconnect and recovery values below are provisional implementation bounds, not tuned network settings.
+- **Implemented through Phase 2D:** the common JSON envelope; the client ↔ signaling-service room lifecycle messages (Phase 2A); the negotiation ID and the relayed WebRTC negotiation messages `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, and `ICE_COMPLETE`, and a two-message peer connection handshake on the data channel (Phase 2B); and the room session ID, the per-participant resume credential, challenge-response session resume (`SESSION_RESUME_BEGIN`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUME_PROVE`, `SESSION_RESUMED`), signaling presence (`ROOM_PARTICIPANT_CONNECTION`), the reconnect grace period, and fresh-negotiation peer recovery (`RTC_RECOVERY_REQUEST`, `RTC_RECOVER`) (Phase 2C); and the ICE server configuration request and answer, `RTC_CONFIG_REQUEST` and `RTC_CONFIG`, which carry short-lived TURN credentials to an authenticated room member (Phase 2D). All are strictly validated in [`packages/protocol/`](../packages/protocol/), specified exactly in [Implemented through Phase 2D](#implemented-through-phase-2d-signaling-rooms-negotiation-recovery-and-ice-configuration) below, and used by [`services/signaling/`](../services/signaling/) and the web client.
+- **Still conceptual:** every other message family in this document — readiness, media identity, host-authoritative playback, synchronization, social, transfer, Progressive Watch, and connection diagnostics (`CONNECTION_STATUS`) — and binary framing. Phase 2D connection diagnostics are browser-local and use no message: no diagnostic, statistic, candidate type, or path classification is ever sent to the service or the peer. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, playback heartbeat intervals, and drift thresholds, remain undecided. The Phase 2C reconnect and recovery values below are provisional implementation bounds, not tuned network settings.
 
 Implementing one subset does not freeze the rest of this conceptual protocol.
 
@@ -40,11 +40,11 @@ Conceptually, every control message contains:
 
 Session, participant, correlation, and media identifiers are expected where needed, but their exact placement and representation are not yet frozen. Binary media data may use a compact frame separate from JSON control messages while retaining equivalent version, type, transfer, ordering, and integrity context.
 
-## Implemented through Phase 2C: Signaling, Rooms, Negotiation, and Recovery
+## Implemented through Phase 2D: Signaling, Rooms, Negotiation, Recovery, and ICE Configuration
 
-This section is normative for the implemented subset. It covers traffic between a client and the signaling service over the `/v1/signaling` WebSocket, and the connection handshake on the peer data channel. No other peer-to-peer message exists.
+This section is normative for the implemented subset. It covers traffic between a client and the signaling service over the `/v1/signaling` WebSocket, including the Phase 2D ICE server configuration, and the connection handshake on the peer data channel. No other peer-to-peer message exists.
 
-The implemented subset is pre-release: nothing is deployed, and the service and client ship together from this repository. Phase 2C therefore changed some Phase 2A/2B shapes in place under `protocolVersion: 1` (new fields in `ROOM_CREATED`, `ROOM_JOINED`, `PEER_HELLO`, and `PEER_READY`; new reasons and an error code). The compatibility rules under [Versioning and Compatibility](#versioning-and-compatibility) apply from the first deployment.
+The implemented subset is pre-release: the service and client ship together from this repository. Phase 2D added two message types without changing an existing one. Phase 2C changed some Phase 2A/2B shapes in place under `protocolVersion: 1` (new fields in `ROOM_CREATED`, `ROOM_JOINED`, `PEER_HELLO`, and `PEER_READY`; new reasons and an error code). The compatibility rules under [Versioning and Compatibility](#versioning-and-compatibility) apply from the first deployment.
 
 ### Envelope
 
@@ -90,6 +90,7 @@ The negotiation ID is 18 rather than 16 bytes, and the resume secret 33 rather t
 | `ROOM_LEAVE`  | `{}`                       | End the sender's membership in its current room.    |
 | `SESSION_RESUME_BEGIN` | `{ sessionId, participantId }` | Ask to resume a membership on this connection. Carries no secret. |
 | `SESSION_RESUME_PROVE` | `{ challenge, proof }`         | Answer this connection's pending challenge.                      |
+| `RTC_CONFIG_REQUEST`   | `{}`                           | Ask for this membership's ICE server configuration (Phase 2D).   |
 
 The negotiation and recovery messages below are also client → server messages.
 
@@ -106,6 +107,7 @@ The negotiation and recovery messages below are also client → server messages.
 | `ROOM_PARTICIPANT_CONNECTION` | `{ participantId, signaling: "CONNECTED" \| "RECONNECTING", activeNegotiationId, negotiationCount }`                   | The other member, when a member's signaling is lost or resumed. |
 | `SESSION_RESUME_CHALLENGE`    | `{ challenge }`                                                                                                       | A connection that sent `SESSION_RESUME_BEGIN`.    |
 | `SESSION_RESUMED`             | the resume snapshot, below                                                                                            | A connection whose resume proof was accepted.     |
+| `RTC_CONFIG`                  | `{ expiresAt, iceServers }`, below                                                                                     | The member that sent `RTC_CONFIG_REQUEST`, only.  |
 | `ERROR`                       | `{ code, message, recoverable }`                                                                                      | The connection whose message failed.              |
 
 The negotiation and recovery messages below are also server → client messages: the relayed copy a participant receives from its peer.
@@ -244,6 +246,26 @@ The service sends a WebSocket protocol ping to every connection every 15 seconds
 
 **Known limitation (Phase 2D).** A connection whose network path dies silently — no FIN or RST reaches the service — is still considered live by the service until it misses a ping, 15–30 seconds with the default interval, and a resume is refused while it is. The browser's retry schedule (about 16 seconds of delays) can therefore end before the service notices, for example after a network switch; the room then ends in the browser while the other participant sees "reconnecting" until the service's own detection and grace run out. Conversely, the browser has no application-level liveness check of its own. Choosing the ping interval and retry window for real and mobile networks needs real-network evidence; Phase 2C automation relies on observed transport closes.
 
+### ICE server configuration
+
+Phase 2D. A browser needs STUN and TURN servers, and TURN needs a credential, which must never be built into the public browser bundle. The service therefore hands each authenticated room member its own short-lived configuration on request.
+
+```text
+connection carrying a membership (after ROOM_CREATED, ROOM_JOINED, or SESSION_RESUMED)
+  → RTC_CONFIG_REQUEST {}
+  ← RTC_CONFIG { expiresAt, iceServers: [ { urls, username, credential }, … ] }
+```
+
+- **Authorization.** Accepted only from a connection that currently carries a room membership. A connection in no room, one with a pending resume challenge, and one whose resume proof was refused receive a recoverable `INVALID_STATE` and no configuration. The answer goes to the requesting connection only, never to the other participant.
+- **Bound.** At most `MAX_RTC_CONFIG_REQUESTS_PER_CONNECTION` (8, provisional) requests per connection; later ones receive `INVALID_STATE`. A browser asks once after admission and again only before a new peer connection when its configuration is within 60 seconds of expiry.
+- **`iceServers`.** At most `MAX_RTC_ICE_SERVERS` (4) entries, each exactly `{ urls, username, credential }`:
+  - `urls`: 1 to `MAX_RTC_ICE_SERVER_URLS` (4) distinct URLs of at most `MAX_ICE_SERVER_URL_BYTES` (300) bytes, all of one kind: `stun:`/`stuns:` (RFC 7064) or `turn:`/`turns:` (RFC 7065) with a DNS name, IPv4, or bracketed IPv6 host, an optional port 1–65535, and, for TURN only, an optional `?transport=udp` or `?transport=tcp`. No other scheme, user information, path, or parameter is accepted.
+  - A STUN entry has `username` and `credential` `null`. A TURN entry has both, each printable ASCII without spaces, at most `MAX_ICE_SERVER_USERNAME_BYTES` (128) and `MAX_ICE_SERVER_CREDENTIAL_BYTES` (128) bytes.
+  - Any invalid entry or extra field rejects the whole message; nothing is skipped. An empty list is valid: the service has no ICE server configured.
+- **Expiry.** `expiresAt` is the service clock in milliseconds since the Unix epoch. The configuration's lifetime is `expiresAt − sentAt` of the same message, both on the service clock, so client clock skew does not change it; a client refuses a lifetime that is not positive or exceeds `MAX_RTC_CONFIG_TTL_MS` (one day). The service never issues one beyond the room's expiry. A client uses it only for peer connections it creates before the lifetime ends, in memory, and never persists, displays, logs, or exports it.
+- **TURN credentials.** Derived by the service with the TURN REST shared-secret scheme ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)): `username = "<expiry, Unix seconds>:<pseudonymous participant label>"` and `credential = base64(HMAC-SHA1(secret, username))`. The protocol carries only the derived values; the shared secret never appears in any message. The username's expiry equals `expiresAt` in whole seconds.
+- **Failure.** If no usable configuration arrives within a bounded wait (3 s, provisional, client policy), a client may connect with its build-time STUN servers only; it never falls back to a stored or built-in TURN credential.
+
 ### Peer recovery
 
 A failed peer session is never repaired: no ICE restart (`restartIce()` is not used) and no renegotiation within it. It is replaced by a fresh `RTCPeerConnection`, a fresh negotiation ID, a fresh `driftless-control` channel, and a fresh handshake. The host remains the only offerer.
@@ -267,7 +289,7 @@ The families below are the conceptual baseline. Apart from the implemented signa
 
 ### Room and Session
 
-The signaling-level room messages are implemented; see [above](#implemented-through-phase-2b-signaling-rooms-and-negotiation). The capability negotiation described for `ROOM_JOIN` and the readiness messages remain conceptual.
+The signaling-level room messages are implemented; see [above](#implemented-through-phase-2d-signaling-rooms-negotiation-recovery-and-ice-configuration). The capability negotiation described for `ROOM_JOIN` and the readiness messages remain conceptual.
 
 | Type | Purpose |
 | --- | --- |
@@ -365,6 +387,6 @@ Peers exchange capabilities before mode activation. A peer that cannot safely in
 
 ## Representation Still to Be Decided
 
-Phase 2A settled, for signaling only: hand-written strict validation in `packages/protocol` rather than a schema library, the room ID, invite secret, and participant ID encodings, and the signaling error codes. Phase 2B settled the negotiation message shapes and the negotiation ID, the provisional negotiation bounds, and the control channel's label and settings and its connection handshake. Phase 2C settled the session ID, the resume secret, challenge, and proof formats, the resume flow and its sequence reset, signaling presence, the connection-ending classification, and the recovery messages and negotiation bound; its timing values remain provisional.
+Phase 2A settled, for signaling only: hand-written strict validation in `packages/protocol` rather than a schema library, the room ID, invite secret, and participant ID encodings, and the signaling error codes. Phase 2B settled the negotiation message shapes and the negotiation ID, the provisional negotiation bounds, and the control channel's label and settings and its connection handshake. Phase 2C settled the session ID, the resume secret, challenge, and proof formats, the resume flow and its sequence reset, signaling presence, the connection-ending classification, and the recovery messages and negotiation bound; its timing values remain provisional. Phase 2D settled the ICE server configuration messages, their bounds, and the TURN credential derivation.
 
 The following remain open: peer data-channel message shapes beyond the handshake, binary frame layout, any further channels and their settings, media and transfer identifier encodings, fingerprint format, chunk size, acknowledgement strategy, peer-protocol error codes, timing intervals, and numeric correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.

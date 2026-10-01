@@ -208,6 +208,14 @@ interface Deferred {
  */
 export class FakePeerConnection {
   connectionState: RTCPeerConnectionState = 'new';
+  iceConnectionState: RTCIceConnectionState = 'new';
+  /**
+   * What `getStats()` resolves with: a report, `'reject'` to make it fail,
+   * or `'pending'` to hold it until `resolveStats()`.
+   */
+  stats: Map<string, unknown> | 'reject' | 'pending' = new Map();
+  getStatsCalls = 0;
+  readonly #pendingStats: ((report: Map<string, unknown>) => void)[] = [];
   localDescription: RTCSessionDescription | null = null;
   onicecandidate: PeerConnectionLike['onicecandidate'] = null;
   onconnectionstatechange: PeerConnectionLike['onconnectionstatechange'] = null;
@@ -269,6 +277,24 @@ export class FakePeerConnection {
       return Promise.reject(new Error('unusable candidate'));
     }
     return Promise.resolve();
+  }
+
+  getStats(): Promise<Map<string, unknown>> {
+    this.getStatsCalls += 1;
+    const { stats } = this;
+    if (stats === 'reject') return Promise.reject(new Error('stats unavailable'));
+    if (stats === 'pending') {
+      return new Promise((resolve) => {
+        this.#pendingStats.push(resolve);
+      });
+    }
+    return Promise.resolve(stats);
+  }
+
+  /** Settles every held getStats() call with `report`. */
+  async resolveStats(report: Map<string, unknown>): Promise<void> {
+    for (const resolve of this.#pendingStats.splice(0)) resolve(report);
+    await flush();
   }
 
   close(): void {
@@ -434,3 +460,47 @@ export function fakeProver(calls: ResumeChallenge[] = []) {
     },
   };
 }
+
+/**
+ * A synthetic getStats() report whose selected pair has the given candidate
+ * types. Its addresses are recognisable documentation addresses, so tests can
+ * show that none of them is displayed or exported.
+ */
+export function statsReport(
+  localType: string,
+  remoteType: string,
+  options: { pairId?: string; relayProtocol?: string } = {},
+): Map<string, unknown> {
+  const pairId = options.pairId ?? 'CP1';
+  const entries: Record<string, unknown>[] = [
+    { id: 'T1', type: 'transport', selectedCandidatePairId: pairId },
+    {
+      id: pairId,
+      type: 'candidate-pair',
+      state: 'succeeded',
+      localCandidateId: `L-${pairId}`,
+      remoteCandidateId: `R-${pairId}`,
+    },
+    {
+      id: `L-${pairId}`,
+      type: 'local-candidate',
+      candidateType: localType,
+      protocol: 'udp',
+      address: '192.0.2.44',
+      port: 50000,
+      ...(options.relayProtocol === undefined ? {} : { relayProtocol: options.relayProtocol }),
+    },
+    {
+      id: `R-${pairId}`,
+      type: 'remote-candidate',
+      candidateType: remoteType,
+      protocol: 'udp',
+      address: '198.51.100.77',
+      port: 50001,
+    },
+  ];
+  return new Map(entries.map((entry) => [String(entry.id), entry]));
+}
+
+/** Every address `statsReport` contains. */
+export const STATS_ADDRESSES = ['192.0.2.44', '198.51.100.77', '50000', '50001'];

@@ -34,10 +34,10 @@ Phase 2 — Internet P2P Foundation: **IN PROGRESS**.
 | -------- | ---------------------------------- | -------------------------------- |
 | Phase 2A | Protocol & signaling foundation    | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2B | Room join & WebRTC negotiation     | **IMPLEMENTED / REVIEW PASS**    |
-| Phase 2C | Connection lifecycle & reconnect   | **IMPLEMENTED**                  |
-| Phase 2D | Diagnostics / real-network closure | **NEXT — NOT STARTED**           |
+| Phase 2C | Connection lifecycle & reconnect   | **IMPLEMENTED / REVIEW PASS**    |
+| Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED — QUALIFICATION PENDING** |
 
-Phase 2 exit gate: **NOT PASSED**. No real device or real network has been tested in Phase 2; the Phase 2B and 2C browser evidence is two browser contexts on one development machine.
+Phase 2 exit gate: **NOT PASSED**. The Phase 2B–2D browser evidence is two browser contexts on one development machine. The real-device, real-network evaluation is recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
 
 ## Current Branch
 
@@ -58,7 +58,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. No TURN, connection diagnostics, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `packages/sync-engine/` and `packages/transfer-engine/` remain empty.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. Phase 2D added connection diagnostics, the runtime ICE configuration, and the TURN credential boundary (no TURN server is part of the repository). No synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `packages/sync-engine/` and `packages/transfer-engine/` remain empty.
 
 ## Accepted Architecture
 
@@ -333,9 +333,9 @@ Implemented on `phase/2-internet-p2p-foundation` at `5d25fea` on top of the revi
 - The room tests observed one peer connection per side, `connected`, with no senders, receivers, or transceivers; exactly one open `driftless-control` channel, ordered, with no retransmit or lifetime limit; `PEER_HELLO` and `PEER_READY` sent and received by both peers for the same negotiation; and, after leave, a closed connection and channel. They also observed no media call, no CSP violation, only same-origin static requests and one same-origin socket, no room data in the URL or storage, and no console warning or error.
 - `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities.
 
-### Phase 2C — Connection Lifecycle & Reconnect (IMPLEMENTED)
+### Phase 2C — Connection Lifecycle & Reconnect (IMPLEMENTED / REVIEW PASS)
 
-Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B commit `5d25fea`. It awaits independent review. A current two-person room recovers, within bounds, from signaling loss, a brief signaling network interruption, peer data-channel failure, a guest's or host's signaling loss, and both at once.
+Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B commit `5d25fea`, at `e1cf99a` with the terminal-leave fix at `df21cad`, and passed independent GitHub review. A current two-person room recovers, within bounds, from signaling loss, a brief signaling network interruption, peer data-channel failure, a guest's or host's signaling loss, and both at once.
 
 - **Session identity.** Each room has a non-secret session ID (20 bytes from `crypto.randomBytes`, 27 base64url characters) generated by the service with the room, immutable, returned to both participants, preserved across resume, and invalid once the room ends. `PEER_HELLO` and `PEER_READY` now carry it, so the handshake is bound to session, negotiation, sender, and recipient, and a message from another session, an earlier room incarnation, another participant, or another negotiation fails closed.
 - **Resume credential.** Each participant receives its own 264-bit resume secret, once, at admission; it is not the invite secret, is never shared with the other participant, and authorizes only resuming its own membership. The service keeps only `SHA-256(secret)`; the browser keeps the secret in the room controller's private memory only — never in rendered state, the page, a URL, storage, or a log — so a page reload cannot resume a room.
@@ -352,7 +352,7 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B
 - **Interface.** The state model keeps membership, own signaling, the peer's signaling presence, and the peer transport independent. The polite status line states, for example, "Peer data channel connected. Signaling is reconnecting…", "The other participant is reconnecting…", "Peer connection lost. Recovering…", "Connection restored.", and "The room session could not be recovered."; it never says fully connected while signaling is unavailable and announces no retries. **Leave room** remains usable while reconnecting. No secret, challenge, proof, retry count, timer, or raw error is shown.
 - **Logging.** New fixed events `participant_disconnected`, `resume_challenge_issued`, `participant_resumed`, `resume_rejected`, `reconnect_timeout`, negotiation steps `recover` and `recovery_request`, and the transport detail `liveness_timeout`; no secret, key, proof, challenge, or identifier is logged.
 - **Bounds.** At most 256 rooms held at once (including rooms whose host is reconnecting), one resume key per participant, one pending challenge per connection, at most four used negotiation IDs per membership, one sweep and one liveness timer in the service, and one resume schedule per room session in the browser.
-- **Not implemented:** TURN or TURN credentials, selected ICE path or `getStats` diagnostics, `restartIce()`, recovery across page reload or service restart, real-network or physical-device qualification, Local Sync, playback synchronization, media transfer, and Progressive Watch.
+- **Not implemented in Phase 2C** (Phase 2D added TURN credentials and `getStats` diagnostics): `restartIce()`, recovery across page reload or service restart, real-network or physical-device qualification, Local Sync, playback synchronization, media transfer, and Progressive Watch.
 - **Dependencies.** None added or changed. Web Crypto, Node's crypto, and the existing `ws` are used.
 
 **Phase 2C automated evidence.** `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0, from `npm ci` at the root. Browser results are `AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE`: separate browser contexts in one browser on one machine, a loopback signaling service, real WebSockets and WebRTC objects, and no ICE server. A lost signaling connection is the application's real socket closed from the page with an application close code; a network outage is Chromium's offline emulation, which in these browsers blocked new sockets and left the open data channel working. None of this is real-network, NAT-recovery, Internet-reconnect, carrier or mobile, TURN, Android, or compatibility evidence.
@@ -368,13 +368,29 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B
 - Mutation checks confirmed that the browser reconnect tests fail when a working data channel is dropped on signaling loss, the negotiation bound is ignored, any recovery offer is accepted, a mismatched session is kept, the schedule never ends, or a resume sends an extra message; one surviving mutation exposed a gap (a recovery request lost while the host was away was never repeated), which was fixed and given a test.
 - `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities.
 
+### Phase 2D — Diagnostics / Real-Network Closure (IMPLEMENTED — QUALIFICATION PENDING)
+
+Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C commit `df21cad`. The real-device, real-network evaluation and the Phase 2 gate decision are recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
+
+- **Connection diagnostics.** `apps/web/src/features/room/connectionStats.ts` classifies the selected ICE path from `RTCPeerConnection.getStats()`: `transport.selectedCandidatePairId` → the candidate pair (which must have `state: "succeeded"`) → its local and remote candidates' `candidateType`. `TURN_RELAY` is a relay candidate on either side; `DIRECT` is a known pair with neither relayed (host, srflx, prflx — not necessarily one network); everything less certain, including no or conflicting selected pairs, a missing or unfamiliar candidate, a pair that has not succeeded, and failed statistics, is `UNKNOWN` with a fixed reason. A single pair marked `selected: true` is used only when no transport names a pair. Only candidate types and transport/relay protocols are read into the result; no address, port, candidate string, URL, SDP, ICE username fragment, fingerprint, or identifier.
+- **Diagnostics lifecycle.** The room controller reads statistics once when a peer connection becomes connected (including every recovered one) and on **Refresh diagnostics**; there is no polling and no timer. A replaced or closed connection's snapshot is discarded at once and a late read of it is dropped, so diagnostics always describe the current connection. Diagnostics are observational: a failure leaves the path `UNKNOWN`; nothing renegotiates, restarts ICE, changes policy, or recovers because of them. They have their own subscription, so room-state subscribers see exactly the Phase 2C notifications. Nothing is sent anywhere, persisted, or logged.
+- **Interface.** A collapsed **Connection diagnostics** section in the room shows signaling, peer-connection, ICE, and data-channel states; the path; candidate types; transport and relay protocol; the negotiation count of four; TURN availability; the ICE policy; and the build revision (`DRIFTLESS_BUILD_REVISION`). **Copy diagnostics** copies the same safe fields as text. No compatibility or support badge is shown.
+- **Runtime ICE configuration and TURN credentials.** New protocol messages `RTC_CONFIG_REQUEST {}` and `RTC_CONFIG { expiresAt, iceServers }` with exact, bounded entries (at most 4 entries of at most 4 `stun:`/`stuns:`/`turn:`/`turns:` URLs, credentials exactly on TURN entries, 128-byte username and credential, lifetime at most one day). The service answers only a connection that carries a room membership, only on that connection, at most 8 times per connection; a connection in no room or still resuming is refused. TURN credentials use the TURN REST shared-secret scheme ([ADR-0007](docs/adr/0007-ephemeral-turn-credentials.md)): `"<expiry>:<HMAC-derived per-participant label>"` and `base64(HMAC-SHA1(secret, username))`, valid for `SIGNALING_TURN_CREDENTIAL_TTL_SECONDS` (default 3600 s, 60–86400) and never past the room. The secret comes from `SIGNALING_TURN_SECRET_FILE` or `SIGNALING_TURN_SECRET`; it is never logged or echoed. The browser requests the configuration once after admission, waits at most 3 s for it before a peer connection (then connects without TURN), refetches within 60 s of expiry, keeps it in memory only, and forgets it with the room. No TURN credential is ever in the build, the room state, the diagnostics, the export, or a log.
+- **ICE policy.** `all` normally. `VITE_RTC_ICE_TRANSPORT_POLICY=relay` is a qualification-only build setting; without TURN such a session fails at once with `relay_unavailable` and recovery stops at the negotiation bound.
+- **Deployment boundary.** [DEPLOYMENT.md](docs/DEPLOYMENT.md): same-origin HTTPS/WSS through a TLS reverse proxy, loopback-bound signaling, production origin list, secret files, security response headers, a coturn configuration with `use-auth-secret`, quotas, and denied private peer ranges, relay qualification builds on a separate origin, and the smoke test. No deployment target, domain, certificate, or TURN service is part of the repository.
+- **Dependencies.** None added or changed. Node's crypto derives credentials; the browser uses the platform `getStats()`.
+
+**Phase 2D automated evidence.** `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0. Browser results are `AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE`: separate browser contexts in one browser on one machine, a loopback signaling service with no STUN or TURN configured, and real `RTCPeerConnection` objects. The exact commit, full verification counts, and the real-network results are in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
+
+- `@driftless/protocol` 234 Vitest tests (17 new); `@driftless/signaling` 206 (21 new); `@driftless/web` 329 (49 new). Playwright: 50 tests (4 new diagnostics tests).
+- Supplemental, not real-network evidence: a loopback TURN server (pion/turn v4.1.4 with its TURN REST shared-secret handler, run from a scratch directory, not part of the repository) accepted the service-issued credentials; a relay-only build connected two Chromium contexts with both diagnostics reporting `TURN relay` (relay/relay, UDP), a normal build with TURN offered selected a direct srflx/prflx pair, and a credential from a mismatched secret did not connect. Same machine, same loopback interface.
+
 ## Open Deferred Qualification
 
 - Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests and Phase 2B's and 2C's same-host browser tests do not satisfy `DEFERRED-PHYSICAL-002`.
 
 ## Not Started
 
-- Phase 2D — Diagnostics / Real-Network Closure (**NEXT — NOT STARTED**): connection diagnostics, TURN and its credential issuance, selected-path (direct versus relay) evidence, real-network and physical-device qualification including recovery on real networks, and the Phase 2 exit gate decision.
 - Later phases: synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
@@ -469,7 +485,7 @@ Spike 0.7 integrated those components in controlled Chrome and found no architec
 ## Open Questions
 
 - Where will production signaling be hosted?
-- Will STUN/TURN be self-hosted or provided by a third party?
+- Will STUN/TURN be self-hosted or provided by a third party? ADR-0007 adopts a provider-neutral credential scheme and recommends self-hosted coturn; no host or provider has been chosen.
 - What TURN bandwidth, reliability, and cost are practical for progressive media?
 - What exact MP4 fragmentation strategy is interoperable across target browsers? Spike 0.6 showed that desktop Chrome 153 plays Spike 0.5 planned fragments in both muxed and separate SourceBuffer layouts. Firefox, Safari, and Android Chrome are untested.
 - What startup, low-water, high-water, and lookahead thresholds and quota handling should the buffer manager use on target devices? Spike 0.6 used laboratory values only.
@@ -489,7 +505,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent GitHub review of the exact pushed Phase 2C commit on `phase/2-internet-p2p-foundation`. Do not begin Phase 2D before that review passes.
+Real-device, real-network qualification of the committed Phase 2D candidate, recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Do not begin Phase 3.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 

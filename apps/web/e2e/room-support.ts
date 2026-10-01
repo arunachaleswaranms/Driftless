@@ -38,6 +38,8 @@ export interface RtcProbe {
   cspViolations: string[];
   /** Every distinct text the room status line showed, in order. */
   statusLog: string[];
+  /** getStats() calls the application made, per peer connection, by index. */
+  statsCalls: number[];
 }
 
 declare global {
@@ -58,6 +60,7 @@ export function installRtcProbe() {
     received: [],
     mediaCalls: [],
     cspViolations: [],
+    statsCalls: [],
   };
   window.rtcProbe = probe;
   document.addEventListener('securitypolicyviolation', (event) => {
@@ -88,9 +91,16 @@ export function installRtcProbe() {
     constructor(configuration?: RTCConfiguration) {
       super(configuration);
       probe.peerConnections.push(this);
+      probe.statsCalls.push(0);
       this.addEventListener('datachannel', (event) => {
         track(event.channel);
       });
+    }
+    // Counted, then passed through unchanged.
+    override getStats(selector?: MediaStreamTrack | null): Promise<RTCStatsReport> {
+      const index = probe.peerConnections.indexOf(this);
+      probe.statsCalls[index] = (probe.statsCalls[index] ?? 0) + 1;
+      return super.getStats(selector);
     }
     override createDataChannel(label: string, init?: RTCDataChannelInit): RTCDataChannel {
       const channel = super.createDataChannel(label, init);
@@ -395,3 +405,56 @@ export const CONNECTED_STATUS = /^(Connection restored\. )?Peer data channel is 
 export function statusLog(peer: Peer): Promise<string[]> {
   return peer.page.evaluate(() => [...window.rtcProbe.statusLog]);
 }
+
+/** The page's connection diagnostics section, opened. */
+export async function openDiagnostics(page: Page): Promise<Locator> {
+  const section = room(page).locator('details', { hasText: 'Connection diagnostics' });
+  if ((await section.getAttribute('open')) === null) {
+    await section.locator('summary').click();
+  }
+  await expect(section).toHaveAttribute('open', '');
+  return section;
+}
+
+/** One labelled value of the diagnostics section. */
+export function diagnosticsFact(section: Locator, label: string): Locator {
+  return section.locator(`dt:text-is("${label}") + dd`);
+}
+
+/**
+ * The browser's own report of the selected pair of the page's latest peer
+ * connection, read independently of the application: candidate types and
+ * protocol only, never addresses. Does not count as an application call.
+ */
+export function selectedPairTypes(page: Page) {
+  return page.evaluate(async () => {
+    const probe = window.rtcProbe;
+    const connection = probe.peerConnections.at(-1);
+    if (connection === undefined) throw new Error('no peer connection');
+    const index = probe.peerConnections.length - 1;
+    const before = probe.statsCalls[index] ?? 0;
+    const report = await connection.getStats();
+    probe.statsCalls[index] = before;
+    const all = new Map<string, Record<string, unknown>>();
+    report.forEach((value: Record<string, unknown>) => {
+      all.set(String(value.id), value);
+    });
+    const pairIds = [...all.values()]
+      .filter((value) => value.type === 'transport')
+      .map((value) => value.selectedCandidatePairId);
+    const pair = all.get(String(pairIds[0]));
+    const local = all.get(String(pair?.localCandidateId));
+    const remote = all.get(String(pair?.remoteCandidateId));
+    return {
+      transports: pairIds.length,
+      pairState: pair?.state,
+      local: local?.candidateType,
+      remote: remote?.candidateType,
+      protocol: local?.protocol,
+    };
+  });
+}
+
+/** IPv4 or IPv6 literals, and mDNS host names. */
+export const ADDRESS_LIKE =
+  /\b\d{1,3}(\.\d{1,3}){3}\b|\b[0-9a-f]{1,4}(:[0-9a-f]{0,4}){2,7}\b|\.local\b/i;

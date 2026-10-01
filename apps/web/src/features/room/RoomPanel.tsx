@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type SubmitEvent } from 'react';
+import { ConnectionDiagnosticsView } from './ConnectionDiagnosticsView.tsx';
 import { createBrowserRoomController } from './browserRoomController.ts';
 import type {
   PeerConnectionView,
@@ -98,6 +99,9 @@ export function RoomPanel({ controller: provided }: RoomPanelProps) {
           controller.leaveRoom();
         }}
       />
+      {state.phase === 'in-room' ? (
+        <ConnectionDiagnosticsView controller={controller} state={state} />
+      ) : null}
     </section>
   );
 }

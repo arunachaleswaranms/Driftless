@@ -66,8 +66,23 @@ const signalingProxy: Record<string, ProxyOptions> = {
   '/v1/signaling': { target: SIGNALING_TARGET, ws: true, changeOrigin: false },
 };
 
+// The Git revision a build is made from, shown in connection diagnostics so
+// qualification evidence can name the exact deployed revision. Set
+// DRIFTLESS_BUILD_REVISION to the full or abbreviated commit hash; unset
+// builds say "unversioned". It is not a secret.
+const BUILD_REVISION = buildRevision(process.env.DRIFTLESS_BUILD_REVISION);
+
+function buildRevision(value: string | undefined): string {
+  if (value === undefined || value === '') return 'unversioned';
+  if (!/^[0-9a-f]{7,40}$/.test(value)) {
+    throw new Error('DRIFTLESS_BUILD_REVISION must be a lowercase hexadecimal Git commit hash.');
+  }
+  return value;
+}
+
 export default defineConfig({
   plugins: [react(), contentSecurityPolicy()],
+  define: { __DRIFTLESS_BUILD__: JSON.stringify(BUILD_REVISION) },
   server: {
     port: 5173,
     strictPort: true,

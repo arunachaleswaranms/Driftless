@@ -275,6 +275,11 @@ export class RoomStore {
     return participant === undefined ? undefined : member(participant);
   }
 
+  /** The expiry of the room this connection's membership belongs to. */
+  roomExpiryOf(key: MemberKey): number | undefined {
+    return this.#bindings.get(key)?.expiresAt;
+  }
+
   createRoom(key: MemberKey, now: number): CreateRoomResult {
     if (this.#bindings.has(key)) return { ok: false, code: 'INVALID_STATE' };
     if (this.#rooms.size >= this.#maxRooms) return { ok: false, code: 'SERVER_ERROR' };

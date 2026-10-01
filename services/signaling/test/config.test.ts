@@ -19,6 +19,7 @@ describe('loadConfig', () => {
         roomTtlMs: 3_600_000,
         reconnectGraceMs: 30_000,
         heartbeatIntervalMs: 15_000,
+        rtc: { stunUrls: [], turn: undefined, ttlMs: 3_600_000 },
       },
     });
     for (const origin of DEVELOPMENT_ORIGINS) {
@@ -46,6 +47,7 @@ describe('loadConfig', () => {
         roomTtlMs: 600_000,
         reconnectGraceMs: 45_000,
         heartbeatIntervalMs: 20_000,
+        rtc: { stunUrls: [], turn: undefined, ttlMs: 3_600_000 },
       },
     });
   });
@@ -151,5 +153,132 @@ describe('loadConfig', () => {
   it('does not echo rejected values', () => {
     const value = 'https://attacker.example/secret-token-value';
     expect(error({ SIGNALING_ALLOWED_ORIGINS: value })).not.toContain('secret-token-value');
+  });
+});
+
+describe('ICE server and TURN configuration', () => {
+  const SECRET = 'a-test-turn-shared-secret-of-sufficient-length';
+  const TURN = 'turn:turn.example.org:3478?transport=udp, turns:turn.example.org:5349';
+  const noFile = (): string => {
+    throw new Error('no file system in this test');
+  };
+
+  function rtc(env: Record<string, string>, readFile: (path: string) => string = noFile) {
+    const result = loadConfig(env, readFile);
+    if (!result.ok) throw new Error(result.error);
+    return result.config.rtc;
+  }
+
+  function rtcError(env: Record<string, string>, readFile: (path: string) => string = noFile) {
+    const result = loadConfig(env, readFile);
+    if (result.ok) throw new Error('expected a configuration error');
+    return result.error;
+  }
+
+  it('reads STUN URLs, TURN URLs, an inline secret, and the credential lifetime', () => {
+    expect(
+      rtc({
+        SIGNALING_STUN_URLS: 'stun:stun.example.org:3478',
+        SIGNALING_TURN_URLS: TURN,
+        SIGNALING_TURN_SECRET: SECRET,
+        SIGNALING_TURN_CREDENTIAL_TTL_SECONDS: '600',
+      }),
+    ).toStrictEqual({
+      stunUrls: ['stun:stun.example.org:3478'],
+      turn: {
+        urls: ['turn:turn.example.org:3478?transport=udp', 'turns:turn.example.org:5349'],
+        secret: SECRET,
+      },
+      ttlMs: 600_000,
+    });
+  });
+
+  it('reads the secret from a file, without one trailing line break', () => {
+    const paths: string[] = [];
+    const config = rtc(
+      {
+        SIGNALING_TURN_URLS: 'turn:turn.example.org',
+        SIGNALING_TURN_SECRET_FILE: '/run/secrets/turn',
+      },
+      (path) => {
+        paths.push(path);
+        return `${SECRET}\n`;
+      },
+    );
+    expect(paths).toStrictEqual(['/run/secrets/turn']);
+    expect(config.turn?.secret).toBe(SECRET);
+  });
+
+  it('requires exactly one secret source with TURN URLs, and none without', () => {
+    expect(rtcError({ SIGNALING_TURN_URLS: 'turn:turn.example.org' })).toContain(
+      'SIGNALING_TURN_SECRET_FILE',
+    );
+    expect(
+      rtcError({
+        SIGNALING_TURN_URLS: 'turn:turn.example.org',
+        SIGNALING_TURN_SECRET: SECRET,
+        SIGNALING_TURN_SECRET_FILE: '/run/secrets/turn',
+      }),
+    ).toContain('only one');
+    expect(rtcError({ SIGNALING_TURN_SECRET: SECRET })).toContain('SIGNALING_TURN_URLS');
+    expect(rtcError({ SIGNALING_TURN_SECRET_FILE: '/x' })).toContain('SIGNALING_TURN_URLS');
+  });
+
+  it('refuses weak, malformed, and unreadable secrets without echoing them', () => {
+    for (const secret of [
+      'short',
+      'has a space in the middle of a long secret value',
+      'é'.repeat(40),
+      'x'.repeat(513),
+    ]) {
+      const message = rtcError({
+        SIGNALING_TURN_URLS: 'turn:turn.example.org',
+        SIGNALING_TURN_SECRET: secret,
+      });
+      expect(message).toContain('TURN secret');
+      expect(message).not.toContain(secret);
+    }
+    const unreadable = rtcError(
+      {
+        SIGNALING_TURN_URLS: 'turn:turn.example.org',
+        SIGNALING_TURN_SECRET_FILE: '/missing/secret',
+      },
+      () => {
+        throw new Error(`ENOENT ${SECRET}`);
+      },
+    );
+    expect(unreadable).toBe('SIGNALING_TURN_SECRET_FILE could not be read.');
+    expect(
+      rtcError(
+        { SIGNALING_TURN_URLS: 'turn:turn.example.org', SIGNALING_TURN_SECRET_FILE: '/x' },
+        () => 'too-short\n',
+      ),
+    ).not.toContain('too-short');
+  });
+
+  it('refuses wrong schemes, too many URLs, and malformed URLs', () => {
+    for (const urls of [
+      'stun:stun.example.org',
+      'https://turn.example.org',
+      'turn:turn.example.org,',
+      'turn:a.example,turn:b.example,turn:c.example,turn:d.example,turn:e.example',
+    ]) {
+      expect(rtcError({ SIGNALING_TURN_URLS: urls, SIGNALING_TURN_SECRET: SECRET })).toContain(
+        'SIGNALING_TURN_URLS',
+      );
+    }
+    for (const urls of ['turn:turn.example.org', 'stun:x.example?transport=udp', 'javascript:x']) {
+      expect(rtcError({ SIGNALING_STUN_URLS: urls })).toContain('SIGNALING_STUN_URLS');
+    }
+  });
+
+  it('bounds the credential lifetime', () => {
+    for (const ttl of ['59', '86401', '0', '1e3', '']) {
+      expect(rtcError({ SIGNALING_TURN_CREDENTIAL_TTL_SECONDS: ttl })).toContain(
+        'SIGNALING_TURN_CREDENTIAL_TTL_SECONDS',
+      );
+    }
+    expect(rtc({ SIGNALING_TURN_CREDENTIAL_TTL_SECONDS: '60' }).ttlMs).toBe(60_000);
+    expect(rtc({ SIGNALING_TURN_CREDENTIAL_TTL_SECONDS: '86400' }).ttlMs).toBe(86_400_000);
   });
 });

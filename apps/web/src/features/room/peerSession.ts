@@ -14,11 +14,15 @@ import {
   type PeerMessage,
   type SessionId,
 } from '@driftless/protocol';
+import type { StatsReportLike } from './connectionStats.ts';
+import { offersTurn } from './rtcConfig.ts';
 
 /** The part of `RTCPeerConnection` a peer session uses. */
 export type PeerConnectionLike = Pick<
   RTCPeerConnection,
   | 'connectionState'
+  | 'iceConnectionState'
+  | 'getStats'
   | 'localDescription'
   | 'onicecandidate'
   | 'onconnectionstatechange'
@@ -88,7 +92,16 @@ export type PeerFailure =
   /** The peer sent more candidates than the bounds allow. */
   | 'candidate_limit'
   /** A negotiation message could not be handed to signaling. */
-  | 'signaling_unavailable';
+  | 'signaling_unavailable'
+  /** The ICE policy allows only TURN relay, and no TURN server was available. */
+  | 'relay_unavailable';
+
+/** Browser-reported states of a live session, for diagnostics. */
+export interface PeerObservation {
+  readonly connectionState: RTCPeerConnectionState;
+  readonly iceConnectionState: RTCIceConnectionState;
+  readonly channelState: RTCDataChannelState | null;
+}
 
 /**
  * Remote candidates held until the matching remote description is in place:
@@ -109,7 +122,12 @@ export interface PeerSessionOptions {
   readonly previousNegotiationId?: NegotiationId;
   readonly localParticipantId: ParticipantId;
   readonly remoteParticipantId: ParticipantId;
-  readonly configuration: RTCConfiguration;
+  /**
+   * The peer connection configuration, or a function returning it. A
+   * function is called once, when the connection is created, so a runtime
+   * ICE configuration that arrived after the session was set up applies.
+   */
+  readonly configuration: RTCConfiguration | (() => RTCConfiguration);
   readonly createPeerConnection: CreatePeerConnection;
   /** Hands one negotiation message to signaling; false if it could not be sent. */
   readonly signal: (body: NegotiationBody) => boolean;
@@ -178,6 +196,38 @@ export class PeerSession {
   /** Whether this session's offer or answer was handed to signaling. */
   get descriptionSent(): boolean {
     return this.#localDescriptionSent;
+  }
+
+  /**
+   * The browser's own connection, ICE, and control-channel states, for
+   * diagnostics only; undefined before the connection exists and after the
+   * session ends. Reading them changes nothing.
+   */
+  observe(): PeerObservation | undefined {
+    const connection = this.#connection;
+    if (connection === undefined || !this.#live) return undefined;
+    return {
+      connectionState: connection.connectionState,
+      iceConnectionState: connection.iceConnectionState,
+      channelState: this.#channel?.readyState ?? null,
+    };
+  }
+
+  /**
+   * The connection's statistics, for diagnostics only. Resolves undefined,
+   * and never rejects, when there is no live connection or the browser cannot
+   * report them. It never affects the session: a failure here is not a
+   * failure of the connection.
+   */
+  async getStats(): Promise<StatsReportLike | undefined> {
+    const connection = this.#connection;
+    if (connection === undefined || !this.#live) return undefined;
+    try {
+      const report = await connection.getStats();
+      return this.#owns(connection) ? report : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -314,7 +364,15 @@ export class PeerSession {
   #createConnection(): PeerConnectionLike | undefined {
     let connection: PeerConnectionLike;
     try {
-      connection = this.#options.createPeerConnection(this.#options.configuration);
+      const { configuration } = this.#options;
+      const resolved = typeof configuration === 'function' ? configuration() : configuration;
+      // A relay-only policy with no TURN server cannot gather a single
+      // candidate; fail at once instead of waiting for ICE to time out.
+      if (resolved.iceTransportPolicy === 'relay' && !offersTurn(resolved)) {
+        this.#fail('relay_unavailable');
+        return undefined;
+      }
+      connection = this.#options.createPeerConnection(resolved);
     } catch {
       this.#fail('negotiation_failed');
       return undefined;

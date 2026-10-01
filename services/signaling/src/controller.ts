@@ -21,6 +21,7 @@ import {
 import { cryptoRandom, generateResumeChallenge, type RandomSource } from './credentials.js';
 import type { Logger, RejectionDetail } from './logger.js';
 import { DEFAULT_RATE_LIMIT, TokenBucket, type RateLimit } from './rateLimiter.js';
+import type { RtcConfigIssuer } from './rtcConfig.js';
 import type {
   LeaveRoomResult,
   Member,
@@ -80,6 +81,14 @@ export const MAX_PROTOCOL_VIOLATIONS = 5;
 export const RESUME_CHALLENGE_TTL_MS = 10_000;
 
 /**
+ * ICE configurations one connection may request. A browser asks once after
+ * admission or resume, and again only before a peer connection when its
+ * configuration is about to expire, so a few suffice for every negotiation
+ * a membership may use. Provisional.
+ */
+export const MAX_RTC_CONFIG_REQUESTS_PER_CONNECTION = 8;
+
+/**
  * Whether a closed connection's membership may be resumed. A client that
  * closes with 1000 (normal closure), 1001 (going away: the page closed or
  * navigated), or 1002 (it rejected a message from the service and gave up)
@@ -118,6 +127,8 @@ export interface SignalingControllerOptions {
   /** Source of resume challenges; Node's secure generator by default. */
   readonly random?: RandomSource;
   readonly challengeTtlMs?: number;
+  /** Issues ICE configurations to room members; none, if absent. */
+  readonly rtcConfig?: RtcConfigIssuer;
 }
 
 const NEGOTIATION_STEPS: Readonly<Record<NegotiationMessageType, NegotiationStep>> = {
@@ -154,6 +165,7 @@ interface ConnectionRecord {
   violations: number;
   closed: boolean;
   challenge: PendingChallenge | undefined;
+  rtcConfigRequests: number;
 }
 
 /**
@@ -176,6 +188,7 @@ export class SignalingController {
   readonly #maxViolations: number;
   readonly #random: RandomSource;
   readonly #challengeTtlMs: number;
+  readonly #rtcConfig: RtcConfigIssuer | undefined;
   readonly #connections = new Map<number, ConnectionRecord>();
   #nextId = 1;
   #shutDown = false;
@@ -188,6 +201,7 @@ export class SignalingController {
     this.#maxViolations = options.maxViolations ?? MAX_PROTOCOL_VIOLATIONS;
     this.#random = options.random ?? cryptoRandom;
     this.#challengeTtlMs = options.challengeTtlMs ?? RESUME_CHALLENGE_TTL_MS;
+    this.#rtcConfig = options.rtcConfig;
   }
 
   get connectionCount(): number {
@@ -211,6 +225,7 @@ export class SignalingController {
       violations: 0,
       closed: this.#shutDown,
       challenge: undefined,
+      rtcConfigRequests: 0,
     };
     if (this.#shutDown) {
       // Defense in depth: the server refuses upgrades once stopping begins.
@@ -428,6 +443,9 @@ export class SignalingController {
       case 'SESSION_RESUME_PROVE':
         this.#proveResume(record, message, now);
         return;
+      case 'RTC_CONFIG_REQUEST':
+        this.#issueRtcConfig(record, now);
+        return;
       case 'RTC_OFFER':
       case 'RTC_ANSWER':
       case 'ICE_CANDIDATE':
@@ -527,6 +545,41 @@ export class SignalingController {
     if (peer?.key !== undefined) {
       this.#sendTo(peer.key, presence(member.participantId, 'CONNECTED', negotiation));
     }
+  }
+
+  /**
+   * Answers a room member, and only a room member, with its ICE
+   * configuration. A connection outside a room, or one still resuming, has
+   * no authenticated membership and receives no credential. The answer goes
+   * to this connection alone, and its TURN credential is derived for this
+   * participant and expires no later than the room.
+   */
+  #issueRtcConfig(record: ConnectionRecord, now: number): void {
+    const member = this.#store.membershipOf(record.id);
+    const roomExpiresAt = this.#store.roomExpiryOf(record.id);
+    if (
+      member === undefined ||
+      roomExpiresAt === undefined ||
+      record.rtcConfigRequests >= MAX_RTC_CONFIG_REQUESTS_PER_CONNECTION
+    ) {
+      this.#reject(record, 'INVALID_STATE', 'rtc_config_request', true);
+      return;
+    }
+    record.rtcConfigRequests += 1;
+    const issued = this.#rtcConfig?.issue(member.participantId, now, roomExpiresAt) ?? {
+      expiresAt: roomExpiresAt,
+      iceServers: [],
+      turn: false,
+    };
+    this.#send(record, {
+      type: 'RTC_CONFIG',
+      payload: { expiresAt: issued.expiresAt, iceServers: issued.iceServers },
+    });
+    this.#logger.log({
+      event: 'rtc_config_issued',
+      connection: record.id,
+      turn: issued.turn ? 'issued' : 'not_configured',
+    });
   }
 
   /**

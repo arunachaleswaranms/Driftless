@@ -13,6 +13,7 @@ import {
 import { WebSocket } from 'ws';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createMemoryLogger, type LogEvent } from '../src/logger.js';
+import { RtcConfigIssuer } from '../src/rtcConfig.js';
 import {
   createSignalingServer,
   SIGNALING_PATH,
@@ -1152,5 +1153,62 @@ describe('session resume over real sockets', () => {
     ]) {
       expect(logged).not.toContain(value);
     }
+  });
+});
+
+describe('ICE configuration over real sockets', () => {
+  const SECRET = 'integration-test-turn-shared-secret-value-0001';
+  const issuer = () =>
+    new RtcConfigIssuer({
+      stunUrls: ['stun:stun.example.org:3478'],
+      turn: { urls: ['turn:turn.example.org:3478?transport=udp'], secret: SECRET },
+      ttlMs: 600_000,
+    });
+
+  it('issues a short-lived TURN credential to each admitted member only', async () => {
+    const instance = await startServer({ rtcConfig: issuer() });
+    const stranger = await TestClient.open(instance.port);
+    stranger.send('RTC_CONFIG_REQUEST');
+    await stranger.expectError('INVALID_STATE', true);
+
+    const { host, guest } = await roomPair(instance);
+    guest.send('RTC_CONFIG_REQUEST');
+    const guestConfig = await guest.expect('RTC_CONFIG');
+    host.send('RTC_CONFIG_REQUEST');
+    const hostConfig = await host.expect('RTC_CONFIG');
+    for (const config of [guestConfig, hostConfig]) {
+      expect(config.payload.expiresAt - config.sentAt).toBeGreaterThan(0);
+      expect(config.payload.expiresAt - config.sentAt).toBeLessThanOrEqual(600_000);
+      expect(config.payload.iceServers.map((server) => server.urls)).toStrictEqual([
+        ['stun:stun.example.org:3478'],
+        ['turn:turn.example.org:3478?transport=udp'],
+      ]);
+    }
+    const [guestTurn, hostTurn] = [guestConfig, hostConfig].map(
+      (config) => config.payload.iceServers[1],
+    );
+    expect(guestTurn?.username).not.toBe(hostTurn?.username);
+    expect(guestTurn?.credential).not.toBe(hostTurn?.credential);
+    // Neither member's credential went to the other, or to the stranger.
+    for (const [client, other] of [
+      [host, guestTurn],
+      [guest, hostTurn],
+      [stranger, guestTurn],
+      [stranger, hostTurn],
+    ] as const) {
+      expect(client.raw.join('')).not.toContain(other?.credential ?? 'unreachable');
+    }
+
+    const logged = JSON.stringify(instance.logs);
+    for (const value of [
+      SECRET,
+      guestTurn?.username,
+      guestTurn?.credential,
+      hostTurn?.username,
+      hostTurn?.credential,
+    ]) {
+      expect(logged).not.toContain(value);
+    }
+    expect(instance.logs.filter((event) => event.event === 'rtc_config_issued')).toHaveLength(2);
   });
 });

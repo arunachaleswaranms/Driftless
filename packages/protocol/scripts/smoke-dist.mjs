@@ -63,6 +63,14 @@ const EXPECTED_EXPORTS = [
   'resumeSecretBytes',
   'serializeMessage',
   'toIceCandidate',
+  'toRtcIceServer',
+  'iceServerUrlKind',
+  'MAX_ICE_SERVER_CREDENTIAL_BYTES',
+  'MAX_ICE_SERVER_URL_BYTES',
+  'MAX_ICE_SERVER_USERNAME_BYTES',
+  'MAX_RTC_CONFIG_TTL_MS',
+  'MAX_RTC_ICE_SERVERS',
+  'MAX_RTC_ICE_SERVER_URLS',
   'utf8ByteLength',
 ];
 

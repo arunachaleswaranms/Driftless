@@ -1,6 +1,7 @@
 import { isNegotiationId, NEGOTIATION_ID_BYTES } from '@driftless/protocol';
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_STUN_URLS, parseStunUrls } from './iceServers.ts';
+import { MAX_STUN_URLS, parseIceTransportPolicy, parseStunUrls } from './iceServers.ts';
+import { acceptRtcConfig, offersTurn } from './rtcConfig.ts';
 import { createNegotiationId } from './negotiationId.ts';
 import { SIGNALING_PATH, signalingUrlFor } from './signalingUrl.ts';
 
@@ -136,5 +137,77 @@ describe('createNegotiationId', () => {
     createNegotiationId();
     expect(random).not.toHaveBeenCalled();
     expect(now).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseIceTransportPolicy', () => {
+  it('defaults to all and accepts only all or relay', () => {
+    for (const raw of [undefined, '', '  ', 'all', ' all ']) {
+      expect(parseIceTransportPolicy(raw)).toStrictEqual({ ok: true, policy: 'all' });
+    }
+    expect(parseIceTransportPolicy('relay')).toStrictEqual({ ok: true, policy: 'relay' });
+    for (const raw of ['RELAY', 'public', 'none', 'relay,all', 'direct']) {
+      expect(parseIceTransportPolicy(raw)).toStrictEqual({
+        ok: false,
+        reason: 'invalid_ice_config',
+      });
+    }
+  });
+});
+
+describe('acceptRtcConfig', () => {
+  const turn = {
+    urls: ['turn:turn.example.org:3478?transport=udp'],
+    username: '1760000600:label',
+    credential: 'credential=',
+  };
+  const stun = { urls: ['stun:stun.example.org'], username: null, credential: null };
+  const message = (expiresAt: number, sentAt: number, iceServers = [stun, turn]) =>
+    ({
+      protocolVersion: 1,
+      type: 'RTC_CONFIG',
+      sequence: 3,
+      sentAt,
+      payload: { expiresAt, iceServers },
+    }) as const;
+
+  it('maps entries to RTCIceServer and measures the lifetime on the service clock', () => {
+    // The browser clock (5) is far from the service clock (1_000_000).
+    expect(acceptRtcConfig(message(1_600_000, 1_000_000), 5)).toStrictEqual({
+      iceServers: [
+        { urls: ['stun:stun.example.org'] },
+        {
+          urls: ['turn:turn.example.org:3478?transport=udp'],
+          username: '1760000600:label',
+          credential: 'credential=',
+        },
+      ],
+      turn: true,
+      expiresAt: 600_005,
+    });
+    expect(acceptRtcConfig(message(10, 0, [stun]), 0)).toMatchObject({ turn: false });
+    expect(acceptRtcConfig(message(10, 0, []), 0)).toStrictEqual({
+      iceServers: [],
+      turn: false,
+      expiresAt: 10,
+    });
+  });
+
+  it('refuses an expired, instant, or over-long configuration', () => {
+    expect(acceptRtcConfig(message(1000, 1000), 0)).toBeUndefined();
+    expect(acceptRtcConfig(message(999, 1000), 0)).toBeUndefined();
+    expect(acceptRtcConfig(message(86_400_001, 0), 0)).toBeUndefined();
+    expect(acceptRtcConfig(message(86_400_000, 0), 0)).toBeDefined();
+  });
+});
+
+describe('offersTurn', () => {
+  it('detects turn: and turns: URLs only', () => {
+    expect(offersTurn({ iceServers: [{ urls: 'turn:a.example' }] })).toBe(true);
+    expect(offersTurn({ iceServers: [{ urls: ['stun:a.example', 'turns:b.example'] }] })).toBe(
+      true,
+    );
+    expect(offersTurn({ iceServers: [{ urls: ['stun:a.example'] }] })).toBe(false);
+    expect(offersTurn({})).toBe(false);
   });
 });

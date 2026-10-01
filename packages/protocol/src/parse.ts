@@ -35,6 +35,7 @@ import {
   type RoomParticipantConnectionMessage,
   type RoomParticipantJoinedMessage,
   type RoomParticipantLeftMessage,
+  type RtcConfigMessage,
   type PeerHandshakePayload,
   type PeerMessage,
   type RtcRecoverMessage,
@@ -45,6 +46,7 @@ import {
   type SessionResumedMessage,
   type SessionResumeProveMessage,
 } from './messages.js';
+import { MAX_RTC_ICE_SERVERS, toRtcIceServer, type RtcIceServer } from './rtcConfig.js';
 import { MAX_NEGOTIATIONS_PER_MEMBERSHIP, isSessionDescription, toIceCandidate } from './webrtc.js';
 
 /**
@@ -358,6 +360,7 @@ const CLIENT_DECODERS: DecoderTable<ClientMessage> = {
     return { roomId, inviteSecret };
   },
   ROOM_LEAVE: decodeEmpty,
+  RTC_CONFIG_REQUEST: decodeEmpty,
   SESSION_RESUME_BEGIN: (value): SessionResumeBeginMessage['payload'] | undefined => {
     const object = exactObject(value, ['sessionId', 'participantId']);
     if (object === undefined) return undefined;
@@ -524,6 +527,25 @@ const SERVER_DECODERS: DecoderTable<ServerMessage> = {
       return { ...common, role: 'guest', peer };
     }
     return undefined;
+  },
+  RTC_CONFIG: (value): RtcConfigMessage['payload'] | undefined => {
+    const object = exactObject(value, ['expiresAt', 'iceServers']);
+    if (object === undefined) return undefined;
+    const { expiresAt, iceServers } = object;
+    if (
+      !isWireInteger(expiresAt) ||
+      !Array.isArray(iceServers) ||
+      iceServers.length > MAX_RTC_ICE_SERVERS
+    ) {
+      return undefined;
+    }
+    const servers: RtcIceServer[] = [];
+    for (const entry of iceServers as unknown[]) {
+      const server = toRtcIceServer(entry);
+      if (server === undefined) return undefined;
+      servers.push(server);
+    }
+    return { expiresAt, iceServers: servers };
   },
   ERROR: (value): ErrorMessage['payload'] | undefined => {
     const object = exactObject(value, ['code', 'message', 'recoverable']);

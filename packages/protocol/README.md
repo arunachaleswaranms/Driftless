@@ -1,16 +1,17 @@
 # @driftless/protocol
 
-The shared, transport-neutral Driftless protocol contract: the versioned message envelope, the signaling room messages (Phase 2A), the WebRTC negotiation messages and the data-channel connection handshake (Phase 2B), session resume, signaling presence, and peer recovery (Phase 2C), identifier and credential formats, size bounds, the error vocabulary, and strict parsing.
+The shared, transport-neutral Driftless protocol contract: the versioned message envelope, the signaling room messages (Phase 2A), the WebRTC negotiation messages and the data-channel connection handshake (Phase 2B), session resume, signaling presence, and peer recovery (Phase 2C), the ICE server configuration messages (Phase 2D), identifier and credential formats, size bounds, the error vocabulary, and strict parsing.
 
 It has no runtime dependencies and uses no Node-only or browser-only API, so the same validation runs in the signaling service and in the web client. The protocol is specified in [docs/PROTOCOL.md](../../docs/PROTOCOL.md); this README describes the package.
 
 ## Scope
 
-Phases 2A–2C freeze only what they implement:
+Phases 2A–2D freeze only what they implement:
 
 - the common envelope, `protocolVersion: 1`;
-- client → server: `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`, `SESSION_RESUME_BEGIN`, `SESSION_RESUME_PROVE`;
-- server → client: `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ROOM_PARTICIPANT_CONNECTION`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUMED`, `ERROR`;
+- client → server: `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`, `SESSION_RESUME_BEGIN`, `SESSION_RESUME_PROVE`, `RTC_CONFIG_REQUEST`;
+- server → client: `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ROOM_PARTICIPANT_CONNECTION`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUMED`, `RTC_CONFIG`, `ERROR`;
+- the ICE server entry `{ urls, username, credential }` of `RTC_CONFIG` (`src/rtcConfig.ts`): `stun:`/`stuns:`/`turn:`/`turns:` URLs only, credentials exactly on TURN entries, and the bounds `MAX_RTC_ICE_SERVERS` (4), `MAX_RTC_ICE_SERVER_URLS` (4), `MAX_ICE_SERVER_URL_BYTES` (300), `MAX_ICE_SERVER_USERNAME_BYTES` (128), `MAX_ICE_SERVER_CREDENTIAL_BYTES` (128), and `MAX_RTC_CONFIG_TTL_MS` (one day). The package carries derived TURN credentials; it knows nothing of how they are derived, and no secret is part of it;
 - both directions, relayed by the service: `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, `ICE_COMPLETE`, `RTC_RECOVERY_REQUEST`, `RTC_RECOVER`;
 - peer → peer on the data channel: `PEER_HELLO`, `PEER_READY` (bound to the room session ID), and the control channel label `driftless-control`;
 - room ID, invite secret, participant ID, negotiation ID, session ID, resume secret, resume challenge, and resume proof formats;
@@ -18,7 +19,7 @@ Phases 2A–2C freeze only what they implement:
 - the bounds `MAX_SIGNALING_MESSAGE_BYTES` (32,768), `MAX_SDP_BYTES` (16,384), `MAX_ICE_CANDIDATE_BYTES` (1024), `MAX_SDP_MID_BYTES` (64), `MAX_SDP_MLINE_INDEX` (63), `MAX_USERNAME_FRAGMENT_BYTES` (256), `MAX_ICE_CANDIDATES_PER_NEGOTIATION` (32), `MAX_NEGOTIATIONS_PER_MEMBERSHIP` (4), and `MAX_PEER_MESSAGE_BYTES` (1024). They are provisional implementation and security bounds, not WebRTC limits;
 - the error codes `INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `INVALID_STATE`, `ROOM_UNAVAILABLE`, `ROOM_FULL`, `RATE_LIMITED`, `SERVER_ERROR`, `SESSION_UNAVAILABLE`.
 
-Local Sync, playback, synchronization, social, transfer, connection diagnostics, TURN credentials, and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`.
+Local Sync, playback, synchronization, social, transfer, connection diagnostics (which are browser-local and use no message), and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`.
 
 ## API
 
@@ -44,6 +45,7 @@ if (result.ok) {
 - `isRoomId`, `isInviteSecret`, `isParticipantId`, `isNegotiationId`, `isSessionId`, `isResumeSecret`, `isResumeChallenge`, `isResumeProof`, `isSessionDescription`, and `isErrorCode` are type guards. `RoomId`, `InviteSecret`, `ParticipantId`, `NegotiationId`, `SessionId`, `ResumeSecret`, `ResumeChallenge`, and `ResumeProof` are branded strings, so an unchecked string cannot be used as one.
 - `resumeProofInput(sessionId, participantId, challenge)` returns the exact bytes a resume proof authenticates, or undefined for a non-canonical value; `resumeSecretBytes(secret)` decodes a resume secret. `encodeBase64Url` and `decodeBase64Url` are the canonical unpadded codec, in pure arithmetic.
 - `toIceCandidate(value)` validates an untrusted value as the four-field `IceCandidate` and returns a fresh plain object, or undefined.
+- `toRtcIceServer(value)` does the same for one `RTC_CONFIG` ICE server entry, and `iceServerUrlKind(url)` says whether a URL is an acceptable STUN or TURN URL, or neither.
 - `utf8ByteLength(text)` and `fitsUtf8Bytes(text, max)` count UTF-8 bytes exactly as `TextEncoder` and `WebSocket.send()` encode them, with pure arithmetic and no platform API.
 
 ## Validation strategy
@@ -74,6 +76,6 @@ Run from this directory, or from the repository root with `-w @driftless/protoco
 | `npm run smoke:dist`   | Imports the built package by name through its `exports` map and checks its behavior. |
 | `npm run check`        | `typecheck`, `lint`, `format:check`, `test`, `build`, and `smoke:dist` in sequence.  |
 
-`npm test` runs 217 Vitest tests: `parse.test.ts` (79: envelope, version, fields, sequence, room payloads, untrusted JSON, serialization), `negotiation.test.ts` (65: negotiation and recovery messages in both directions, SDP and candidate bounds at and over each bound, multi-byte SDP, extra fields, malformed IDs, the peer handshake, and no echo of SDP or candidate text), `resume.test.ts` (28: the base64url codec against Node, the fixed resume proof vector — computed independently in Python and reproduced with Node's crypto and Web Crypto — binding of every input, the resume, presence, and snapshot messages, recovery messages, direction restrictions, and the session-bound handshake), `encoding.test.ts` (24: UTF-8 counting against `TextEncoder` for every code unit, lone surrogates, and the byte bound with multi-byte text), and `identifiers.test.ts` (21).
+`npm test` runs 234 Vitest tests: `parse.test.ts` (82: envelope, version, fields, sequence, room payloads, untrusted JSON, serialization), `rtcConfig.test.ts` (14: the configuration bounds, accepted and refused STUN and TURN URLs and schemes, credentials exactly on TURN entries, mixed, duplicate, and too many URLs, username and credential bounds, unknown and prototype fields, direction, and no credential echoed in a failure), `negotiation.test.ts` (65: negotiation and recovery messages in both directions, SDP and candidate bounds at and over each bound, multi-byte SDP, extra fields, malformed IDs, the peer handshake, and no echo of SDP or candidate text), `resume.test.ts` (28: the base64url codec against Node, the fixed resume proof vector — computed independently in Python and reproduced with Node's crypto and Web Crypto — binding of every input, the resume, presence, and snapshot messages, recovery messages, direction restrictions, and the session-bound handshake), `encoding.test.ts` (24: UTF-8 counting against `TextEncoder` for every code unit, lone surrogates, and the byte bound with multi-byte text), and `identifiers.test.ts` (21).
 
 `dist/` is generated and not committed. Consumers import the built output through the `exports` map; the signaling service's TypeScript build references this project, so `tsc -b` there builds it first.

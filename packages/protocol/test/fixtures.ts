@@ -89,8 +89,19 @@ export const VALID_CLIENT_PAYLOADS = {
   ROOM_LEAVE: {},
   SESSION_RESUME_BEGIN: { sessionId: SESSION_ID, participantId: PARTICIPANT_ID },
   SESSION_RESUME_PROVE: { challenge: RESUME_CHALLENGE, proof: RESUME_PROOF },
+  RTC_CONFIG_REQUEST: {},
   ...VALID_NEGOTIATION_PAYLOADS,
 } as const;
+
+/** A STUN and a TURN entry, shaped as the service issues them. */
+export const RTC_ICE_SERVERS = [
+  { urls: ['stun:stun.example.org:3478'], username: null, credential: null },
+  {
+    urls: ['turn:turn.example.org:3478?transport=udp', 'turns:turn.example.org:5349?transport=tcp'],
+    username: '1760003600:AAECAwQFBgcICQoL',
+    credential: 'bm90LWEtcmVhbC1jcmVkZW50aWFsLXh4eA==',
+  },
+] as const;
 
 /** One valid raw payload for every server message type. */
 export const VALID_SERVER_PAYLOADS = {
@@ -133,6 +144,7 @@ export const VALID_SERVER_PAYLOADS = {
     activeNegotiationId: NEGOTIATION_ID,
     negotiationCount: 2,
   },
+  RTC_CONFIG: { expiresAt: 1_760_003_600_000, iceServers: RTC_ICE_SERVERS },
   ERROR: { code: 'ROOM_UNAVAILABLE', message: 'The room is not available.', recoverable: true },
   ...VALID_NEGOTIATION_PAYLOADS,
 } as const;

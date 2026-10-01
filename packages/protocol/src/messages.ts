@@ -9,6 +9,7 @@ import type {
   RoomId,
   SessionId,
 } from './identifiers.js';
+import type { RtcIceServer } from './rtcConfig.js';
 import type { IceCandidate } from './webrtc.js';
 
 /** The only protocol version this package understands. */
@@ -134,6 +135,30 @@ export type RtcRecoverMessage = Envelope<
   }
 >;
 
+// ICE server configuration (Phase 2D): client → server → the same client
+//
+// A connection that carries a room membership asks for the ICE servers to
+// use for its next peer connection. The service answers that connection
+// only, never another participant, and never a connection outside a room.
+
+/** Asks for the ICE server configuration for this membership. */
+export type RtcConfigRequestMessage = Envelope<'RTC_CONFIG_REQUEST', EmptyPayload>;
+
+/**
+ * The ICE servers this participant may use until `expiresAt`, on the
+ * service's clock. TURN entries carry a short-lived credential derived for
+ * this participant; it is used only in memory, for peer connections created
+ * before it expires, and is never shown, logged, or persisted.
+ */
+export type RtcConfigMessage = Envelope<
+  'RTC_CONFIG',
+  {
+    /** Server clock, milliseconds since the Unix epoch. */
+    readonly expiresAt: number;
+    readonly iceServers: readonly RtcIceServer[];
+  }
+>;
+
 export type NegotiationMessage =
   | RtcOfferMessage
   | RtcAnswerMessage
@@ -148,6 +173,7 @@ export type ClientMessage =
   | RoomLeaveMessage
   | SessionResumeBeginMessage
   | SessionResumeProveMessage
+  | RtcConfigRequestMessage
   | NegotiationMessage;
 
 // Server → client
@@ -319,6 +345,7 @@ export type ServerMessage =
   | RoomParticipantConnectionMessage
   | SessionResumeChallengeMessage
   | SessionResumedMessage
+  | RtcConfigMessage
   | ErrorMessage
   | NegotiationMessage;
 
@@ -337,6 +364,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'ROOM_LEAVE',
   'SESSION_RESUME_BEGIN',
   'SESSION_RESUME_PROVE',
+  'RTC_CONFIG_REQUEST',
   ...NEGOTIATION_MESSAGE_TYPES,
 ] as const satisfies readonly ClientMessage['type'][];
 
@@ -350,6 +378,7 @@ export const SERVER_MESSAGE_TYPES = [
   'ROOM_PARTICIPANT_CONNECTION',
   'SESSION_RESUME_CHALLENGE',
   'SESSION_RESUMED',
+  'RTC_CONFIG',
   'ERROR',
   ...NEGOTIATION_MESSAGE_TYPES,
 ] as const satisfies readonly ServerMessage['type'][];

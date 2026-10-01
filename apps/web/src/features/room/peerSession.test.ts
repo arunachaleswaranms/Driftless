@@ -35,6 +35,7 @@ function setup(
   options: {
     signal?: (body: NegotiationBody) => boolean;
     previousNegotiationId?: NegotiationId;
+    configuration?: RTCConfiguration | (() => RTCConfiguration);
   } = {},
 ) {
   const connections: FakePeerConnection[] = [];
@@ -49,7 +50,7 @@ function setup(
       : { previousNegotiationId: options.previousNegotiationId }),
     localParticipantId: role === 'host' ? HOST_ID : GUEST_ID,
     remoteParticipantId: role === 'host' ? GUEST_ID : HOST_ID,
-    configuration: { iceServers: [{ urls: ['stun:stun.example.org'] }] },
+    configuration: options.configuration ?? { iceServers: [{ urls: ['stun:stun.example.org'] }] },
     createPeerConnection: (configuration) => {
       const connection = new FakePeerConnection(configuration);
       connections.push(connection);
@@ -677,5 +678,86 @@ describe('recovery sessions and signaling loss', () => {
     harness.connection().emitCandidate(null);
     expect(harness.session.state).toBe('connected');
     expect(harness.states.at(-1)).toStrictEqual({ state: 'connected', failure: undefined });
+  });
+});
+
+describe('runtime configuration and diagnostics (Phase 2D)', () => {
+  it('reads a configuration function once, when the connection is created', async () => {
+    let calls = 0;
+    const turn = { urls: ['turn:turn.example.org'], username: 'u', credential: 'c' };
+    const { session, connection } = setup('host', {
+      configuration: () => {
+        calls += 1;
+        return { iceServers: [turn] };
+      },
+    });
+    expect(calls).toBe(0);
+    void session.start();
+    await flush();
+    expect(calls).toBe(1);
+    expect(connection().configuration).toStrictEqual({ iceServers: [turn] });
+  });
+
+  it('fails a relay-only session with no TURN server without creating a connection', async () => {
+    for (const role of ['host', 'guest'] as const) {
+      const harness = setup(role, {
+        configuration: {
+          iceServers: [{ urls: ['stun:stun.example.org'] }],
+          iceTransportPolicy: 'relay',
+        },
+      });
+      if (role === 'host') void harness.session.start();
+      else void harness.session.acceptOffer('v=0\r\n');
+      await flush();
+      expect(harness.connections).toHaveLength(0);
+      expect(harness.states).toStrictEqual([{ state: 'failed', failure: 'relay_unavailable' }]);
+      expect(harness.signals).toStrictEqual([]);
+    }
+  });
+
+  it('passes a relay-only policy through when a TURN server is configured', async () => {
+    const configuration: RTCConfiguration = {
+      iceServers: [{ urls: 'turns:turn.example.org:5349', username: 'u', credential: 'c' }],
+      iceTransportPolicy: 'relay',
+    };
+    const { session, connection } = setup('host', { configuration });
+    void session.start();
+    await flush();
+    expect(connection().configuration).toStrictEqual(configuration);
+  });
+
+  it('observes states without changing them, and only while live', async () => {
+    const { session, connection } = await offeredHost();
+    connection().iceConnectionState = 'checking';
+    const before = [...connection().calls];
+    expect(session.observe()).toStrictEqual({
+      connectionState: 'new',
+      iceConnectionState: 'checking',
+      channelState: 'connecting',
+    });
+    expect(connection().calls).toStrictEqual(before);
+    session.close();
+    expect(session.observe()).toBeUndefined();
+    expect(setup('host').session.observe()).toBeUndefined();
+  });
+
+  it('reads statistics without ever rejecting or failing the session', async () => {
+    const { session, connection, states } = await offeredHost();
+    const report = new Map([['a', { id: 'a', type: 'transport' }]]);
+    connection().stats = report;
+    await expect(session.getStats()).resolves.toBe(report);
+    connection().stats = 'reject';
+    await expect(session.getStats()).resolves.toBeUndefined();
+    expect(states).toStrictEqual([]);
+    expect(session.state).toBe('negotiating');
+    expect(connection().closed).toBe(false);
+
+    // A report that arrives after the session closed is not returned.
+    connection().stats = 'pending';
+    const late = session.getStats();
+    session.close();
+    await connection().resolveStats(report);
+    await expect(late).resolves.toBeUndefined();
+    await expect(session.getStats()).resolves.toBeUndefined();
   });
 });

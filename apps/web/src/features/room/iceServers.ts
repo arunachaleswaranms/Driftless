@@ -47,3 +47,25 @@ function isStunUrl(url: string): boolean {
   const port = match[1];
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
 }
+
+export type IceTransportPolicy = 'all' | 'relay';
+
+export type IceTransportPolicyResult =
+  | { readonly ok: true; readonly policy: IceTransportPolicy }
+  | { readonly ok: false; readonly reason: 'invalid_ice_config' };
+
+/**
+ * The ICE transport policy, from the build-time qualification setting
+ * `VITE_RTC_ICE_TRANSPORT_POLICY`. Unset means `all`, the normal policy: the
+ * browser chooses the path, and diagnostics report the one it chose.
+ * `relay` restricts every peer connection to TURN relay candidates; it exists
+ * only for qualification builds that must prove the relay carries the data
+ * channel, and there is no user-facing switch for it. Anything else rejects
+ * the configuration, which disables rooms.
+ */
+export function parseIceTransportPolicy(raw: string | undefined): IceTransportPolicyResult {
+  const value = raw?.trim() ?? '';
+  if (value === '' || value === 'all') return { ok: true, policy: 'all' };
+  if (value === 'relay') return { ok: true, policy: 'relay' };
+  return { ok: false, reason: 'invalid_ice_config' };
+}

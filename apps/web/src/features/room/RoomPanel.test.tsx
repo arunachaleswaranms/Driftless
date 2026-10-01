@@ -13,8 +13,11 @@ import {
   FakePeerConnection,
   FakeTimers,
   FakeWebSocket,
+  STATS_ADDRESSES,
   fakeProver,
   flush,
+  peerMessage,
+  statsReport,
 } from '../../test/room.ts';
 import { RoomController } from './roomController.ts';
 import { RoomPanel } from './RoomPanel.tsx';
@@ -303,5 +306,126 @@ describe('RoomPanel', () => {
     const current = socket();
     view.unmount();
     expect(current.closeCalls).toStrictEqual([1000]);
+  });
+});
+
+describe('connection diagnostics', () => {
+  async function connectedHost() {
+    const harness = await createdRoom();
+    act(() => {
+      harness.socket().deliver({
+        type: 'ROOM_PARTICIPANT_JOINED',
+        payload: { participant: { participantId: GUEST_ID, role: 'guest' } },
+      });
+    });
+    await act(flush);
+    const pc = harness.connections[0];
+    if (pc === undefined) throw new Error('no connection');
+    pc.stats = statsReport('relay', 'srflx', { relayProtocol: 'tcp' });
+    await act(async () => {
+      await pc.settle('createOffer');
+      await pc.settle('setLocalDescription');
+    });
+    const negotiationId = 'N'.repeat(24) as NegotiationId;
+    await act(async () => {
+      harness.socket().deliver({
+        type: 'RTC_ANSWER',
+        payload: { negotiationId, sdp: 'v=0\r\n' },
+      });
+      await flush();
+      await pc.settle('setRemoteDescription');
+    });
+    const channel = pc.channels[0];
+    if (channel === undefined) throw new Error('no channel');
+    const fromGuest = {
+      sessionId: 'Q'.repeat(27) as SessionId,
+      negotiationId,
+      senderId: GUEST_ID,
+      recipientId: HOST_ID,
+    };
+    await act(async () => {
+      pc.connectionState = 'connected';
+      pc.iceConnectionState = 'connected';
+      channel.open();
+      channel.receive(peerMessage('PEER_HELLO', fromGuest, 0));
+      channel.receive(peerMessage('PEER_READY', fromGuest, 1));
+      await flush();
+    });
+    return { ...harness, pc };
+  }
+
+  function details(region: HTMLElement): HTMLDetailsElement {
+    const summary = within(region).getByText('Connection diagnostics');
+    const element = summary.closest('details');
+    if (element === null) throw new Error('no details');
+    return element;
+  }
+
+  it('is a collapsed section that appears only in a room', async () => {
+    const harness = setup();
+    expect(within(harness.region).queryByText('Connection diagnostics')).toBeNull();
+    harness.view.unmount();
+    const room = await createdRoom();
+    const section = details(room.region);
+    expect(section.open).toBe(false);
+    expect(within(section).getByText('No peer connection to describe yet.')).toBeDefined();
+  });
+
+  it('shows the selected path and safe fields, never an address or credential', async () => {
+    const { region, pc } = await connectedHost();
+    const section = details(region);
+    const text = section.textContent;
+    expect(text).toContain('TURN relay');
+    expect(text).toContain('relay');
+    expect(text).toContain('srflx');
+    expect(text).toContain('UDP');
+    expect(text).toContain('TCP');
+    expect(text).toContain('1 of 4');
+    expect(text).toContain('Not requested');
+    expect(text).toContain('All');
+    for (const value of [...STATS_ADDRESSES, SECRET, RESUME_SECRET, ROOM_ID, HOST_ID, GUEST_ID]) {
+      expect(text).not.toContain(value);
+    }
+    expect(pc.getStatsCalls).toBe(1);
+  });
+
+  it('refreshes only when asked', async () => {
+    const { region, pc, timers } = await connectedHost();
+    await act(() => timers.advance(600_000));
+    expect(pc.getStatsCalls).toBe(1);
+    pc.stats = statsReport('host', 'host');
+    await act(async () => {
+      fireEvent.click(within(details(region)).getByRole('button', { name: 'Refresh diagnostics' }));
+      await flush();
+    });
+    expect(pc.getStatsCalls).toBe(2);
+    expect(details(region).textContent).toContain('Direct (not relayed)');
+  });
+
+  it('copies a summary of safe fields only', async () => {
+    const copied: string[] = [];
+    stubClipboard((text) => {
+      copied.push(text);
+      return Promise.resolve();
+    });
+    const { region } = await connectedHost();
+    await act(async () => {
+      fireEvent.click(within(details(region)).getByRole('button', { name: 'Copy diagnostics' }));
+      await flush();
+    });
+    expect(copied).toHaveLength(1);
+    const [text = ''] = copied;
+    expect(text).toMatch(/^Driftless connection diagnostics\n/);
+    expect(text).toContain('Path: TURN_RELAY\n');
+    expect(text).toContain('Local candidate type: relay\n');
+    expect(text).toContain('Remote candidate type: srflx\n');
+    expect(text).toContain('Relay protocol: tcp\n');
+    expect(text).toContain('Negotiation: 1 of 4\n');
+    expect(text).toContain('Role: host\n');
+    for (const value of [...STATS_ADDRESSES, SECRET, RESUME_SECRET, ROOM_ID, HOST_ID, GUEST_ID]) {
+      expect(text).not.toContain(value);
+    }
+    expect(text).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(within(region).getByText('Copied the diagnostics.')).toBeDefined();
   });
 });
