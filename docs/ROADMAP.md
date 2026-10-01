@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: IN PROGRESS** — Phases 2A, 2B, and 2C implemented and reviewed, Phase 2D implemented and awaiting real-network qualification; the Phase 2 exit gate has not passed.
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: IN PROGRESS** — Phases 2A, 2B, and 2C implemented and reviewed, Phase 2D implemented with its qualification NOT CLOSED (no physical Android device or public TURN server was available); the Phase 2 exit gate has not passed.
 
 - Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
 - Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
@@ -65,12 +65,12 @@ The pass is a development gate. It changes no [compatibility](COMPATIBILITY.md) 
 
 **Status — IN PROGRESS.** Phase 2 is delivered in four parts:
 
-| Part     | Scope                              | Status                              |
-| -------- | ---------------------------------- | ----------------------------------- |
-| Phase 2A | Protocol & signaling foundation    | Implemented — review pass           |
-| Phase 2B | Room join & WebRTC negotiation     | Implemented — review pass           |
-| Phase 2C | Connection lifecycle & reconnect   | Implemented — review pass           |
-| Phase 2D | Diagnostics / real-network closure | Implemented — qualification pending |
+| Part     | Scope                              | Status                                 |
+| -------- | ---------------------------------- | -------------------------------------- |
+| Phase 2A | Protocol & signaling foundation    | Implemented — review pass              |
+| Phase 2B | Room join & WebRTC negotiation     | Implemented — review pass              |
+| Phase 2C | Connection lifecycle & reconnect   | Implemented — review pass              |
+| Phase 2D | Diagnostics / real-network closure | Implemented — qualification not closed |
 
 Phase 2A added the shared protocol package (versioned envelope, room messages, strict validation), an ephemeral in-memory signaling service with two-person rooms, separate room IDs and 256-bit invite secrets, expiry, and bounded, origin-checked WebSocket traffic, and a root npm workspace. It has only Node unit and loopback integration evidence, and passed independent review.
 
@@ -78,7 +78,7 @@ Phase 2B added the browser room UI and signaling client, WebRTC negotiation rela
 
 Phase 2C added authenticated signaling resume — a separate per-participant resume secret answered by challenge and proof, never resent — with stable participant identity, a bounded reconnect grace period, a bounded browser retry schedule, snapshot reconciliation with no replay, a working data channel kept through signaling loss, and recovery of a failed peer transport by a fresh peer connection and negotiation (no `restartIce()`), bounded to four negotiations per guest membership. Its evidence is automated: Node, loopback, jsdom, and two browser contexts on one development machine. It passed independent review.
 
-Phase 2D added browser-local connection diagnostics — states, the selected ICE path classified as direct, TURN relay, or unknown from `getStats()`, candidate types, and counts, with no address exposed and nothing sent anywhere — and short-lived TURN credentials issued by the signaling service to authenticated room members with the provider-neutral TURN REST scheme ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)), a qualification-only relay policy, and a deployment boundary ([DEPLOYMENT.md](DEPLOYMENT.md)). Its automated evidence is Node, loopback, jsdom, and two browser contexts on one development machine. The real-device, real-network evaluation of the exit gate is recorded in [PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md). **The Phase 2 exit gate has not passed.**
+Phase 2D added browser-local connection diagnostics — states, the selected ICE path classified as direct, TURN relay, or unknown from `getStats()`, candidate types, and counts, with no address exposed and nothing sent anywhere — and short-lived TURN credentials issued by the signaling service to authenticated room members with the provider-neutral TURN REST scheme ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)), a qualification-only relay policy, and a deployment boundary ([DEPLOYMENT.md](DEPLOYMENT.md)). Its automated evidence is Node, loopback, jsdom, and two browser contexts on one development machine. Its qualification at `aeb7f96` on 2026-10-02 is **NOT CLOSED** ([PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md)): a public HTTPS/WSS smoke test passed from one device, but no physical Android device was available for the two-device, different-network session and its recovery, and no publicly reachable TURN server exists for the forced-relay criteria. **The Phase 2 exit gate has not passed.**
 
 **Exit gate:** Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay.
 

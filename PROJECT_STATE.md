@@ -35,9 +35,9 @@ Phase 2 — Internet P2P Foundation: **IN PROGRESS**.
 | Phase 2A | Protocol & signaling foundation    | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2B | Room join & WebRTC negotiation     | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2C | Connection lifecycle & reconnect   | **IMPLEMENTED / REVIEW PASS**    |
-| Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED — QUALIFICATION PENDING** |
+| Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED — QUALIFICATION NOT CLOSED** |
 
-Phase 2 exit gate: **NOT PASSED**. The Phase 2B–2D browser evidence is two browser contexts on one development machine. The real-device, real-network evaluation is recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
+Phase 2 exit gate: **NOT PASSED**. Qualification of `aeb7f9630d2b3ffa8a12b1ca5a94012b081da859` on 2026-10-02 is **NOT CLOSED**: no physical Android device was available, so no two-real-device, different-network session was established or recovered (G1 verified from one device only; G2–G5 GAP), and no publicly reachable TURN endpoint exists (T3/T4 GAP). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D browser evidence is two browser contexts on one development machine.
 
 ## Current Branch
 
@@ -368,9 +368,9 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B
 - Mutation checks confirmed that the browser reconnect tests fail when a working data channel is dropped on signaling loss, the negotiation bound is ignored, any recovery offer is accepted, a mismatched session is kept, the schedule never ends, or a resume sends an extra message; one surviving mutation exposed a gap (a recovery request lost while the host was away was never repeated), which was fixed and given a test.
 - `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities.
 
-### Phase 2D — Diagnostics / Real-Network Closure (IMPLEMENTED — QUALIFICATION PENDING)
+### Phase 2D — Diagnostics / Real-Network Closure (IMPLEMENTED — QUALIFICATION NOT CLOSED)
 
-Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C commit `df21cad`. The real-device, real-network evaluation and the Phase 2 gate decision are recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
+Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C commit `df21cad`: the software candidate at `f46616c`, and the fix for a defect its installed-Chrome run found at `aeb7f96`, the qualification revision. It awaits independent review. The real-device, real-network evaluation and the Phase 2 gate decision are recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md): **NOT CLOSED**.
 
 - **Connection diagnostics.** `apps/web/src/features/room/connectionStats.ts` classifies the selected ICE path from `RTCPeerConnection.getStats()`: `transport.selectedCandidatePairId` → the candidate pair (`succeeded`, or `in-progress` with connectivity-check responses already received, which is how Chrome 154 reports the working pair during a periodic re-check) → its local and remote candidates' `candidateType`. `TURN_RELAY` is a relay candidate on either side; `DIRECT` is a known pair with neither relayed (host, srflx, prflx — not necessarily one network); everything less certain, including no or conflicting selected pairs, a missing or unfamiliar candidate, a pair that has not succeeded, and failed statistics, is `UNKNOWN` with a fixed reason. A single pair marked `selected: true` is used only when no transport names a pair. Only candidate types and transport/relay protocols are read into the result; no address, port, candidate string, URL, SDP, ICE username fragment, fingerprint, or identifier.
 - **Diagnostics lifecycle.** The room controller reads statistics once when a peer connection becomes connected (including every recovered one) and on **Refresh diagnostics**; there is no polling and no timer. A replaced or closed connection's snapshot is discarded at once and a late read of it is dropped, so diagnostics always describe the current connection. Diagnostics are observational: a failure leaves the path `UNKNOWN`; nothing renegotiates, restarts ICE, changes policy, or recovers because of them. They have their own subscription, so room-state subscribers see exactly the Phase 2C notifications. Nothing is sent anywhere, persisted, or logged.
@@ -380,15 +380,19 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C
 - **Deployment boundary.** [DEPLOYMENT.md](docs/DEPLOYMENT.md): same-origin HTTPS/WSS through a TLS reverse proxy, loopback-bound signaling, production origin list, secret files, security response headers, a coturn configuration with `use-auth-secret`, quotas, and denied private peer ranges, relay qualification builds on a separate origin, and the smoke test. No deployment target, domain, certificate, or TURN service is part of the repository.
 - **Dependencies.** None added or changed. Node's crypto derives credentials; the browser uses the platform `getStats()`.
 
-**Phase 2D automated evidence.** `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0. Browser results are `AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE`: separate browser contexts in one browser on one machine, a loopback signaling service with no STUN or TURN configured, and real `RTCPeerConnection` objects. The exact commit, full verification counts, and the real-network results are in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
+**Phase 2D automated evidence.** `AUTOMATED PASS` at `aeb7f96` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0, from `npm ci` at the root. Browser results are `AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE`: separate browser contexts in one browser on one machine, a loopback signaling service with no STUN or TURN configured, and real `RTCPeerConnection` objects. Full details are in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#automated-results-at-aeb7f96).
 
-- `@driftless/protocol` 234 Vitest tests (17 new); `@driftless/signaling` 206 (21 new); `@driftless/web` 330 (50 new). Playwright: 50 tests (4 new diagnostics tests).
+- `npm run check` passes: `@driftless/protocol` 234 Vitest tests (17 new); `@driftless/signaling` 206 (21 new); `@driftless/web` 330 (50 new); 0 failed, 0 skipped; both smoke tests pass.
+- Playwright with retries disabled: 50 tests (4 new diagnostics tests). Five full Chromium 153 runs: the first had one failure of the unchanged Phase 1 test "keeps local media on the device" (service-worker control timed out at a load average near 14.5, right after `npm ci` and the full check); the next four passed 50/50 consecutively, and the test passed 20/20 repeated alone. `DRIFTLESS_E2E_CHROME=1`: 100/100 twice, adding Google Chrome 154.0.8037.92.
+- `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities.
 - The installed-Chrome run of the first candidate (`f46616c`) found a defect: Chrome 154 reports the selected, working candidate pair as `in-progress` while a periodic connectivity re-check is outstanding (9 of 1,958 samples on a loopback pair; never in Playwright Chromium 153), which the first rule classified as `UNKNOWN`. The fix accepts `in-progress` only with responses already received, with a regression test that fails against the old rule.
 - Supplemental, not real-network evidence: a loopback TURN server (pion/turn v4.1.4 with its TURN REST shared-secret handler, run from a scratch directory, not part of the repository) accepted the service-issued credentials; a relay-only build connected two Chromium contexts with both diagnostics reporting `TURN relay` (relay/relay, UDP), a normal build with TURN offered selected a direct srflx/prflx pair, and a credential from a mismatched secret did not connect. Same machine, same loopback interface.
 
+**Phase 2D public deployment smoke test (2026-10-02).** The exact `aeb7f96` build behind an account-free Cloudflare quick tunnel from the development Mac (a development preview server as origin, the signaling service in production mode with the tunnel's exact `https` origin, Google's public STUN configured at run time, no TURN) passed HTTPS, response headers, `/healthz`, WSS origin and query policy, a same-machine room create and join in Google Chrome 154 with the exact build shown in diagnostics, and a clean service log. The tunnel also served plain HTTP, where the application refused to open rooms. The service's protocol pings traversed the tunnel and terminated a non-answering client at 23.9 s. Smoke evidence only; see the qualification record.
+
 ## Open Deferred Qualification
 
-- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests and Phase 2B's and 2C's same-host browser tests do not satisfy `DEFERRED-PHYSICAL-002`.
+- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests, Phase 2B's and 2C's same-host browser tests, and Phase 2D's same-host tests and one-device public smoke test do not satisfy `DEFERRED-PHYSICAL-002`.
 
 ## Not Started
 
@@ -446,6 +450,8 @@ Phase 0 closure supplies no physical Android or iOS result, real cross-state Int
 The project intentionally accumulates these physical Android gates for the later project-wide physical qualification stage. ADB inspection on 2026-09-21 found only `emulator-5554`; no emulator result has been promoted to physical-device evidence. ADB inspection on 2026-09-26 during Spikes 0.4, 0.5, and 0.6 found no attached device or emulator.
 
 ## Current Blockers
+
+The Phase 2 exit gate is blocked by two infrastructure gaps, not by a known software defect: no physical Android device was available for the two-device, different-network session and its recovery (B1), and no publicly reachable TURN server exists for the forced-relay criteria (B2); see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings).
 
 No architecture blocker has been observed. Spike 0.1 has no exact desktop memory measurements and retains physical Android debt. Spike 0.2 proves controlled same-host browser connectivity only; different-NAT, carrier-network, physical Android, and TURN behavior remain unqualified. The selected host/host pair must not be generalized to Internet reachability.
 
@@ -506,7 +512,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Real-device, real-network qualification of the committed Phase 2D candidate, recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Do not begin Phase 3.
+Independent GitHub review of the pushed Phase 2D commits and the NOT CLOSED qualification record. To close the Phase 2 gate afterwards: the physical OnePlus Nord 5 on cellular data with the Mac on Wi-Fi, against a public HTTPS/WSS deployment of one committed revision (blocker B1), and a publicly reachable TURN server for the forced-relay criteria (blocker B2); see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). Do not begin Phase 3.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 

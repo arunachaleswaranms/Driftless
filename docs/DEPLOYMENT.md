@@ -174,6 +174,10 @@ Before any real-device test, from a browser on an outside network:
 5. **Connection diagnostics** show the expected build revision and **TURN configuration** (`Available` when TURN is configured).
 6. The service log contains only its fixed events: no secret, credential, identifier, address, or payload.
 
+## Qualification on a development host
+
+The Phase 2D qualification used a development host instead of the topology above: an account-free Cloudflare quick tunnel to a Vite preview server on the development machine, which served the build and forwarded the signaling paths ([PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md#deployment)). Such a topology differs from a deployment in ways a qualification must record: TLS belongs to the tunnel provider; the tunnel also serves plain HTTP without redirecting (the client then refuses to open rooms, as it does on any non-loopback HTTP page); the origin is a development server; and the signaling service runs on one participant's machine, so disrupting that machine's network also disrupts signaling — a recovery test there must disrupt the other device's network only. It cannot host a TURN server reachable from other networks.
+
 ## Not covered
 
 Monitoring, alerting, TURN bandwidth caps and cost controls, abuse response, multi-instance signaling (rooms are in memory in one process), backups (there is no persistent state), and release procedures are not designed in Phase 2. A service restart ends every room.
