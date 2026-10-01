@@ -32,6 +32,13 @@ export const MAX_USERNAME_FRAGMENT_BYTES = 256;
 export const MAX_ICE_CANDIDATES_PER_NEGOTIATION = 32;
 
 /**
+ * Negotiations one guest membership may use: the first, plus up to three
+ * fresh recovery negotiations after its peer connection fails. Each uses a
+ * new negotiation ID that is never accepted again. Provisional.
+ */
+export const MAX_NEGOTIATIONS_PER_MEMBERSHIP = 4;
+
+/**
  * The browser-compatible fields of one ICE candidate, as a plain object. It
  * mirrors `RTCIceCandidateInit`; every field is always present, and a field
  * the browser did not supply is `null`. At least one of `sdpMid` and

@@ -12,6 +12,7 @@ const EXPECTED_EXPORTS = [
   'MAX_ERROR_MESSAGE_LENGTH',
   'MAX_ICE_CANDIDATES_PER_NEGOTIATION',
   'MAX_ICE_CANDIDATE_BYTES',
+  'MAX_NEGOTIATIONS_PER_MEMBERSHIP',
   'MAX_PEER_MESSAGE_BYTES',
   'MAX_SDP_BYTES',
   'MAX_SDP_MID_BYTES',
@@ -24,23 +25,42 @@ const EXPECTED_EXPORTS = [
   'PARTICIPANT_ID_BYTES',
   'PARTICIPANT_ID_LENGTH',
   'PARTICIPANT_LEFT_REASONS',
+  'PARTICIPANT_SIGNALING_STATES',
   'PEER_CONTROL_CHANNEL_LABEL',
   'PEER_MESSAGE_TYPES',
   'PROTOCOL_VERSION',
+  'RESUME_CHALLENGE_BYTES',
+  'RESUME_CHALLENGE_LENGTH',
+  'RESUME_PROOF_BYTES',
+  'RESUME_PROOF_DOMAIN',
+  'RESUME_PROOF_INPUT_BYTES',
+  'RESUME_PROOF_LENGTH',
+  'RESUME_SECRET_BYTES',
+  'RESUME_SECRET_LENGTH',
   'ROOM_CLOSED_REASONS',
   'ROOM_ID_BYTES',
   'ROOM_ID_LENGTH',
   'SERVER_MESSAGE_TYPES',
+  'SESSION_ID_BYTES',
+  'SESSION_ID_LENGTH',
+  'decodeBase64Url',
+  'encodeBase64Url',
   'fitsUtf8Bytes',
   'isErrorCode',
   'isInviteSecret',
   'isNegotiationId',
   'isParticipantId',
+  'isResumeChallenge',
+  'isResumeProof',
+  'isResumeSecret',
   'isRoomId',
+  'isSessionId',
   'isSessionDescription',
   'parseClientMessage',
   'parsePeerMessage',
   'parseServerMessage',
+  'resumeProofInput',
+  'resumeSecretBytes',
   'serializeMessage',
   'toIceCandidate',
   'utf8ByteLength',
@@ -85,5 +105,11 @@ const offer = JSON.stringify({
 });
 assert.equal(protocol.parseClientMessage(offer).ok, true);
 assert.equal(protocol.parseServerMessage(offer).ok, true);
+
+// The resume proof input has its documented fixed layout.
+const input = protocol.resumeProofInput('A'.repeat(27), 'B'.repeat(16), 'C'.repeat(32));
+assert.equal(input?.byteLength, 76);
+assert.equal(new TextDecoder().decode(input.subarray(0, 19)), 'driftless-resume-v1');
+assert.equal(protocol.resumeProofInput('short', 'B'.repeat(16), 'C'.repeat(32)), undefined);
 
 console.log('@driftless/protocol dist smoke test passed');

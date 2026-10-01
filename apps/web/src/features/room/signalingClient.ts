@@ -47,6 +47,14 @@ const PROTOCOL_ERROR_CODE = 1002;
 const NORMAL_CLOSURE_CODE = 1000;
 
 /**
+ * Close code for a connection abandoned without ending anything: a resume
+ * attempt that timed out or was refused. The service treats it as a lost
+ * connection, so if it had just accepted the attempt's proof, the
+ * membership is held again rather than ended.
+ */
+export const ABANDONED_CLOSURE_CODE = 4000;
+
+/**
  * One signaling WebSocket. It numbers outgoing messages with strictly
  * increasing sequences for the life of the connection, across room changes,
  * and validates every incoming message with the shared protocol parser
@@ -139,13 +147,16 @@ export class SignalingClient {
     return true;
   }
 
-  /** Closes the connection. No `onClose` callback runs for it. Idempotent. */
-  close(): void {
+  /**
+   * Closes the connection, normally by default, which ends any membership it
+   * carries. No `onClose` callback runs for it. Idempotent.
+   */
+  close(code: number = NORMAL_CLOSURE_CODE): void {
     if (this.#finished) return;
     const socket = this.#socket;
     const pending = this.#settleOpen;
     this.#release();
-    socket?.close(NORMAL_CLOSURE_CODE);
+    socket?.close(code);
     pending?.(new Error('The signaling client was closed.'));
   }
 

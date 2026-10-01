@@ -45,6 +45,36 @@ export type ParticipantId = Brand<string, 'ParticipantId'>;
  */
 export type NegotiationId = Brand<string, 'NegotiationId'>;
 
+/**
+ * Opaque, non-secret identifier of one room incarnation, shared by its two
+ * participants: 20 random bytes (160 bits), 27 characters. The service
+ * creates it with the room; it never changes while the room exists and is
+ * never reused. It is not a credential.
+ */
+export type SessionId = Brand<string, 'SessionId'>;
+
+/**
+ * Secret, participant-specific resume credential: 33 random bytes (264 bits),
+ * 44 characters. The service gives each participant its own when it is
+ * admitted. It is never sent again: a resuming client proves knowledge of it
+ * by answering a challenge. It authorizes nothing else and must never be
+ * logged, persisted, shown, or placed in a URL.
+ */
+export type ResumeSecret = Brand<string, 'ResumeSecret'>;
+
+/**
+ * One-time resume challenge chosen by the service for one connection: 24
+ * random bytes (192 bits), 32 characters. Not secret.
+ */
+export type ResumeChallenge = Brand<string, 'ResumeChallenge'>;
+
+/**
+ * Answer to a resume challenge: an HMAC-SHA-256 value, 32 bytes, 43
+ * characters. See `resumeProofInput`. It is not an identifier; it shares the
+ * invite secret's length but is accepted only in `SESSION_RESUME_PROVE`.
+ */
+export type ResumeProof = Brand<string, 'ResumeProof'>;
+
 export const ROOM_ID_BYTES = 16;
 export const ROOM_ID_LENGTH = 22;
 export const INVITE_SECRET_BYTES = 32;
@@ -55,6 +85,18 @@ export const PARTICIPANT_ID_LENGTH = 16;
 // 16-byte value would have the room ID's 22-character form.
 export const NEGOTIATION_ID_BYTES = 18;
 export const NEGOTIATION_ID_LENGTH = 24;
+// 20 bytes give a 27-character form that no other identifier uses.
+export const SESSION_ID_BYTES = 20;
+export const SESSION_ID_LENGTH = 27;
+// 33 rather than 32 bytes keeps the resume secret a different length from the
+// invite secret, so one cannot be mistaken for the other.
+export const RESUME_SECRET_BYTES = 33;
+export const RESUME_SECRET_LENGTH = 44;
+export const RESUME_CHALLENGE_BYTES = 24;
+export const RESUME_CHALLENGE_LENGTH = 32;
+/** HMAC-SHA-256 output. */
+export const RESUME_PROOF_BYTES = 32;
+export const RESUME_PROOF_LENGTH = 43;
 
 // 16 bytes: the final character carries 2 data bits and 4 zero bits.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{21}[AQgw]$/;
@@ -64,6 +106,14 @@ const INVITE_SECRET_PATTERN = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const PARTICIPANT_ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
 // 18 bytes: a whole number of 3-byte groups, so every character is data.
 const NEGOTIATION_ID_PATTERN = /^[A-Za-z0-9_-]{24}$/;
+// 20 bytes: the final character carries 4 data bits and 2 zero bits.
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{26}[AEIMQUYcgkosw048]$/;
+// 33 bytes: a whole number of 3-byte groups, so every character is data.
+const RESUME_SECRET_PATTERN = /^[A-Za-z0-9_-]{44}$/;
+// 24 bytes: a whole number of 3-byte groups, so every character is data.
+const RESUME_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{32}$/;
+// 32 bytes: the final character carries 4 data bits and 2 zero bits.
+const RESUME_PROOF_PATTERN = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 
 export function isRoomId(value: unknown): value is RoomId {
   return typeof value === 'string' && ROOM_ID_PATTERN.test(value);
@@ -79,4 +129,20 @@ export function isParticipantId(value: unknown): value is ParticipantId {
 
 export function isNegotiationId(value: unknown): value is NegotiationId {
   return typeof value === 'string' && NEGOTIATION_ID_PATTERN.test(value);
+}
+
+export function isSessionId(value: unknown): value is SessionId {
+  return typeof value === 'string' && SESSION_ID_PATTERN.test(value);
+}
+
+export function isResumeSecret(value: unknown): value is ResumeSecret {
+  return typeof value === 'string' && RESUME_SECRET_PATTERN.test(value);
+}
+
+export function isResumeChallenge(value: unknown): value is ResumeChallenge {
+  return typeof value === 'string' && RESUME_CHALLENGE_PATTERN.test(value);
+}
+
+export function isResumeProof(value: unknown): value is ResumeProof {
+  return typeof value === 'string' && RESUME_PROOF_PATTERN.test(value);
 }

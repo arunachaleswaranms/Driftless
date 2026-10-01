@@ -6,9 +6,13 @@ const INFO_NOTICES: Partial<Record<RoomNotice, string>> = {
   left: 'You left the room.',
   host_left: 'The host closed the room.',
   host_disconnected: 'The host disconnected, so the room is closed.',
+  host_timed_out: 'The host did not reconnect in time, so the room is closed.',
   room_expired: 'The room expired.',
   guest_left: 'The guest left.',
   guest_disconnected: 'The guest disconnected.',
+  guest_timed_out: 'The guest did not reconnect in time.',
+  guest_gone: 'The guest is no longer in the room.',
+  restored: 'Connection restored.',
 };
 
 /**
@@ -18,6 +22,8 @@ const INFO_NOTICES: Partial<Record<RoomNotice, string>> = {
 const ERROR_NOTICES: Partial<Record<RoomNotice, string>> = {
   signaling_lost:
     'The connection to the signaling service was lost, and the peer connection was closed. Create or join a room to start again.',
+  session_unrecoverable:
+    'The room session could not be recovered, and the peer connection was closed. Create or join a room to start again.',
   connect_failed: 'Could not reach the signaling service. Check your connection and try again.',
   protocol_error:
     'The signaling service sent a message this version does not accept, so the connection was closed. Try again.',
@@ -41,19 +47,23 @@ const PEER_STATUS: Readonly<Record<'host' | 'guest', Record<PeerConnectionView, 
     negotiating: 'A guest joined. Setting up the peer connection…',
     connecting: 'Connecting to the guest…',
     connected: 'Peer data channel is connected.',
-    failed: 'The peer connection to the guest failed.',
+    recovering: 'Peer connection lost. Recovering…',
+    failed: 'The peer connection to the guest could not be recovered.',
   },
   guest: {
     negotiating: 'Joined the room. Setting up the peer connection…',
     connecting: 'Connecting to the host…',
     connected: 'Peer data channel is connected.',
-    failed: 'The peer connection to the host failed.',
+    recovering: 'Peer connection lost. Recovering…',
+    failed: 'The peer connection to the host could not be recovered.',
   },
 };
 
 /**
  * One sentence for the live status region. It changes only on meaningful
- * transitions, never per ICE candidate.
+ * transitions, never per ICE candidate or per reconnect attempt. It never
+ * calls the room fully connected while either participant's signaling is
+ * reconnecting.
  */
 export function statusText(state: RoomState): string {
   switch (state.phase) {
@@ -65,12 +75,26 @@ export function statusText(state: RoomState): string {
       return state.intent === 'create' ? 'Creating a room…' : 'Joining the room…';
     case 'leaving':
       return 'Leaving the room…';
-    case 'in-room':
-      if (state.role === 'host' && state.peer === null) {
+    case 'in-room': {
+      const { peer } = state;
+      const channelUp = peer?.connection === 'connected';
+      if (state.signaling === 'reconnecting') {
+        return channelUp
+          ? 'Peer data channel connected. Signaling is reconnecting…'
+          : 'Reconnecting to signaling…';
+      }
+      if (peer === null) {
         const info = state.notice === null ? '' : `${INFO_NOTICES[state.notice] ?? ''} `;
         return `${info}Room created. Waiting for a guest to join.`;
       }
-      return PEER_STATUS[state.role][state.peer?.connection ?? 'negotiating'];
+      if (peer.signaling === 'reconnecting' && peer.connection !== 'failed') {
+        return channelUp
+          ? 'Peer data channel connected. The other participant is reconnecting…'
+          : 'The other participant is reconnecting…';
+      }
+      const text = PEER_STATUS[state.role][peer.connection];
+      return state.notice === 'restored' && channelUp ? `Connection restored. ${text}` : text;
+    }
   }
 }
 
@@ -86,12 +110,15 @@ const PEER_FAILURES: Readonly<Record<PeerFailure, string>> = {
   signaling_unavailable: 'Connection details could not be sent through the signaling service.',
 };
 
-/** The alert for a failed peer connection, with what the user can do next. */
+/**
+ * The alert for a peer connection that stopped recovering, with what the
+ * user can do next.
+ */
 export function peerFailureText(role: 'host' | 'guest', failure: PeerFailure | null): string {
   const reason = failure === null ? 'The peer connection failed.' : PEER_FAILURES[failure];
   const action =
     role === 'host'
-      ? 'Driftless does not retry. Leave the room to close it, or wait for the guest to leave and join again.'
-      : 'Driftless does not retry. Leave the room, then join again to start a new connection.';
+      ? 'Driftless stopped trying to recover it. Leave the room to close it, or wait for the guest to leave and join again.'
+      : 'Driftless stopped trying to recover it. Leave the room, then join again to start a new connection.';
   return `${reason} ${action}`;
 }

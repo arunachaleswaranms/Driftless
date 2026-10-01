@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type SubmitEvent } from 'react';
 import { createBrowserRoomController } from './browserRoomController.ts';
-import type { PeerConnectionView, RoomController, RoomState } from './roomController.ts';
+import type {
+  PeerConnectionView,
+  RoomController,
+  RoomState,
+  SignalingView,
+} from './roomController.ts';
 import { noticeError, peerFailureText, statusText } from './roomText.ts';
 
 interface RoomPanelProps {
@@ -12,7 +17,13 @@ const CONNECTION_TEXT: Readonly<Record<PeerConnectionView, string>> = {
   negotiating: 'Setting up',
   connecting: 'Connecting',
   connected: 'Connected',
+  recovering: 'Recovering',
   failed: 'Failed',
+};
+
+const SIGNALING_TEXT: Readonly<Record<SignalingView, string>> = {
+  connected: 'Connected',
+  reconnecting: 'Reconnecting',
 };
 
 /** Shown in place of the invite secret until the host reveals it. */
@@ -131,6 +142,16 @@ function RoomBody({ state, onCreate, onJoin, onLeave }: RoomBodyProps) {
                 </dd>
               </div>
             ) : null}
+            <div>
+              <dt>Signaling</dt>
+              <dd>{SIGNALING_TEXT[state.signaling]}</dd>
+            </div>
+            {state.peer === null ? null : (
+              <div>
+                <dt>Other participant&apos;s signaling</dt>
+                <dd>{SIGNALING_TEXT[state.peer.signaling]}</dd>
+              </div>
+            )}
             <div>
               <dt>Peer connection</dt>
               <dd>

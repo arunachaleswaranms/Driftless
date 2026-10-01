@@ -21,6 +21,8 @@ const server = createSignalingServer({
   port: config.port,
   allowedOrigins: config.allowedOrigins,
   roomTtlMs: config.roomTtlMs,
+  reconnectGraceMs: config.reconnectGraceMs,
+  heartbeatIntervalMs: config.heartbeatIntervalMs,
   logger: createJsonLogger(),
 });
 

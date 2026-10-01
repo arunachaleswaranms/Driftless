@@ -14,6 +14,11 @@ export const PARTICIPANT_ID = encodedBytes(12);
 export const OTHER_PARTICIPANT_ID = encodedBytes(12, 50);
 export const NEGOTIATION_ID = encodedBytes(18);
 export const OTHER_NEGOTIATION_ID = encodedBytes(18, 200);
+export const SESSION_ID = encodedBytes(20, 7);
+export const OTHER_SESSION_ID = encodedBytes(20, 90);
+export const RESUME_SECRET = encodedBytes(33, 11);
+export const RESUME_CHALLENGE = encodedBytes(24, 33);
+export const RESUME_PROOF = encodedBytes(32, 77);
 
 /** A small session description shaped like a real data-channel offer. */
 export const SDP = [
@@ -42,16 +47,24 @@ export const VALID_NEGOTIATION_PAYLOADS = {
   RTC_ANSWER: { negotiationId: NEGOTIATION_ID, sdp: SDP },
   ICE_CANDIDATE: { negotiationId: NEGOTIATION_ID, candidate: CANDIDATE },
   ICE_COMPLETE: { negotiationId: NEGOTIATION_ID },
+  RTC_RECOVERY_REQUEST: { negotiationId: NEGOTIATION_ID },
+  RTC_RECOVER: {
+    previousNegotiationId: OTHER_NEGOTIATION_ID,
+    negotiationId: NEGOTIATION_ID,
+    sdp: SDP,
+  },
 } as const;
 
 /** One valid raw payload for every peer message type. */
 export const VALID_PEER_PAYLOADS = {
   PEER_HELLO: {
+    sessionId: SESSION_ID,
     negotiationId: NEGOTIATION_ID,
     senderId: PARTICIPANT_ID,
     recipientId: OTHER_PARTICIPANT_ID,
   },
   PEER_READY: {
+    sessionId: SESSION_ID,
     negotiationId: NEGOTIATION_ID,
     senderId: OTHER_PARTICIPANT_ID,
     recipientId: PARTICIPANT_ID,
@@ -74,6 +87,8 @@ export const VALID_CLIENT_PAYLOADS = {
   ROOM_CREATE: {},
   ROOM_JOIN: { roomId: ROOM_ID, inviteSecret: INVITE_SECRET },
   ROOM_LEAVE: {},
+  SESSION_RESUME_BEGIN: { sessionId: SESSION_ID, participantId: PARTICIPANT_ID },
+  SESSION_RESUME_PROVE: { challenge: RESUME_CHALLENGE, proof: RESUME_PROOF },
   ...VALID_NEGOTIATION_PAYLOADS,
 } as const;
 
@@ -81,13 +96,17 @@ export const VALID_CLIENT_PAYLOADS = {
 export const VALID_SERVER_PAYLOADS = {
   ROOM_CREATED: {
     roomId: ROOM_ID,
+    sessionId: SESSION_ID,
     inviteSecret: INVITE_SECRET,
+    resumeSecret: RESUME_SECRET,
     participantId: PARTICIPANT_ID,
     role: 'host',
     expiresAt: 1_760_000_600_000,
   },
   ROOM_JOINED: {
     roomId: ROOM_ID,
+    sessionId: SESSION_ID,
+    resumeSecret: RESUME_SECRET,
     participantId: OTHER_PARTICIPANT_ID,
     role: 'guest',
     peer: { participantId: PARTICIPANT_ID, role: 'host' },
@@ -97,6 +116,23 @@ export const VALID_SERVER_PAYLOADS = {
   ROOM_PARTICIPANT_JOINED: { participant: { participantId: OTHER_PARTICIPANT_ID, role: 'guest' } },
   ROOM_PARTICIPANT_LEFT: { participantId: OTHER_PARTICIPANT_ID, reason: 'LEFT' },
   ROOM_CLOSED: { reason: 'EXPIRED' },
+  ROOM_PARTICIPANT_CONNECTION: {
+    participantId: OTHER_PARTICIPANT_ID,
+    signaling: 'RECONNECTING',
+    activeNegotiationId: NEGOTIATION_ID,
+    negotiationCount: 1,
+  },
+  SESSION_RESUME_CHALLENGE: { challenge: RESUME_CHALLENGE },
+  SESSION_RESUMED: {
+    sessionId: SESSION_ID,
+    roomId: ROOM_ID,
+    participantId: PARTICIPANT_ID,
+    role: 'host',
+    expiresAt: 1_760_000_600_000,
+    peer: { participantId: OTHER_PARTICIPANT_ID, role: 'guest', signaling: 'CONNECTED' },
+    activeNegotiationId: NEGOTIATION_ID,
+    negotiationCount: 2,
+  },
   ERROR: { code: 'ROOM_UNAVAILABLE', message: 'The room is not available.', recoverable: true },
   ...VALID_NEGOTIATION_PAYLOADS,
 } as const;

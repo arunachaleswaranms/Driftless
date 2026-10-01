@@ -10,6 +10,7 @@ export const ERROR_CODES = [
   'ROOM_FULL',
   'RATE_LIMITED',
   'SERVER_ERROR',
+  'SESSION_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

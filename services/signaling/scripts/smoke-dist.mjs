@@ -1,12 +1,15 @@
 // Smoke test of the built service: runs dist/main.js exactly as `npm start`
 // does, with @driftless/protocol resolved from its built package. It checks
 // startup logging, the health endpoint, one room round trip with a relayed
-// WebRTC offer, configuration refusal, and a clean SIGTERM shutdown.
+// WebRTC offer, an authenticated resume after a lost guest connection,
+// configuration refusal, and a clean SIGTERM shutdown.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash, createHmac } from 'node:crypto';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { resumeProofInput, resumeSecretBytes } from '@driftless/protocol';
 import { WebSocket } from 'ws';
 
 const MAIN = fileURLToPath(new URL('../dist/main.js', import.meta.url));
@@ -90,8 +93,34 @@ const relayed = JSON.parse(offerData.toString('utf8'));
 assert.equal(relayed.type, 'RTC_OFFER');
 assert.deepEqual(relayed.payload, offer);
 
+// The guest's connection is lost; a new connection resumes it by proof.
+const joined = JSON.parse(joinedData.toString('utf8'));
+const lostNotice = once(socket, 'message');
+guest.terminate();
+const [lostData] = await withTimeout(lostNotice, 'RECONNECTING notice');
+assert.equal(JSON.parse(lostData.toString('utf8')).payload.signaling, 'RECONNECTING');
+const resumed = new WebSocket(`ws://${host}:${port}/v1/signaling`, { origin: ORIGIN });
+await withTimeout(once(resumed, 'open'), 'resume websocket open');
+const { sessionId, participantId, resumeSecret } = joined.payload;
+resumed.send(envelope('SESSION_RESUME_BEGIN', 0, { sessionId, participantId }));
+const [challengeData] = await withTimeout(once(resumed, 'message'), 'challenge');
+const { challenge } = JSON.parse(challengeData.toString('utf8')).payload;
+const key = createHash('sha256').update(resumeSecretBytes(resumeSecret)).digest();
+const proof = createHmac('sha256', key)
+  .update(resumeProofInput(sessionId, participantId, challenge))
+  .digest('base64url');
+const backNotice = once(socket, 'message');
+resumed.send(envelope('SESSION_RESUME_PROVE', 1, { challenge, proof }));
+const [resumedData] = await withTimeout(once(resumed, 'message'), 'SESSION_RESUMED');
+const resumedMessage = JSON.parse(resumedData.toString('utf8'));
+assert.equal(resumedMessage.type, 'SESSION_RESUMED');
+assert.equal(resumedMessage.payload.participantId, participantId);
+assert.equal(resumedMessage.payload.activeNegotiationId, offer.negotiationId);
+const [backData] = await withTimeout(backNotice, 'CONNECTED notice');
+assert.equal(JSON.parse(backData.toString('utf8')).payload.signaling, 'CONNECTED');
+
 const closed = once(socket, 'close');
-const guestClosed = once(guest, 'close');
+const guestClosed = once(resumed, 'close');
 
 child.kill('SIGTERM');
 const [exitCode] = await withTimeout(once(child, 'exit'), 'shutdown');
@@ -106,6 +135,9 @@ assert.ok(!logged.includes(created.payload.inviteSecret), 'invite secret was log
 assert.ok(!logged.includes(created.payload.roomId), 'room ID was logged');
 assert.ok(!logged.includes('SMOKEMARK'), 'session description was logged');
 assert.ok(!logged.includes(offer.negotiationId), 'negotiation ID was logged');
+for (const value of [resumeSecret, created.payload.resumeSecret, sessionId, challenge, proof]) {
+  assert.ok(!logged.includes(value), 'a resume value was logged');
+}
 assert.deepEqual(
   logs.map((event) => event.event),
   [
@@ -115,6 +147,11 @@ assert.deepEqual(
     'connection_opened',
     'participant_joined',
     'negotiation_relayed',
+    'participant_disconnected',
+    'connection_closed',
+    'connection_opened',
+    'resume_challenge_issued',
+    'participant_resumed',
     'connection_closed',
     'connection_closed',
     'server_stopped',

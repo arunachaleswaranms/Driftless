@@ -17,6 +17,8 @@ describe('loadConfig', () => {
         port: 8787,
         allowedOrigins: DEVELOPMENT_ORIGINS,
         roomTtlMs: 3_600_000,
+        reconnectGraceMs: 30_000,
+        heartbeatIntervalMs: 15_000,
       },
     });
     for (const origin of DEVELOPMENT_ORIGINS) {
@@ -31,6 +33,8 @@ describe('loadConfig', () => {
       SIGNALING_PORT: '9000',
       SIGNALING_ALLOWED_ORIGINS: 'https://app.example, https://staging.example:8443',
       SIGNALING_ROOM_TTL_SECONDS: '600',
+      SIGNALING_RECONNECT_GRACE_SECONDS: '45',
+      SIGNALING_HEARTBEAT_SECONDS: '20',
     });
     expect(result).toStrictEqual({
       ok: true,
@@ -40,6 +44,8 @@ describe('loadConfig', () => {
         port: 9000,
         allowedOrigins: ['https://app.example', 'https://staging.example:8443'],
         roomTtlMs: 600_000,
+        reconnectGraceMs: 45_000,
+        heartbeatIntervalMs: 20_000,
       },
     });
   });
@@ -80,6 +86,25 @@ describe('loadConfig', () => {
     }
     expect(loadConfig({ SIGNALING_ROOM_TTL_SECONDS: '60' }).ok).toBe(true);
     expect(loadConfig({ SIGNALING_ROOM_TTL_SECONDS: '86400' }).ok).toBe(true);
+  });
+
+  it('bounds the reconnect grace period and the liveness interval', () => {
+    for (const grace of ['', '0', '4', '121', '30.5', '-30', '1e2', 'Infinity']) {
+      expect(error({ SIGNALING_RECONNECT_GRACE_SECONDS: grace })).toContain(
+        'SIGNALING_RECONNECT_GRACE_SECONDS',
+      );
+    }
+    for (const grace of ['5', '120']) {
+      expect(loadConfig({ SIGNALING_RECONNECT_GRACE_SECONDS: grace }).ok).toBe(true);
+    }
+    for (const interval of ['', '0', '4', '61', '15.5', '-15', 'never']) {
+      expect(error({ SIGNALING_HEARTBEAT_SECONDS: interval })).toContain(
+        'SIGNALING_HEARTBEAT_SECONDS',
+      );
+    }
+    for (const interval of ['5', '60']) {
+      expect(loadConfig({ SIGNALING_HEARTBEAT_SECONDS: interval }).ok).toBe(true);
+    }
   });
 
   it('rejects wildcard, null, and malformed origins', () => {

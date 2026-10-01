@@ -5,8 +5,13 @@ import {
   serializeMessage,
   type ClientMessage,
   type IceCandidate,
+  type ParticipantId,
   type PeerMessage,
+  type ResumeChallenge,
+  type ResumeProof,
+  type ResumeSecret,
   type ServerMessage,
+  type SessionId,
 } from '@driftless/protocol';
 import type { DataChannelLike, PeerConnectionLike } from '../features/room/peerSession.ts';
 import type { WebSocketLike } from '../features/room/signalingClient.ts';
@@ -363,4 +368,69 @@ export function peerMessage(
     sentAt: 0,
     payload,
   });
+}
+
+/**
+ * Deterministic one-shot timers. Nothing runs until the test advances time,
+ * and every pending timer is visible, so duplicate or leaked schedules show.
+ */
+export class FakeTimers {
+  now = 0;
+  readonly #pending: { at: number; order: number; task: () => void }[] = [];
+  #order = 0;
+
+  schedule(delayMs: number, task: () => void): () => void {
+    const entry = { at: this.now + delayMs, order: this.#order++, task };
+    this.#pending.push(entry);
+    return () => {
+      const index = this.#pending.indexOf(entry);
+      if (index !== -1) this.#pending.splice(index, 1);
+    };
+  }
+
+  /** Timers that have not run or been cancelled. */
+  get pendingCount(): number {
+    return this.#pending.length;
+  }
+
+  /** Delays of the pending timers, relative to now. */
+  get pendingDelays(): number[] {
+    return this.#pending.map((entry) => entry.at - this.now);
+  }
+
+  /** Moves time forward, running every timer due on the way, in order. */
+  async advance(ms: number): Promise<void> {
+    const target = this.now + ms;
+    for (;;) {
+      const due = this.#pending
+        .filter((entry) => entry.at <= target)
+        .sort((a, b) => a.at - b.at || a.order - b.order)[0];
+      if (due === undefined) break;
+      this.#pending.splice(this.#pending.indexOf(due), 1);
+      this.now = due.at;
+      due.task();
+      await flush();
+    }
+    this.now = target;
+    await flush();
+  }
+}
+
+/** A stand-in proof for controller tests; real proofs are tested in resumeProof.test.ts. */
+export const FAKE_PROOF = 'A'.repeat(43) as ResumeProof;
+
+/** A resume prover that records its calls and answers with a fixed proof. */
+export function fakeProver(calls: ResumeChallenge[] = []) {
+  return {
+    calls,
+    prove: (
+      _secret: ResumeSecret,
+      _sessionId: SessionId,
+      _participantId: ParticipantId,
+      challenge: ResumeChallenge,
+    ): Promise<ResumeProof | undefined> => {
+      calls.push(challenge);
+      return Promise.resolve(FAKE_PROOF);
+    },
+  };
 }

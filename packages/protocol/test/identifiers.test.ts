@@ -7,14 +7,35 @@ import {
   NEGOTIATION_ID_LENGTH,
   PARTICIPANT_ID_BYTES,
   PARTICIPANT_ID_LENGTH,
+  RESUME_CHALLENGE_BYTES,
+  RESUME_CHALLENGE_LENGTH,
+  RESUME_PROOF_BYTES,
+  RESUME_PROOF_LENGTH,
+  RESUME_SECRET_BYTES,
+  RESUME_SECRET_LENGTH,
   ROOM_ID_BYTES,
   ROOM_ID_LENGTH,
+  SESSION_ID_BYTES,
+  SESSION_ID_LENGTH,
   isInviteSecret,
   isNegotiationId,
   isParticipantId,
+  isResumeChallenge,
+  isResumeProof,
+  isResumeSecret,
   isRoomId,
+  isSessionId,
 } from '../src/index.js';
-import { INVITE_SECRET, NEGOTIATION_ID, PARTICIPANT_ID, ROOM_ID } from './fixtures.js';
+import {
+  INVITE_SECRET,
+  NEGOTIATION_ID,
+  PARTICIPANT_ID,
+  RESUME_CHALLENGE,
+  RESUME_PROOF,
+  RESUME_SECRET,
+  ROOM_ID,
+  SESSION_ID,
+} from './fixtures.js';
 
 const formats = [
   { name: 'room ID', check: isRoomId, bytes: ROOM_ID_BYTES, length: ROOM_ID_LENGTH },
@@ -36,6 +57,25 @@ const formats = [
     bytes: NEGOTIATION_ID_BYTES,
     length: NEGOTIATION_ID_LENGTH,
   },
+  { name: 'session ID', check: isSessionId, bytes: SESSION_ID_BYTES, length: SESSION_ID_LENGTH },
+  {
+    name: 'resume secret',
+    check: isResumeSecret,
+    bytes: RESUME_SECRET_BYTES,
+    length: RESUME_SECRET_LENGTH,
+  },
+  {
+    name: 'resume challenge',
+    check: isResumeChallenge,
+    bytes: RESUME_CHALLENGE_BYTES,
+    length: RESUME_CHALLENGE_LENGTH,
+  },
+  {
+    name: 'resume proof',
+    check: isResumeProof,
+    bytes: RESUME_PROOF_BYTES,
+    length: RESUME_PROOF_LENGTH,
+  },
 ] as const;
 
 describe('identifier formats', () => {
@@ -46,6 +86,55 @@ describe('identifier formats', () => {
       new Set([ROOM_ID_LENGTH, INVITE_SECRET_LENGTH, PARTICIPANT_ID_LENGTH, NEGOTIATION_ID_LENGTH])
         .size,
     ).toBe(4);
+  });
+
+  it('gives the resume credential at least 256 bits and every identifier its own length', () => {
+    expect(RESUME_SECRET_BYTES * 8).toBeGreaterThanOrEqual(256);
+    expect(RESUME_CHALLENGE_BYTES * 8).toBeGreaterThanOrEqual(192);
+    expect(SESSION_ID_BYTES * 8).toBeGreaterThanOrEqual(128);
+    const identifierLengths = [
+      ROOM_ID_LENGTH,
+      INVITE_SECRET_LENGTH,
+      PARTICIPANT_ID_LENGTH,
+      NEGOTIATION_ID_LENGTH,
+      SESSION_ID_LENGTH,
+      RESUME_SECRET_LENGTH,
+      RESUME_CHALLENGE_LENGTH,
+    ];
+    expect(new Set(identifierLengths).size).toBe(identifierLengths.length);
+    // The proof is an HMAC output, not an identifier: it shares only the
+    // invite secret's length and is accepted in one field only.
+    expect(RESUME_PROOF_LENGTH).toBe(INVITE_SECRET_LENGTH);
+  });
+
+  it('keeps session and resume values apart from every other kind', () => {
+    const values = [
+      ROOM_ID,
+      INVITE_SECRET,
+      PARTICIPANT_ID,
+      NEGOTIATION_ID,
+      SESSION_ID,
+      RESUME_SECRET,
+      RESUME_CHALLENGE,
+    ];
+    const checks = [
+      isRoomId,
+      isInviteSecret,
+      isParticipantId,
+      isNegotiationId,
+      isSessionId,
+      isResumeSecret,
+      isResumeChallenge,
+    ];
+    values.forEach((value, index) => {
+      checks.forEach((check, other) => {
+        expect(check(value)).toBe(index === other);
+      });
+    });
+    expect(isResumeProof(RESUME_PROOF)).toBe(true);
+    expect(isResumeProof(RESUME_SECRET)).toBe(false);
+    expect(isSessionId(`${SESSION_ID.slice(0, -1)}B`)).toBe(false);
+    expect(isResumeProof(`${RESUME_PROOF.slice(0, -1)}B`)).toBe(false);
   });
 
   it.each(formats)('accepts canonical random $name values', ({ check, bytes, length }) => {

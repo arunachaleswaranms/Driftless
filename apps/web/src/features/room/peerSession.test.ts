@@ -3,6 +3,7 @@ import {
   PEER_CONTROL_CHANNEL_LABEL,
   type NegotiationId,
   type ParticipantId,
+  type SessionId,
 } from '@driftless/protocol';
 import { describe, expect, it } from 'vitest';
 import {
@@ -26,17 +27,26 @@ const OTHER_NEGOTIATION = 'M'.repeat(24) as NegotiationId;
 const HOST_ID = 'H'.repeat(16) as ParticipantId;
 const GUEST_ID = 'G'.repeat(16) as ParticipantId;
 const STRANGER_ID = 'S'.repeat(16) as ParticipantId;
+const SESSION_ID = 'Q'.repeat(27) as SessionId;
+const OTHER_SESSION_ID = 'P'.repeat(26).concat('A') as SessionId;
 
 function setup(
   role: 'host' | 'guest',
-  options: { signal?: (body: NegotiationBody) => boolean } = {},
+  options: {
+    signal?: (body: NegotiationBody) => boolean;
+    previousNegotiationId?: NegotiationId;
+  } = {},
 ) {
   const connections: FakePeerConnection[] = [];
   const signals: NegotiationBody[] = [];
   const states: { state: PeerSessionState; failure: PeerFailure | undefined }[] = [];
   const session = new PeerSession({
     role,
+    sessionId: SESSION_ID,
     negotiationId: NEGOTIATION,
+    ...(options.previousNegotiationId === undefined
+      ? {}
+      : { previousNegotiationId: options.previousNegotiationId }),
     localParticipantId: role === 'host' ? HOST_ID : GUEST_ID,
     remoteParticipantId: role === 'host' ? GUEST_ID : HOST_ID,
     configuration: { iceServers: [{ urls: ['stun:stun.example.org'] }] },
@@ -85,11 +95,21 @@ async function answeredGuest() {
 
 const hello = (
   sequence: number,
-  payload = { negotiationId: NEGOTIATION, senderId: GUEST_ID, recipientId: HOST_ID },
+  payload = {
+    sessionId: SESSION_ID,
+    negotiationId: NEGOTIATION,
+    senderId: GUEST_ID,
+    recipientId: HOST_ID,
+  },
 ) => peerMessage('PEER_HELLO', payload, sequence);
 const ready = (
   sequence: number,
-  payload = { negotiationId: NEGOTIATION, senderId: GUEST_ID, recipientId: HOST_ID },
+  payload = {
+    sessionId: SESSION_ID,
+    negotiationId: NEGOTIATION,
+    senderId: GUEST_ID,
+    recipientId: HOST_ID,
+  },
 ) => peerMessage('PEER_READY', payload, sequence);
 
 describe('host negotiation', () => {
@@ -378,6 +398,7 @@ describe('control channel handshake', () => {
     expect(session.state).toBe('negotiating');
     expect(channel.sent.map((message) => message.type)).toStrictEqual(['PEER_HELLO']);
     expect(channel.sent[0]?.payload).toStrictEqual({
+      sessionId: SESSION_ID,
       negotiationId: NEGOTIATION,
       senderId: HOST_ID,
       recipientId: GUEST_ID,
@@ -391,30 +412,87 @@ describe('control channel handshake', () => {
     expect(channel.sent.map((message) => message.sequence)).toStrictEqual([0, 1]);
   });
 
-  it('guest greets on an already open channel and connects symmetrically', async () => {
+  it('guest sends nothing until the host greets, then greets and connects symmetrically', async () => {
     const { connection, session } = await answeredGuest();
     const channel = new FakeDataChannel(PEER_CONTROL_CHANNEL_LABEL, { ordered: true });
     channel.readyState = 'open';
     connection().announceChannel(channel);
-    expect(channel.sent.map((message) => message.type)).toStrictEqual(['PEER_HELLO']);
-    const fromHost = { negotiationId: NEGOTIATION, senderId: HOST_ID, recipientId: GUEST_ID };
+    channel.open();
+    // An open channel alone does not make the guest send: the host's channel
+    // may not have opened yet.
+    expect(channel.sent).toStrictEqual([]);
+    const fromHost = {
+      sessionId: SESSION_ID,
+      negotiationId: NEGOTIATION,
+      senderId: HOST_ID,
+      recipientId: GUEST_ID,
+    };
     channel.receive(peerMessage('PEER_HELLO', fromHost, 0));
+    expect(channel.sent.map((message) => [message.type, message.sequence])).toStrictEqual([
+      ['PEER_HELLO', 0],
+      ['PEER_READY', 1],
+    ]);
+    expect(session.state).toBe('connecting');
     channel.receive(peerMessage('PEER_READY', fromHost, 1));
     expect(session.state).toBe('connected');
+  });
+
+  it('guest refuses a PEER_READY that arrives before any greeting', async () => {
+    const { connection, states } = await answeredGuest();
+    const channel = new FakeDataChannel(PEER_CONTROL_CHANNEL_LABEL, { ordered: true });
+    connection().announceChannel(channel);
+    channel.open();
+    channel.receive(
+      peerMessage(
+        'PEER_READY',
+        {
+          sessionId: SESSION_ID,
+          negotiationId: NEGOTIATION,
+          senderId: HOST_ID,
+          recipientId: GUEST_ID,
+        },
+        0,
+      ),
+    );
+    expect(states.at(-1)).toStrictEqual({ state: 'failed', failure: 'peer_protocol' });
   });
 
   it.each([
     [
       'a wrong negotiation',
-      hello(0, { negotiationId: OTHER_NEGOTIATION, senderId: GUEST_ID, recipientId: HOST_ID }),
+      hello(0, {
+        sessionId: SESSION_ID,
+        negotiationId: OTHER_NEGOTIATION,
+        senderId: GUEST_ID,
+        recipientId: HOST_ID,
+      }),
+    ],
+    [
+      'another room session',
+      hello(0, {
+        sessionId: OTHER_SESSION_ID,
+        negotiationId: NEGOTIATION,
+        senderId: GUEST_ID,
+        recipientId: HOST_ID,
+      }),
     ],
     [
       'a wrong sender',
-      hello(0, { negotiationId: NEGOTIATION, senderId: STRANGER_ID, recipientId: HOST_ID }),
+      hello(0, {
+        sessionId: SESSION_ID,
+        negotiationId: NEGOTIATION,
+        senderId: STRANGER_ID,
+        recipientId: HOST_ID,
+      }),
     ],
     [
       'a wrong recipient',
-      hello(0, { negotiationId: NEGOTIATION, senderId: GUEST_ID, recipientId: STRANGER_ID }),
+      hello(0, {
+        sessionId: SESSION_ID,
+        negotiationId: NEGOTIATION,
+        senderId: GUEST_ID,
+        recipientId: STRANGER_ID,
+      }),
     ],
     ['malformed JSON', '{'],
     [
@@ -556,5 +634,48 @@ describe('cleanup and stale callbacks', () => {
     onconnectionstatechange?.call(connection() as unknown as RTCPeerConnection, new Event('x'));
     channel?.remoteClose();
     expect(states).toStrictEqual([{ state: 'failed', failure: 'connection_failed' }]);
+  });
+});
+
+describe('recovery sessions and signaling loss', () => {
+  it('sends a recovery offer naming the negotiation it replaces', async () => {
+    const harness = setup('host', { previousNegotiationId: OTHER_NEGOTIATION });
+    void harness.session.start();
+    await flush();
+    await harness.connection().settle('createOffer');
+    await harness.connection().settle('setLocalDescription');
+    expect(harness.signals[0]).toStrictEqual({
+      type: 'RTC_RECOVER',
+      payload: {
+        previousNegotiationId: OTHER_NEGOTIATION,
+        negotiationId: NEGOTIATION,
+        sdp: 'v=0\r\nfake-offer\r\n',
+      },
+    });
+    // A fresh connection and a fresh control channel.
+    expect(harness.connections).toHaveLength(1);
+    expect(harness.connection().channels.map((channel) => channel.label)).toStrictEqual([
+      PEER_CONTROL_CHANNEL_LABEL,
+    ]);
+  });
+
+  it('stays connected when signaling can no longer carry a late candidate', async () => {
+    let signalingUp = true;
+    const harness = setup('host', { signal: () => signalingUp });
+    void harness.session.start();
+    await flush();
+    await harness.connection().settle('createOffer');
+    await harness.connection().settle('setLocalDescription');
+    const channel = harness.connection().channels[0];
+    if (channel === undefined) throw new Error('no channel');
+    channel.open();
+    channel.receive(hello(0));
+    channel.receive(ready(1));
+    expect(harness.session.state).toBe('connected');
+    signalingUp = false;
+    harness.connection().emitCandidate(nativeCandidate(5));
+    harness.connection().emitCandidate(null);
+    expect(harness.session.state).toBe('connected');
+    expect(harness.states.at(-1)).toStrictEqual({ state: 'connected', failure: undefined });
   });
 });

@@ -12,6 +12,7 @@ import {
   type ParticipantId,
   type ParticipantRole,
   type PeerMessage,
+  type SessionId,
 } from '@driftless/protocol';
 
 /** The part of `RTCPeerConnection` a peer session uses. */
@@ -98,7 +99,14 @@ export const MAX_QUEUED_REMOTE_CANDIDATE_BYTES = 16_384;
 
 export interface PeerSessionOptions {
   readonly role: ParticipantRole;
+  /** The room session both participants belong to; bound into the handshake. */
+  readonly sessionId: SessionId;
   readonly negotiationId: NegotiationId;
+  /**
+   * Host only: the failed negotiation this session replaces. When set, the
+   * offer is sent as an `RTC_RECOVER` naming it, rather than an `RTC_OFFER`.
+   */
+  readonly previousNegotiationId?: NegotiationId;
   readonly localParticipantId: ParticipantId;
   readonly remoteParticipantId: ParticipantId;
   readonly configuration: RTCConfiguration;
@@ -123,9 +131,13 @@ export interface PeerSessionOptions {
  *
  * Every asynchronous continuation and event handler checks that the session
  * is still live, and teardown detaches every handler, so a late callback from
- * a closed session can never act. There is no retry, ICE restart,
- * renegotiation, or reconnect: a failure tears the session down and reports
- * once.
+ * a closed session can never act. A session is never repaired: there is no
+ * ICE restart or renegotiation within it, and a failure tears it down and
+ * reports once. Recovery is the owner's decision and always uses a fresh
+ * session, with a fresh connection, negotiation ID, channel, and handshake.
+ *
+ * Once connected, a session needs no signaling: a late candidate that
+ * signaling cannot carry is dropped, and the session stays connected.
  */
 export class PeerSession {
   readonly #options: PeerSessionOptions;
@@ -163,7 +175,15 @@ export class PeerSession {
     return this.#options.negotiationId;
   }
 
-  /** Host: creates the connection and the control channel, and sends the offer. */
+  /** Whether this session's offer or answer was handed to signaling. */
+  get descriptionSent(): boolean {
+    return this.#localDescriptionSent;
+  }
+
+  /**
+   * Host: creates the connection and the control channel, and sends the
+   * offer, or the recovery offer if this session replaces a failed one.
+   */
   async start(): Promise<void> {
     if (this.#options.role !== 'host' || this.#connection !== undefined || !this.#live) return;
     const connection = this.#createConnection();
@@ -175,7 +195,7 @@ export class PeerSession {
       if (!this.#owns(connection)) return;
       await connection.setLocalDescription(offer);
       if (!this.#owns(connection)) return;
-      this.#sendLocalDescription('RTC_OFFER', connection);
+      this.#sendLocalDescription('offer', connection);
     } catch {
       if (this.#owns(connection)) this.#fail('negotiation_failed');
     }
@@ -195,7 +215,7 @@ export class PeerSession {
       if (!this.#owns(connection)) return;
       await connection.setLocalDescription(answer);
       if (!this.#owns(connection)) return;
-      if (this.#sendLocalDescription('RTC_ANSWER', connection)) this.#setState('connecting');
+      if (this.#sendLocalDescription('answer', connection)) this.#setState('connecting');
     } catch {
       if (this.#owns(connection)) this.#fail('negotiation_failed');
     }
@@ -318,15 +338,20 @@ export class PeerSession {
   }
 
   /** Sends the local description; then any candidates gathered meanwhile. */
-  #sendLocalDescription(type: 'RTC_OFFER' | 'RTC_ANSWER', connection: PeerConnectionLike): boolean {
+  #sendLocalDescription(kind: 'offer' | 'answer', connection: PeerConnectionLike): boolean {
     const sdp = connection.localDescription?.sdp;
     if (!isSessionDescription(sdp)) {
       this.#fail('negotiation_failed');
       return false;
     }
-    if (!this.#signal({ type, payload: { negotiationId: this.#options.negotiationId, sdp } })) {
-      return false;
-    }
+    const { negotiationId, previousNegotiationId } = this.#options;
+    const body: NegotiationBody =
+      kind === 'answer'
+        ? { type: 'RTC_ANSWER', payload: { negotiationId, sdp } }
+        : previousNegotiationId === undefined
+          ? { type: 'RTC_OFFER', payload: { negotiationId, sdp } }
+          : { type: 'RTC_RECOVER', payload: { previousNegotiationId, negotiationId, sdp } };
+    if (!this.#signal(body)) return false;
     this.#localDescriptionSent = true;
     for (const candidate of this.#pendingLocal.splice(0)) {
       if (!this.#sendCandidate(candidate)) return false;
@@ -376,13 +401,14 @@ export class PeerSession {
 
   #signal(body: NegotiationBody): boolean {
     if (this.#options.signal(body)) return true;
-    this.#fail('signaling_unavailable');
+    // A connected session does not depend on signaling.
+    if (this.#state !== 'connected') this.#fail('signaling_unavailable');
     return false;
   }
 
   #connectionStateChanged(state: RTCPeerConnectionState): void {
     if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-      // No ICE restart or recovery in this phase: any loss ends the session.
+      // No ICE restart: any loss ends this session; recovery uses a new one.
       this.#fail(this.#state === 'connected' ? 'connection_lost' : 'connection_failed');
     }
   }
@@ -407,11 +433,20 @@ export class PeerSession {
     this.#bindChannel(channel);
   }
 
+  /**
+   * The host greets first, when its channel opens; the guest greets only in
+   * reply. A message the guest sent as soon as its announced channel was
+   * open could reach the host before the host's channel had opened, and
+   * same-host Chromium testing observed such a first message never being
+   * delivered, leaving both handshakes waiting. Replying ensures the host's
+   * channel is open before the guest sends anything.
+   */
   #bindChannel(channel: DataChannelLike): void {
     this.#channel = channel;
     channel.binaryType = 'arraybuffer';
+    const greetsFirst = this.#options.role === 'host';
     channel.onopen = () => {
-      if (this.#channel === channel && this.#live) this.#sendHello();
+      if (this.#channel === channel && this.#live && greetsFirst) this.#sendHello();
     };
     channel.onmessage = (event: MessageEvent) => {
       if (this.#channel === channel && this.#live) this.#peerMessage(event.data);
@@ -422,8 +457,7 @@ export class PeerSession {
     channel.onerror = () => {
       if (this.#channel === channel && this.#live) this.#fail('channel_closed');
     };
-    // A channel announced to the guest may already be open.
-    if (channel.readyState === 'open') this.#sendHello();
+    if (greetsFirst && channel.readyState === 'open') this.#sendHello();
   }
 
   #sendHello(): void {
@@ -439,6 +473,7 @@ export class PeerSession {
       sequence: this.#nextPeerSequence++,
       sentAt: this.#options.clock(),
       payload: {
+        sessionId: this.#options.sessionId,
         negotiationId: this.#options.negotiationId,
         senderId: this.#options.localParticipantId,
         recipientId: this.#options.remoteParticipantId,
@@ -452,11 +487,13 @@ export class PeerSession {
   }
 
   /**
-   * The handshake: each side sends PEER_HELLO when the channel opens and
-   * answers the other's PEER_HELLO with PEER_READY. A message must name this
-   * negotiation, come from the expected peer, address this participant, and
-   * arrive in sequence; anything else, including a repeat or binary data,
-   * fails the session.
+   * The handshake: the host sends PEER_HELLO when its channel opens; the
+   * guest answers it with its own PEER_HELLO and a PEER_READY, and the host
+   * answers the guest's PEER_HELLO with PEER_READY. A message must name this
+   * room session and negotiation, come from the expected peer, address this
+   * participant, and arrive in sequence; anything else, including a repeat,
+   * a message from another session or negotiation, or binary data, fails the
+   * session.
    */
   #peerMessage(data: unknown): void {
     const parsed = typeof data === 'string' ? parsePeerMessage(data) : undefined;
@@ -465,9 +502,10 @@ export class PeerSession {
       return;
     }
     const { message } = parsed;
-    const { negotiationId, senderId, recipientId } = message.payload;
+    const { sessionId, negotiationId, senderId, recipientId } = message.payload;
     if (
       message.sequence <= this.#lastPeerSequence ||
+      sessionId !== this.#options.sessionId ||
       negotiationId !== this.#options.negotiationId ||
       senderId !== this.#options.remoteParticipantId ||
       recipientId !== this.#options.localParticipantId

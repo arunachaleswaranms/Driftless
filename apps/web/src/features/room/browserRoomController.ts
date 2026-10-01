@@ -1,5 +1,7 @@
 import { parseStunUrls } from './iceServers.ts';
 import { createNegotiationId } from './negotiationId.ts';
+import { browserTimers } from './reconnectSchedule.ts';
+import { createResumeProver } from './resumeProof.ts';
 import { RoomController } from './roomController.ts';
 import { signalingUrlFor } from './signalingUrl.ts';
 
@@ -15,6 +17,10 @@ export function createBrowserRoomController(): RoomController {
     createWebSocket: (url) => new WebSocket(url),
     createPeerConnection: (configuration) => new RTCPeerConnection(configuration),
     createNegotiationId: () => createNegotiationId(),
+    // Rooms require a secure context (https, or loopback in development),
+    // where Web Crypto is available.
+    proveResume: createResumeProver(crypto.subtle),
     clock: () => Date.now(),
+    timers: browserTimers,
   });
 }

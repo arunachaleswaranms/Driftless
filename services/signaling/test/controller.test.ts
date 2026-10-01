@@ -23,6 +23,7 @@ import { RoomStore } from '../src/roomStore.js';
 import { FakeClock, clientMessage, expectType, parseStrict, sequentialRandom } from './support.js';
 
 const TTL = 60_000;
+const GRACE = 30_000;
 
 interface TestClient {
   readonly connection: Connection;
@@ -37,7 +38,9 @@ interface TestClient {
 function harness(options: { rateLimit?: RateLimit; store?: RoomStore } = {}) {
   const clock = new FakeClock();
   const logger = createMemoryLogger();
-  const store = options.store ?? new RoomStore({ roomTtlMs: TTL, random: sequentialRandom() });
+  const store =
+    options.store ??
+    new RoomStore({ roomTtlMs: TTL, reconnectGraceMs: GRACE, random: sequentialRandom() });
   const controller = new SignalingController({
     store,
     logger,
@@ -123,6 +126,8 @@ describe('room lifecycle', () => {
     const { host, guest, created, joined } = harness().roomPair();
     expect(joined.payload).toStrictEqual({
       roomId: created.payload.roomId,
+      sessionId: created.payload.sessionId,
+      resumeSecret: joined.payload.resumeSecret,
       participantId: joined.payload.participantId,
       role: 'guest',
       peer: { participantId: created.payload.participantId, role: 'host' },
@@ -169,9 +174,9 @@ describe('room lifecycle', () => {
     expect(expectType(guest.last(), 'ROOM_CREATED').payload.role).toBe('host');
   });
 
-  it('handles disconnects of the guest and of the host', () => {
+  it('ends membership at once when a client closes normally or goes away', () => {
     const first = harness().roomPair();
-    first.guest.connection.transportClosed(1006);
+    first.guest.connection.transportClosed(1000);
     expect(first.guest.connection.state).toBe('CLOSED');
     expect(expectType(first.host.last(), 'ROOM_PARTICIPANT_LEFT').payload.reason).toBe(
       'DISCONNECTED',
@@ -189,10 +194,10 @@ describe('room lifecycle', () => {
     const h = harness();
     const { host, guest, created } = h.roomPair();
     h.clock.advance(TTL - 1);
-    h.controller.expireDueRooms();
+    h.controller.sweep();
     expect(h.store.roomCount).toBe(1);
     h.clock.advance(1);
-    h.controller.expireDueRooms();
+    h.controller.sweep();
     expect(expectType(host.last(), 'ROOM_CLOSED').payload.reason).toBe('EXPIRED');
     expect(expectType(guest.last(), 'ROOM_CLOSED').payload.reason).toBe('EXPIRED');
     expect(host.connection.state).toBe('NOT_IN_ROOM');
@@ -412,7 +417,7 @@ describe('abuse bounds', () => {
         throw new Error(detail);
       }
     }
-    const h = harness({ store: new FailingStore({ roomTtlMs: TTL }) });
+    const h = harness({ store: new FailingStore({ roomTtlMs: TTL, reconnectGraceMs: GRACE }) });
     const client = h.connect();
     client.send('ROOM_CREATE');
     expectError(client.last(), 'SERVER_ERROR', false);
@@ -473,9 +478,9 @@ describe('secret and identifier leakage', () => {
       inviteSecret: otherSecret(created.payload.inviteSecret),
     });
     guest.sendRaw(`{"inviteSecret":"${created.payload.inviteSecret}"}`);
-    guest.connection.transportClosed(1006);
+    guest.connection.transportClosed(1000);
     h.clock.advance(TTL);
-    h.controller.expireDueRooms();
+    h.controller.sweep();
 
     const logged = JSON.stringify(h.logger.events);
     for (const value of [
@@ -745,10 +750,10 @@ describe('WebRTC negotiation relay', () => {
     expectType(host.last(), 'RTC_ANSWER');
   });
 
-  it('forgets the negotiation when the guest disconnects', () => {
+  it('forgets the negotiation when the guest disconnects for good', () => {
     const h = harness();
     const { host, guest } = negotiated(h);
-    guest.connection.transportClosed(1006);
+    guest.connection.transportClosed(1000);
     expect(h.store.negotiationCount).toBe(0);
     host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
     expectError(host.last(), 'INVALID_STATE', true);
@@ -764,7 +769,7 @@ describe('WebRTC negotiation relay', () => {
 
     const second = negotiated();
     second.h.clock.advance(TTL);
-    second.h.controller.expireDueRooms();
+    second.h.controller.sweep();
     second.host.send('ICE_CANDIDATE', ice());
     expectError(second.host.last(), 'INVALID_STATE', true);
     second.guest.send('ICE_CANDIDATE', ice());

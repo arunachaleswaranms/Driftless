@@ -4,8 +4,11 @@ import {
   MAX_ICE_CANDIDATES_PER_NEGOTIATION,
   MAX_SDP_BYTES,
   MAX_SIGNALING_MESSAGE_BYTES,
+  type ParticipantId,
+  type ResumeSecret,
   type ServerMessage,
   type ServerMessageType,
+  type SessionId,
 } from '@driftless/protocol';
 import { WebSocket } from 'ws';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -16,11 +19,22 @@ import {
   type SignalingServer,
   type SignalingServerOptions,
 } from '../src/server.js';
-import { FakeClock, ManualScheduler, clientMessage, expectType, parseStrict } from './support.js';
+import {
+  FakeClock,
+  ManualScheduler,
+  clientMessage,
+  expectType,
+  flipped,
+  parseStrict,
+  proofFor,
+} from './support.js';
 
 const HOST = '127.0.0.1';
 const ORIGIN = 'http://localhost:5173';
 const TTL = 60_000;
+const GRACE = 30_000;
+const SWEEP_MS = 1000;
+const HEARTBEAT_MS = 15_000;
 const WAIT_MS = 3000;
 
 interface Running {
@@ -43,6 +57,9 @@ async function startServer(overrides: Partial<SignalingServerOptions> = {}): Pro
     port: 0,
     allowedOrigins: [ORIGIN],
     roomTtlMs: TTL,
+    reconnectGraceMs: GRACE,
+    sweepIntervalMs: SWEEP_MS,
+    heartbeatIntervalMs: HEARTBEAT_MS,
     logger,
     clock: clock.read,
     scheduler,
@@ -90,8 +107,11 @@ class TestClient {
     });
   }
 
-  static async open(port: number, origin = ORIGIN): Promise<TestClient> {
-    const socket = new WebSocket(`ws://${HOST}:${String(port)}${SIGNALING_PATH}`, { origin });
+  static async open(port: number, origin = ORIGIN, autoPong = true): Promise<TestClient> {
+    const socket = new WebSocket(`ws://${HOST}:${String(port)}${SIGNALING_PATH}`, {
+      origin,
+      autoPong,
+    });
     const client = new TestClient(socket);
     clients.push(client);
     await new Promise<void>((resolve, reject) => {
@@ -450,30 +470,49 @@ describe('room flows', () => {
     expect(instance.server.roomCount).toBe(0);
   });
 
-  it('cleans up membership when a guest or host disconnects abruptly', async () => {
+  it('ends membership at once when a client closes normally', async () => {
     const instance = await startServer();
     const first = await roomPair(instance);
-    first.guest.socket.terminate();
+    first.guest.socket.close(1000);
     expect((await first.host.expect('ROOM_PARTICIPANT_LEFT')).payload.reason).toBe('DISCONNECTED');
     await until(() => instance.server.connectionCount === 1, 'guest release');
 
-    first.host.socket.terminate();
-    await until(() => instance.server.roomCount === 0, 'room removal');
-
     const second = await roomPair(instance);
-    second.host.socket.terminate();
+    second.host.socket.close(1001);
     expect((await second.guest.expect('ROOM_CLOSED')).payload.reason).toBe('HOST_DISCONNECTED');
-    await until(() => instance.server.roomCount === 0, 'room removal');
+    await until(() => instance.server.roomCount === 1, 'room removal');
+  });
+
+  it('holds abruptly lost members for the grace period, then cleans up', async () => {
+    const instance = await startServer();
+    const first = await roomPair(instance);
+    first.guest.socket.terminate();
+    expect((await first.host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe(
+      'RECONNECTING',
+    );
+    await until(() => instance.server.connectionCount === 1, 'guest release');
+    instance.clock.advance(GRACE);
+    instance.scheduler.tick(SWEEP_MS);
+    expect((await first.host.expect('ROOM_PARTICIPANT_LEFT')).payload.reason).toBe(
+      'RECONNECT_TIMEOUT',
+    );
+
+    first.host.socket.terminate();
+    await until(() => instance.server.connectionCount === 0, 'host release');
+    expect(instance.server.roomCount).toBe(1);
+    instance.clock.advance(GRACE);
+    instance.scheduler.tick(SWEEP_MS);
+    expect(instance.server.roomCount).toBe(0);
   });
 
   it('expires rooms through the periodic sweep', async () => {
     const instance = await startServer();
     const { host, guest, created } = await roomPair(instance);
     instance.clock.advance(TTL - 1);
-    instance.scheduler.tick();
+    instance.scheduler.tick(SWEEP_MS);
     expect(instance.server.roomCount).toBe(1);
     instance.clock.advance(1);
-    instance.scheduler.tick();
+    instance.scheduler.tick(SWEEP_MS);
     expect((await host.expect('ROOM_CLOSED')).payload.reason).toBe('EXPIRED');
     expect((await guest.expect('ROOM_CLOSED')).payload.reason).toBe('EXPIRED');
     expect(instance.server.roomCount).toBe(0);
@@ -765,5 +804,261 @@ describe('logging', () => {
     expect(kinds).toContain('message_rejected');
     expect(kinds).toContain('room_closed');
     expect(kinds).toContain('upgrade_rejected');
+  });
+});
+
+describe('session resume over real sockets', () => {
+  const NEGOTIATION = 'N'.repeat(24);
+
+  /** Opens a new socket and authenticates it as `participantId` with `secret`. */
+  async function resume(
+    instance: Running,
+    sessionId: SessionId,
+    participantId: ParticipantId,
+    secret: ResumeSecret,
+  ) {
+    const client = await TestClient.open(instance.port);
+    client.send('SESSION_RESUME_BEGIN', { sessionId, participantId });
+    const { challenge } = (await client.expect('SESSION_RESUME_CHALLENGE')).payload;
+    const proof = proofFor(secret, sessionId, participantId, challenge);
+    client.send('SESSION_RESUME_PROVE', { challenge, proof });
+    return { client, challenge, proof, reply: await client.next() };
+  }
+
+  it('resumes an unexpectedly disconnected guest as the same participant', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await roomPair(instance);
+    guest.socket.terminate();
+    const lost = await host.expect('ROOM_PARTICIPANT_CONNECTION');
+    expect(lost.payload).toStrictEqual({
+      participantId: joined.payload.participantId,
+      signaling: 'RECONNECTING',
+      activeNegotiationId: null,
+      negotiationCount: 0,
+    });
+    await until(() => instance.server.connectionCount === 1, 'guest release');
+    expect(instance.server.roomCount).toBe(1);
+
+    const { client, reply } = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    const resumed = expectType(reply, 'SESSION_RESUMED');
+    expect(resumed.payload).toMatchObject({
+      sessionId: created.payload.sessionId,
+      roomId: created.payload.roomId,
+      participantId: joined.payload.participantId,
+      role: 'guest',
+    });
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe('CONNECTED');
+    // The resumed socket carries the membership: negotiation flows to it.
+    host.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp: 'v=0\r\n' });
+    expect((await client.expect('RTC_OFFER')).payload.negotiationId).toBe(NEGOTIATION);
+  });
+
+  it('resumes an unexpectedly disconnected host without closing the room', async () => {
+    const instance = await startServer();
+    const { host, guest, created } = await roomPair(instance);
+    host.socket.terminate();
+    expect((await guest.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe(
+      'RECONNECTING',
+    );
+    const { reply } = await resume(
+      instance,
+      created.payload.sessionId,
+      created.payload.participantId,
+      created.payload.resumeSecret,
+    );
+    const resumed = expectType(reply, 'SESSION_RESUMED');
+    expect(resumed.payload.role).toBe('host');
+    expect(resumed.payload.participantId).toBe(created.payload.participantId);
+    expect((await guest.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe('CONNECTED');
+  });
+
+  it('refuses wrong proofs, fake sessions, and replayed proofs alike', async () => {
+    const instance = await startServer();
+    const { guest, created, joined } = await roomPair(instance);
+    const { sessionId } = created.payload;
+    const { participantId, resumeSecret } = joined.payload;
+    guest.socket.terminate();
+    await until(() => instance.server.connectionCount === 1, 'guest release');
+
+    const wrong = await resume(instance, sessionId, participantId, flipped(resumeSecret));
+    const fake = await resume(instance, flipped(sessionId), participantId, resumeSecret);
+    for (const attempt of [wrong, fake]) {
+      expect(expectType(attempt.reply, 'ERROR').payload).toStrictEqual({
+        code: 'SESSION_UNAVAILABLE',
+        message: 'The room session is not available.',
+        recoverable: true,
+      });
+    }
+    expect(JSON.stringify(wrong.reply.payload)).toBe(JSON.stringify(fake.reply.payload));
+
+    // Replay: a fresh challenge with a proof captured for another one.
+    const replay = await TestClient.open(instance.port);
+    replay.send('SESSION_RESUME_BEGIN', { sessionId, participantId });
+    await replay.expect('SESSION_RESUME_CHALLENGE');
+    replay.send('SESSION_RESUME_PROVE', {
+      challenge: wrong.challenge,
+      proof: proofFor(resumeSecret, sessionId, participantId, wrong.challenge),
+    });
+    await replay.expectError('SESSION_UNAVAILABLE', true);
+
+    const real = await resume(instance, sessionId, participantId, resumeSecret);
+    expectType(real.reply, 'SESSION_RESUMED');
+  });
+
+  it('binds one socket only and never takes over a live one', async () => {
+    const instance = await startServer();
+    const { guest, created, joined } = await roomPair(instance);
+    const { sessionId } = created.payload;
+    const { participantId, resumeSecret } = joined.payload;
+
+    // While the guest's socket is live, a second resume socket is refused.
+    const early = await resume(instance, sessionId, participantId, resumeSecret);
+    expect(expectType(early.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+    expect(guest.socket.readyState).toBe(WebSocket.OPEN);
+
+    guest.socket.terminate();
+    await until(() => instance.server.connectionCount === 2, 'guest release');
+    const first = await resume(instance, sessionId, participantId, resumeSecret);
+    const second = await resume(instance, sessionId, participantId, resumeSecret);
+    expectType(first.reply, 'SESSION_RESUMED');
+    expect(expectType(second.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+  });
+
+  it('times out a guest and closes a room for a host through the periodic sweep', async () => {
+    const instance = await startServer();
+    const first = await roomPair(instance);
+    first.guest.socket.terminate();
+    await first.host.expect('ROOM_PARTICIPANT_CONNECTION');
+    instance.clock.advance(GRACE - 1);
+    instance.scheduler.tick(SWEEP_MS);
+    instance.clock.advance(1);
+    instance.scheduler.tick(SWEEP_MS);
+    expect((await first.host.expect('ROOM_PARTICIPANT_LEFT')).payload.reason).toBe(
+      'RECONNECT_TIMEOUT',
+    );
+    const late = await resume(
+      instance,
+      first.created.payload.sessionId,
+      first.joined.payload.participantId,
+      first.joined.payload.resumeSecret,
+    );
+    expect(expectType(late.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+
+    const second = await roomPair(instance);
+    second.host.socket.terminate();
+    await second.guest.expect('ROOM_PARTICIPANT_CONNECTION');
+    instance.clock.advance(GRACE);
+    instance.scheduler.tick(SWEEP_MS);
+    expect((await second.guest.expect('ROOM_CLOSED')).payload.reason).toBe(
+      'HOST_RECONNECT_TIMEOUT',
+    );
+  });
+
+  it('lets room expiry override the grace period', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await roomPair(instance);
+    instance.clock.advance(TTL - 100);
+    guest.socket.terminate();
+    await host.expect('ROOM_PARTICIPANT_CONNECTION');
+    instance.clock.advance(100);
+    instance.scheduler.tick(SWEEP_MS);
+    expect((await host.expect('ROOM_CLOSED')).payload.reason).toBe('EXPIRED');
+    const late = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expect(expectType(late.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+  });
+
+  it('does not let a connection closed for a policy violation resume', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await roomPair(instance);
+    guest.sendRaw(Buffer.from([1, 2, 3]));
+    expect((await guest.closed).code).toBe(1003);
+    expect((await host.expect('ROOM_PARTICIPANT_LEFT')).payload.reason).toBe('DISCONNECTED');
+    const late = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expect(expectType(late.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+  });
+
+  it('treats an unanswered protocol ping as a lost connection', async () => {
+    const instance = await startServer();
+    const host = await TestClient.open(instance.port);
+    host.send('ROOM_CREATE');
+    const created = await host.expect('ROOM_CREATED');
+    // This guest never answers pings, like a dead network path.
+    const guest = await TestClient.open(instance.port, ORIGIN, false);
+    guest.send('ROOM_JOIN', {
+      roomId: created.payload.roomId,
+      inviteSecret: created.payload.inviteSecret,
+    });
+    const joined = await guest.expect('ROOM_JOINED');
+    await host.expect('ROOM_PARTICIPANT_JOINED');
+    // The first pass pings; the host answers in time, the guest does not.
+    instance.scheduler.tick(HEARTBEAT_MS);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    instance.scheduler.tick(HEARTBEAT_MS);
+    expect((await guest.closed).code).toBe(1006);
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe(
+      'RECONNECTING',
+    );
+    expect(host.socket.readyState).toBe(WebSocket.OPEN);
+    expect(instance.logs).toContainEqual({
+      event: 'transport_error',
+      connection: expect.any(Number) as unknown,
+      detail: 'liveness_timeout',
+    });
+    const { reply } = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expectType(reply, 'SESSION_RESUMED');
+  });
+
+  it('logs no secret, proof, challenge, or identifier', async () => {
+    const instance = await startServer();
+    const { guest, created, joined } = await roomPair(instance);
+    guest.socket.terminate();
+    await until(() => instance.server.connectionCount === 1, 'guest release');
+    const failed = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      flipped(joined.payload.resumeSecret),
+    );
+    const ok = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    const logged = JSON.stringify(instance.logs);
+    for (const value of [
+      created.payload.resumeSecret,
+      joined.payload.resumeSecret,
+      created.payload.inviteSecret,
+      created.payload.sessionId,
+      created.payload.roomId,
+      joined.payload.participantId,
+      failed.challenge,
+      failed.proof,
+      ok.challenge,
+      ok.proof,
+    ]) {
+      expect(logged).not.toContain(value);
+    }
   });
 });

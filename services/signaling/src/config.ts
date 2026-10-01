@@ -7,6 +7,8 @@ export interface SignalingConfig {
   readonly port: number;
   readonly allowedOrigins: readonly string[];
   readonly roomTtlMs: number;
+  readonly reconnectGraceMs: number;
+  readonly heartbeatIntervalMs: number;
 }
 
 export type ConfigResult =
@@ -20,6 +22,16 @@ export const DEFAULT_PORT = 8787;
 export const DEFAULT_ROOM_TTL_SECONDS = 3600;
 export const MIN_ROOM_TTL_SECONDS = 60;
 export const MAX_ROOM_TTL_SECONDS = 86_400;
+
+/** Provisional reconnect grace period: an implementation bound, not a UX promise. */
+export const DEFAULT_RECONNECT_GRACE_SECONDS = 30;
+export const MIN_RECONNECT_GRACE_SECONDS = 5;
+export const MAX_RECONNECT_GRACE_SECONDS = 120;
+
+/** Provisional WebSocket ping interval; not tuned for mobile networks. */
+export const DEFAULT_HEARTBEAT_SECONDS = 15;
+export const MIN_HEARTBEAT_SECONDS = 5;
+export const MAX_HEARTBEAT_SECONDS = 60;
 
 /**
  * Development-only defaults: the web client's Vite development server and
@@ -69,6 +81,30 @@ export function loadConfig(env: Environment): ConfigResult {
     );
   }
 
+  const graceSeconds = readInteger(
+    env.SIGNALING_RECONNECT_GRACE_SECONDS,
+    DEFAULT_RECONNECT_GRACE_SECONDS,
+    MIN_RECONNECT_GRACE_SECONDS,
+    MAX_RECONNECT_GRACE_SECONDS,
+  );
+  if (graceSeconds === undefined) {
+    return fail(
+      `SIGNALING_RECONNECT_GRACE_SECONDS must be an integer from ${String(MIN_RECONNECT_GRACE_SECONDS)} to ${String(MAX_RECONNECT_GRACE_SECONDS)}.`,
+    );
+  }
+
+  const heartbeatSeconds = readInteger(
+    env.SIGNALING_HEARTBEAT_SECONDS,
+    DEFAULT_HEARTBEAT_SECONDS,
+    MIN_HEARTBEAT_SECONDS,
+    MAX_HEARTBEAT_SECONDS,
+  );
+  if (heartbeatSeconds === undefined) {
+    return fail(
+      `SIGNALING_HEARTBEAT_SECONDS must be an integer from ${String(MIN_HEARTBEAT_SECONDS)} to ${String(MAX_HEARTBEAT_SECONDS)}.`,
+    );
+  }
+
   const rawOrigins = env.SIGNALING_ALLOWED_ORIGINS;
   let allowedOrigins: readonly string[];
   if (rawOrigins === undefined) {
@@ -84,7 +120,15 @@ export function loadConfig(env: Environment): ConfigResult {
 
   return {
     ok: true,
-    config: { mode, host, port, allowedOrigins, roomTtlMs: ttlSeconds * 1000 },
+    config: {
+      mode,
+      host,
+      port,
+      allowedOrigins,
+      roomTtlMs: ttlSeconds * 1000,
+      reconnectGraceMs: graceSeconds * 1000,
+      heartbeatIntervalMs: heartbeatSeconds * 1000,
+    },
   };
 }
 

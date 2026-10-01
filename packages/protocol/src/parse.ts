@@ -1,10 +1,21 @@
 import { fitsUtf8Bytes } from './encoding.js';
 import { isErrorCode, MAX_ERROR_MESSAGE_LENGTH } from './errors.js';
-import { isInviteSecret, isNegotiationId, isParticipantId, isRoomId } from './identifiers.js';
+import {
+  isInviteSecret,
+  isNegotiationId,
+  isParticipantId,
+  isResumeChallenge,
+  isResumeProof,
+  isResumeSecret,
+  isRoomId,
+  isSessionId,
+  type NegotiationId,
+} from './identifiers.js';
 import {
   MAX_PEER_MESSAGE_BYTES,
   MAX_SIGNALING_MESSAGE_BYTES,
   PARTICIPANT_LEFT_REASONS,
+  PARTICIPANT_SIGNALING_STATES,
   PROTOCOL_VERSION,
   ROOM_CLOSED_REASONS,
   type ClientMessage,
@@ -13,20 +24,28 @@ import {
   type IceCandidateMessage,
   type IceCompleteMessage,
   type NegotiationMessage,
+  type NegotiationSnapshot,
   type ParticipantRole,
   type ParticipantSummary,
+  type PeerPresence,
   type RoomClosedMessage,
   type RoomCreatedMessage,
   type RoomJoinedMessage,
   type RoomJoinMessage,
+  type RoomParticipantConnectionMessage,
   type RoomParticipantJoinedMessage,
   type RoomParticipantLeftMessage,
   type PeerHandshakePayload,
   type PeerMessage,
+  type RtcRecoverMessage,
   type ServerMessage,
   type SessionDescriptionPayload,
+  type SessionResumeBeginMessage,
+  type SessionResumeChallengeMessage,
+  type SessionResumedMessage,
+  type SessionResumeProveMessage,
 } from './messages.js';
-import { isSessionDescription, toIceCandidate } from './webrtc.js';
+import { MAX_NEGOTIATIONS_PER_MEMBERSHIP, isSessionDescription, toIceCandidate } from './webrtc.js';
 
 /**
  * Why a message was rejected. Every value is a fixed token, so it is safe to
@@ -224,6 +243,40 @@ function decodeParticipant<Role extends ParticipantRole>(
   return { participantId, role };
 }
 
+function decodePresence<Role extends ParticipantRole>(
+  value: unknown,
+  role: Role,
+): PeerPresence<Role> | undefined {
+  const object = exactObject(value, ['participantId', 'role', 'signaling']);
+  if (object === undefined) return undefined;
+  const { participantId, signaling } = object;
+  if (
+    !isParticipantId(participantId) ||
+    object.role !== role ||
+    !isOneOf(signaling, PARTICIPANT_SIGNALING_STATES)
+  ) {
+    return undefined;
+  }
+  return { participantId, role, signaling };
+}
+
+/**
+ * The negotiation fields of a snapshot: a count within the bound, and an
+ * active negotiation ID exactly when the count is not zero.
+ */
+function decodeNegotiationSnapshot(object: JsonObject): NegotiationSnapshot | undefined {
+  const { activeNegotiationId, negotiationCount } = object;
+  if (
+    !isWireInteger(negotiationCount) ||
+    negotiationCount > MAX_NEGOTIATIONS_PER_MEMBERSHIP ||
+    !(activeNegotiationId === null || isNegotiationId(activeNegotiationId)) ||
+    (activeNegotiationId === null) !== (negotiationCount === 0)
+  ) {
+    return undefined;
+  }
+  return { activeNegotiationId, negotiationCount };
+}
+
 function decodeSessionDescription(value: unknown): SessionDescriptionPayload | undefined {
   const object = exactObject(value, ['negotiationId', 'sdp']);
   if (object === undefined) return undefined;
@@ -250,13 +303,35 @@ const NEGOTIATION_DECODERS: DecoderTable<NegotiationMessage> = {
     const { negotiationId } = object;
     return isNegotiationId(negotiationId) ? { negotiationId } : undefined;
   },
+  RTC_RECOVERY_REQUEST: (value): { negotiationId: NegotiationId } | undefined => {
+    const object = exactObject(value, ['negotiationId']);
+    if (object === undefined) return undefined;
+    const { negotiationId } = object;
+    return isNegotiationId(negotiationId) ? { negotiationId } : undefined;
+  },
+  RTC_RECOVER: (value): RtcRecoverMessage['payload'] | undefined => {
+    const object = exactObject(value, ['previousNegotiationId', 'negotiationId', 'sdp']);
+    if (object === undefined) return undefined;
+    const { previousNegotiationId, negotiationId, sdp } = object;
+    // A recovery always replaces one negotiation with a different one.
+    if (
+      !isNegotiationId(previousNegotiationId) ||
+      !isNegotiationId(negotiationId) ||
+      previousNegotiationId === negotiationId ||
+      !isSessionDescription(sdp)
+    ) {
+      return undefined;
+    }
+    return { previousNegotiationId, negotiationId, sdp };
+  },
 };
 
 function decodePeerHandshake(value: unknown): PeerHandshakePayload | undefined {
-  const object = exactObject(value, ['negotiationId', 'senderId', 'recipientId']);
+  const object = exactObject(value, ['sessionId', 'negotiationId', 'senderId', 'recipientId']);
   if (object === undefined) return undefined;
-  const { negotiationId, senderId, recipientId } = object;
+  const { sessionId, negotiationId, senderId, recipientId } = object;
   if (
+    !isSessionId(sessionId) ||
     !isNegotiationId(negotiationId) ||
     !isParticipantId(senderId) ||
     !isParticipantId(recipientId) ||
@@ -264,7 +339,7 @@ function decodePeerHandshake(value: unknown): PeerHandshakePayload | undefined {
   ) {
     return undefined;
   }
-  return { negotiationId, senderId, recipientId };
+  return { sessionId, negotiationId, senderId, recipientId };
 }
 
 const PEER_DECODERS: DecoderTable<PeerMessage> = {
@@ -283,6 +358,20 @@ const CLIENT_DECODERS: DecoderTable<ClientMessage> = {
     return { roomId, inviteSecret };
   },
   ROOM_LEAVE: decodeEmpty,
+  SESSION_RESUME_BEGIN: (value): SessionResumeBeginMessage['payload'] | undefined => {
+    const object = exactObject(value, ['sessionId', 'participantId']);
+    if (object === undefined) return undefined;
+    const { sessionId, participantId } = object;
+    if (!isSessionId(sessionId) || !isParticipantId(participantId)) return undefined;
+    return { sessionId, participantId };
+  },
+  SESSION_RESUME_PROVE: (value): SessionResumeProveMessage['payload'] | undefined => {
+    const object = exactObject(value, ['challenge', 'proof']);
+    if (object === undefined) return undefined;
+    const { challenge, proof } = object;
+    if (!isResumeChallenge(challenge) || !isResumeProof(proof)) return undefined;
+    return { challenge, proof };
+  },
 };
 
 const SERVER_DECODERS: DecoderTable<ServerMessage> = {
@@ -290,39 +379,62 @@ const SERVER_DECODERS: DecoderTable<ServerMessage> = {
   ROOM_CREATED: (value): RoomCreatedMessage['payload'] | undefined => {
     const object = exactObject(value, [
       'roomId',
+      'sessionId',
       'inviteSecret',
+      'resumeSecret',
       'participantId',
       'role',
       'expiresAt',
     ]);
     if (object === undefined) return undefined;
-    const { roomId, inviteSecret, participantId, expiresAt } = object;
+    const { roomId, sessionId, inviteSecret, resumeSecret, participantId, expiresAt } = object;
     if (
       !isRoomId(roomId) ||
+      !isSessionId(sessionId) ||
       !isInviteSecret(inviteSecret) ||
+      !isResumeSecret(resumeSecret) ||
       !isParticipantId(participantId) ||
       object.role !== 'host' ||
       !isWireInteger(expiresAt)
     ) {
       return undefined;
     }
-    return { roomId, inviteSecret, participantId, role: 'host', expiresAt };
+    return {
+      roomId,
+      sessionId,
+      inviteSecret,
+      resumeSecret,
+      participantId,
+      role: 'host',
+      expiresAt,
+    };
   },
   ROOM_JOINED: (value): RoomJoinedMessage['payload'] | undefined => {
-    const object = exactObject(value, ['roomId', 'participantId', 'role', 'peer', 'expiresAt']);
+    const object = exactObject(value, [
+      'roomId',
+      'sessionId',
+      'resumeSecret',
+      'participantId',
+      'role',
+      'peer',
+      'expiresAt',
+    ]);
     if (object === undefined) return undefined;
-    const { roomId, participantId, expiresAt } = object;
+    const { roomId, sessionId, resumeSecret, participantId, expiresAt } = object;
     const peer = decodeParticipant(object.peer, 'host');
     if (
       !isRoomId(roomId) ||
+      !isSessionId(sessionId) ||
+      !isResumeSecret(resumeSecret) ||
       !isParticipantId(participantId) ||
       object.role !== 'guest' ||
       peer === undefined ||
+      peer.participantId === participantId ||
       !isWireInteger(expiresAt)
     ) {
       return undefined;
     }
-    return { roomId, participantId, role: 'guest', peer, expiresAt };
+    return { roomId, sessionId, resumeSecret, participantId, role: 'guest', peer, expiresAt };
   },
   ROOM_LEFT: decodeEmpty,
   ROOM_PARTICIPANT_JOINED: (value): RoomParticipantJoinedMessage['payload'] | undefined => {
@@ -345,6 +457,73 @@ const SERVER_DECODERS: DecoderTable<ServerMessage> = {
     if (object === undefined) return undefined;
     const { reason } = object;
     return isOneOf(reason, ROOM_CLOSED_REASONS) ? { reason } : undefined;
+  },
+  ROOM_PARTICIPANT_CONNECTION: (value): RoomParticipantConnectionMessage['payload'] | undefined => {
+    const object = exactObject(value, [
+      'participantId',
+      'signaling',
+      'activeNegotiationId',
+      'negotiationCount',
+    ]);
+    if (object === undefined) return undefined;
+    const { participantId, signaling } = object;
+    const negotiation = decodeNegotiationSnapshot(object);
+    if (
+      !isParticipantId(participantId) ||
+      !isOneOf(signaling, PARTICIPANT_SIGNALING_STATES) ||
+      negotiation === undefined
+    ) {
+      return undefined;
+    }
+    return { participantId, signaling, ...negotiation };
+  },
+  SESSION_RESUME_CHALLENGE: (value): SessionResumeChallengeMessage['payload'] | undefined => {
+    const object = exactObject(value, ['challenge']);
+    if (object === undefined) return undefined;
+    const { challenge } = object;
+    return isResumeChallenge(challenge) ? { challenge } : undefined;
+  },
+  SESSION_RESUMED: (value): SessionResumedMessage['payload'] | undefined => {
+    const object = exactObject(value, [
+      'sessionId',
+      'roomId',
+      'participantId',
+      'role',
+      'expiresAt',
+      'peer',
+      'activeNegotiationId',
+      'negotiationCount',
+    ]);
+    if (object === undefined) return undefined;
+    const { sessionId, roomId, participantId, role, expiresAt } = object;
+    const negotiation = decodeNegotiationSnapshot(object);
+    if (
+      !isSessionId(sessionId) ||
+      !isRoomId(roomId) ||
+      !isParticipantId(participantId) ||
+      !isWireInteger(expiresAt) ||
+      negotiation === undefined
+    ) {
+      return undefined;
+    }
+    const common = { sessionId, roomId, participantId, expiresAt, ...negotiation };
+    if (role === 'host') {
+      // A host without a guest has no negotiation.
+      if (object.peer === null) {
+        return negotiation.negotiationCount === 0
+          ? { ...common, role: 'host', peer: null }
+          : undefined;
+      }
+      const peer = decodePresence(object.peer, 'guest');
+      if (peer === undefined || peer.participantId === participantId) return undefined;
+      return { ...common, role: 'host', peer };
+    }
+    if (role === 'guest') {
+      const peer = decodePresence(object.peer, 'host');
+      if (peer === undefined || peer.participantId === participantId) return undefined;
+      return { ...common, role: 'guest', peer };
+    }
+    return undefined;
   },
   ERROR: (value): ErrorMessage['payload'] | undefined => {
     const object = exactObject(value, ['code', 'message', 'recoverable']);

@@ -1,5 +1,22 @@
-import type { Browser, BrowserContext, Locator, Page, WebSocket } from '@playwright/test';
-import { expect, test, watchPage } from './support.ts';
+import type { Page } from '@playwright/test';
+import {
+  CONNECTED,
+  EMPTY_STORAGE,
+  SDP_OR_ICE,
+  WAITING,
+  closePeers,
+  createRoom,
+  expectConnected,
+  invite,
+  inviteValue,
+  join,
+  openPeer,
+  room,
+  rtcState,
+  status,
+  storageSnapshot,
+} from './room-support.ts';
+import { expect, test } from './support.ts';
 
 // AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE. Every peer here is a
 // separate browser context in one browser on one machine, talking to a local
@@ -12,243 +29,9 @@ import { expect, test, watchPage } from './support.ts';
 // other, and get a longer bound than the default.
 test.describe.configure({ mode: 'default', timeout: 90_000 });
 
-const CONNECTED = 'Peer data channel is connected.';
-const WAITING = 'Room created. Waiting for a guest to join.';
-// Connection setup on a loaded development machine can take a few seconds;
-// this bound keeps a hung negotiation from passing silently.
-const CONNECT_TIMEOUT_MS = 20_000;
-
-interface RtcProbe {
-  peerConnections: RTCPeerConnection[];
-  channels: RTCDataChannel[];
-  /** Type and negotiation ID of each data-channel message, as sent and received. */
-  sent: { type: string; negotiationId: string }[];
-  received: { type: string; negotiationId: string }[];
-  /** Any call that would capture or add media. */
-  mediaCalls: string[];
-  /** Directives of any Content Security Policy violation. */
-  cspViolations: string[];
-}
-
-declare global {
-  interface Window {
-    rtcProbe: RtcProbe;
-  }
-}
-
-// Observes the page's WebRTC objects without changing their behavior, and
-// records any media-capture call. Installed before the application loads.
-function installRtcProbe() {
-  const probe: RtcProbe = {
-    peerConnections: [],
-    channels: [],
-    sent: [],
-    received: [],
-    mediaCalls: [],
-    cspViolations: [],
-  };
-  window.rtcProbe = probe;
-  document.addEventListener('securitypolicyviolation', (event) => {
-    probe.cspViolations.push(event.effectiveDirective);
-  });
-
-  const summarize = (data: unknown) => {
-    if (typeof data !== 'string') return { type: 'binary', negotiationId: '' };
-    const message = JSON.parse(data) as { type: string; payload: { negotiationId: string } };
-    return { type: message.type, negotiationId: message.payload.negotiationId };
-  };
-  const track = (channel: RTCDataChannel) => {
-    probe.channels.push(channel);
-    channel.addEventListener('message', (event: MessageEvent) => {
-      probe.received.push(summarize(event.data));
-    });
-  };
-
-  const Original = window.RTCPeerConnection;
-  class ObservedPeerConnection extends Original {
-    constructor(configuration?: RTCConfiguration) {
-      super(configuration);
-      probe.peerConnections.push(this);
-      this.addEventListener('datachannel', (event) => {
-        track(event.channel);
-      });
-    }
-    override createDataChannel(label: string, init?: RTCDataChannelInit): RTCDataChannel {
-      const channel = super.createDataChannel(label, init);
-      track(channel);
-      return channel;
-    }
-    override addTrack(track: MediaStreamTrack, ...streams: MediaStream[]): RTCRtpSender {
-      probe.mediaCalls.push('addTrack');
-      return super.addTrack(track, ...streams);
-    }
-    override addTransceiver(
-      trackOrKind: MediaStreamTrack | string,
-      init?: RTCRtpTransceiverInit,
-    ): RTCRtpTransceiver {
-      probe.mediaCalls.push('addTransceiver');
-      return super.addTransceiver(trackOrKind, init);
-    }
-  }
-  window.RTCPeerConnection = ObservedPeerConnection;
-
-  const send = Reflect.get(RTCDataChannel.prototype, 'send') as (data: unknown) => void;
-  Reflect.set(RTCDataChannel.prototype, 'send', function (this: RTCDataChannel, data: unknown) {
-    probe.sent.push(summarize(data));
-    Reflect.apply(send, this, [data]);
-  });
-  for (const name of ['getUserMedia', 'getDisplayMedia'] as const) {
-    const original = Reflect.get(MediaDevices.prototype, name) as (...args: unknown[]) => unknown;
-    Reflect.set(MediaDevices.prototype, name, function (this: MediaDevices, ...args: unknown[]) {
-      probe.mediaCalls.push(name);
-      return Reflect.apply(original, this, args);
-    });
-  }
-}
-
-interface Peer {
-  readonly context: BrowserContext;
-  readonly page: Page;
-  readonly sockets: WebSocket[];
-  readonly requests: { method: string; url: string }[];
-  /** Every URL the main frame navigated to. */
-  readonly navigations: string[];
-}
-
-const contexts: BrowserContext[] = [];
-
-async function openPeer(
-  browser: Browser,
-  baseURL: string | undefined,
-  problems: string[],
-): Promise<Peer> {
-  // Each peer is an independent context: no shared storage or session.
-  const context = await browser.newContext(baseURL === undefined ? {} : { baseURL });
-  contexts.push(context);
-  const page = await context.newPage();
-  watchPage(page, baseURL, problems);
-  const sockets: WebSocket[] = [];
-  const requests: { method: string; url: string }[] = [];
-  const navigations: string[] = [];
-  page.on('websocket', (socket) => sockets.push(socket));
-  page.on('framenavigated', (frame) => {
-    if (frame === page.mainFrame()) navigations.push(frame.url());
-  });
-  page.on('request', (request) => {
-    requests.push({ method: request.method(), url: request.url() });
-  });
-  await page.addInitScript(installRtcProbe);
-  await page.goto('/');
-  return { context, page, sockets, requests, navigations };
-}
-
 test.afterEach(async () => {
-  for (const context of contexts.splice(0)) await context.close();
+  await closePeers();
 });
-
-function room(page: Page): Locator {
-  return page.getByRole('region', { name: 'Room' });
-}
-
-function status(page: Page): Locator {
-  return room(page).getByRole('status');
-}
-
-function invite(page: Page): Locator {
-  return room(page).getByRole('group', { name: 'Invite' });
-}
-
-function inviteValue(page: Page, term: string): Locator {
-  return invite(page).locator('dt', { hasText: term }).locator('+ dd code');
-}
-
-async function createRoom(host: Peer): Promise<{ roomId: string; inviteSecret: string }> {
-  await room(host.page).getByRole('button', { name: 'Create room' }).click();
-  await expect(status(host.page)).toHaveText(WAITING);
-  const roomId = (await inviteValue(host.page, 'Room ID').textContent()) ?? '';
-  // The secret is masked until the host reveals it.
-  await expect(inviteValue(host.page, 'Invite secret')).toHaveText(/^•+Hidden$/);
-  const reveal = invite(host.page).getByRole('button', { name: 'Show invite secret' });
-  await reveal.click();
-  await expect(reveal).toHaveAttribute('aria-pressed', 'true');
-  const inviteSecret = (await inviteValue(host.page, 'Invite secret').textContent()) ?? '';
-  await reveal.click();
-  await expect(inviteValue(host.page, 'Invite secret')).toHaveText(/^•+Hidden$/);
-  expect(roomId).toMatch(/^[A-Za-z0-9_-]{22}$/);
-  expect(inviteSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
-  return { roomId, inviteSecret };
-}
-
-async function join(guest: Peer, roomId: string, inviteSecret: string): Promise<void> {
-  const page = guest.page;
-  await room(page).getByLabel('Room ID').fill(roomId);
-  await room(page).getByLabel('Invite secret').fill(inviteSecret);
-  await room(page).getByRole('button', { name: 'Join room' }).click();
-}
-
-async function expectConnected(...peers: Peer[]): Promise<void> {
-  for (const peer of peers) {
-    await expect(status(peer.page)).toHaveText(CONNECTED, { timeout: CONNECT_TIMEOUT_MS });
-  }
-}
-
-/** What the page's WebRTC objects report, without candidate or SDP text. */
-function rtcState(page: Page) {
-  return page.evaluate(() => {
-    const probe = window.rtcProbe;
-    return {
-      peerConnections: probe.peerConnections.map((connection) => ({
-        connectionState: connection.connectionState,
-        iceConnectionState: connection.iceConnectionState,
-        signalingState: connection.signalingState,
-        senders: connection.getSenders().length,
-        receivers: connection.getReceivers().length,
-        transceivers: connection.getTransceivers().length,
-      })),
-      channels: probe.channels.map((channel) => ({
-        label: channel.label,
-        ordered: channel.ordered,
-        maxRetransmits: channel.maxRetransmits,
-        maxPacketLifeTime: channel.maxPacketLifeTime,
-        protocol: channel.protocol,
-        negotiated: channel.negotiated,
-        readyState: channel.readyState,
-      })),
-      sent: probe.sent,
-      received: probe.received,
-      mediaCalls: probe.mediaCalls,
-      cspViolations: probe.cspViolations,
-    };
-  });
-}
-
-async function storageSnapshot(page: Page) {
-  return page.evaluate(async () => {
-    const opfsEntries: string[] = [];
-    for await (const name of (await navigator.storage.getDirectory()).keys()) {
-      opfsEntries.push(name);
-    }
-    return {
-      caches: await caches.keys(),
-      databases: (await indexedDB.databases()).map(({ name }) => name),
-      opfsEntries,
-      localStorage: localStorage.length,
-      sessionStorage: sessionStorage.length,
-    };
-  });
-}
-
-const EMPTY_STORAGE = {
-  caches: [],
-  databases: [],
-  opfsEntries: [],
-  localStorage: 0,
-  sessionStorage: 0,
-};
-
-/** Text that must never appear on the page: raw SDP and ICE material. */
-const SDP_OR_ICE =
-  /candidate:|a=fingerprint|ice-ufrag|ice-pwd|\btyp (host|srflx|relay)\b|\.local\b/;
 
 test('connects a host and a guest over a real data channel and proves traffic both ways', async ({
   browser,
@@ -301,6 +84,9 @@ test('connects a host and a guest over a real data channel and proves traffic bo
   // The handshake crossed the channel in both directions, for one negotiation.
   const [negotiationId] = hostRtc.sent.map((message) => message.negotiationId);
   expect(negotiationId).toMatch(/^[A-Za-z0-9_-]{24}$/);
+  // And for one room session, which both peers learned from signaling.
+  const [sessionId] = hostRtc.sent.map((message) => message.sessionId);
+  expect(sessionId).toMatch(/^[A-Za-z0-9_-]{27}$/);
   for (const rtc of [hostRtc, guestRtc]) {
     expect(rtc.sent.map((message) => message.type).sort()).toEqual(['PEER_HELLO', 'PEER_READY']);
     expect(rtc.received.map((message) => message.type).sort()).toEqual([
@@ -309,6 +95,7 @@ test('connects a host and a guest over a real data channel and proves traffic bo
     ]);
     for (const message of [...rtc.sent, ...rtc.received]) {
       expect(message.negotiationId).toBe(negotiationId);
+      expect(message.sessionId).toBe(sessionId);
     }
   }
 

@@ -3,13 +3,17 @@ import {
   type InviteSecret,
   type NegotiationId,
   type ParticipantId,
+  type ResumeSecret,
   type RoomId,
+  type SessionId,
 } from '@driftless/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import {
   FakeDataChannel,
   FakePeerConnection,
+  FakeTimers,
   FakeWebSocket,
+  fakeProver,
   flush,
   peerMessage,
   remoteCandidate,
@@ -24,10 +28,16 @@ const SECRET = `${'S'.repeat(42)}E` as InviteSecret;
 const HOST_ID = 'H'.repeat(16) as ParticipantId;
 const GUEST_ID = 'G'.repeat(16) as ParticipantId;
 const NEXT_GUEST_ID = 'K'.repeat(16) as ParticipantId;
+const SESSION_ID = 'Q'.repeat(27) as SessionId;
+const OTHER_SESSION_ID = 'W'.repeat(26).concat('A') as SessionId;
+const HOST_RESUME = 'h'.repeat(44) as ResumeSecret;
+const GUEST_RESUME = 'g'.repeat(44) as ResumeSecret;
 
 function setup(options: { signalingUrl?: SignalingUrlResult; iceServers?: IceServersResult } = {}) {
   const sockets: FakeWebSocket[] = [];
   const connections: FakePeerConnection[] = [];
+  const timers = new FakeTimers();
+  const prover = fakeProver();
   let negotiations = 0;
   const controller = new RoomController({
     signalingUrl: options.signalingUrl ?? { ok: true, url: 'ws://localhost:4173/v1/signaling' },
@@ -46,7 +56,9 @@ function setup(options: { signalingUrl?: SignalingUrlResult; iceServers?: IceSer
       negotiations += 1;
       return String(negotiations).padStart(24, 'N') as NegotiationId;
     },
+    proveResume: prover.prove,
     clock: () => 0,
+    timers,
   });
   const states: RoomState[] = [];
   controller.subscribe(() => states.push(controller.getState()));
@@ -60,7 +72,7 @@ function setup(options: { signalingUrl?: SignalingUrlResult; iceServers?: IceSer
     if (current === undefined) throw new Error('no connection');
     return current;
   };
-  return { controller, sockets, connections, states, socket, connection };
+  return { controller, sockets, connections, states, socket, connection, timers, prover };
 }
 
 type Harness = ReturnType<typeof setup>;
@@ -73,7 +85,9 @@ async function hostInRoom(harness: Harness = setup()) {
     type: 'ROOM_CREATED',
     payload: {
       roomId: ROOM_ID,
+      sessionId: SESSION_ID,
       inviteSecret: SECRET,
+      resumeSecret: HOST_RESUME,
       participantId: HOST_ID,
       role: 'host',
       expiresAt: 1,
@@ -105,7 +119,12 @@ async function connectHost(harness: Harness, guestId: ParticipantId = GUEST_ID) 
   const channel = pc.channels[0];
   if (channel === undefined) throw new Error('no channel');
   channel.open();
-  const fromGuest = { negotiationId, senderId: guestId, recipientId: HOST_ID };
+  const fromGuest = {
+    sessionId: SESSION_ID,
+    negotiationId,
+    senderId: guestId,
+    recipientId: HOST_ID,
+  };
   channel.receive(peerMessage('PEER_HELLO', fromGuest, 0));
   channel.receive(peerMessage('PEER_READY', fromGuest, 1));
   return { negotiationId, channel, pc };
@@ -119,6 +138,8 @@ async function guestInRoom(harness: Harness = setup()) {
     type: 'ROOM_JOINED',
     payload: {
       roomId: ROOM_ID,
+      sessionId: SESSION_ID,
+      resumeSecret: GUEST_RESUME,
       participantId: GUEST_ID,
       role: 'guest',
       peer: { participantId: HOST_ID, role: 'host' },
@@ -150,9 +171,12 @@ describe('room entry', () => {
       roomId: ROOM_ID,
       inviteSecret: SECRET,
       participantId: HOST_ID,
+      signaling: 'connected',
       peer: null,
       notice: null,
     });
+    // The resume secret never enters the rendered state.
+    expect(JSON.stringify(controller.getState())).not.toContain(HOST_RESUME);
     // Waiting for a guest creates no peer connection.
     expect(connections).toHaveLength(0);
   });
@@ -167,10 +191,12 @@ describe('room entry', () => {
     expect(state.role).toBe('guest');
     expect(state.peer).toStrictEqual({
       participantId: HOST_ID,
+      signaling: 'connected',
       connection: 'negotiating',
       failure: null,
     });
     expect('inviteSecret' in state).toBe(false);
+    expect(JSON.stringify(state)).not.toContain(GUEST_RESUME);
     expect(connections).toHaveLength(0);
   });
 
@@ -253,6 +279,7 @@ describe('host negotiation', () => {
     expect(negotiationId).toBe('NNNNNNNNNNNNNNNNNNNNNNN1');
     expect(inRoom(harness.controller.getState()).peer).toStrictEqual({
       participantId: GUEST_ID,
+      signaling: 'connected',
       connection: 'connected',
       failure: null,
     });
@@ -335,13 +362,18 @@ describe('guest negotiation', () => {
     const channel = new FakeDataChannel(PEER_CONTROL_CHANNEL_LABEL, { ordered: true });
     pc.announceChannel(channel);
     channel.open();
-    const fromHost = { negotiationId, senderId: HOST_ID, recipientId: GUEST_ID };
+    const fromHost = {
+      sessionId: SESSION_ID,
+      negotiationId,
+      senderId: HOST_ID,
+      recipientId: GUEST_ID,
+    };
     channel.receive(peerMessage('PEER_HELLO', fromHost, 0));
     channel.receive(peerMessage('PEER_READY', fromHost, 1));
     expect(inRoom(harness.controller.getState()).peer?.connection).toBe('connected');
   });
 
-  it('keeps a failed peer in the room, without retrying or accepting a new offer', async () => {
+  it('asks the host for a fresh negotiation when its peer fails, and accepts no plain re-offer', async () => {
     const harness = await guestInRoom();
     const negotiationId = '1'.repeat(24) as NegotiationId;
     harness.socket().deliver({ type: 'RTC_OFFER', payload: { negotiationId, sdp: 'v=0\r\n' } });
@@ -349,9 +381,17 @@ describe('guest negotiation', () => {
     harness.connection().setConnectionState('failed');
     expect(inRoom(harness.controller.getState()).peer).toStrictEqual({
       participantId: HOST_ID,
-      connection: 'failed',
+      signaling: 'connected',
+      connection: 'recovering',
       failure: 'connection_failed',
     });
+    expect(
+      harness
+        .socket()
+        .sentOfType('RTC_RECOVERY_REQUEST')
+        .map((m) => m.payload),
+    ).toStrictEqual([{ negotiationId }]);
+    // A second plain offer is never accepted; only a recovery offer is.
     harness.socket().deliver({
       type: 'RTC_OFFER',
       payload: { negotiationId: '2'.repeat(24) as NegotiationId, sdp: 'v=0\r\n' },
@@ -393,7 +433,9 @@ describe('stale asynchronous events', () => {
       type: 'ROOM_CREATED',
       payload: {
         roomId: OTHER_ROOM_ID,
+        sessionId: OTHER_SESSION_ID,
         inviteSecret: SECRET,
+        resumeSecret: HOST_RESUME,
         participantId: HOST_ID,
         role: 'host',
         expiresAt: 1,
@@ -463,15 +505,13 @@ describe('stale asynchronous events', () => {
     const harness = await hostInRoom();
     const first = harness.socket();
     first.drop();
-    expect(harness.controller.getState()).toStrictEqual({
-      phase: 'idle',
-      notice: 'signaling_lost',
-    });
-    harness.controller.createRoom();
+    expect(inRoom(harness.controller.getState()).signaling).toBe('reconnecting');
+    await harness.timers.advance(0);
     const second = harness.socket();
     expect(second).not.toBe(first);
+    const before = harness.controller.getState();
     first.deliver({ type: 'ROOM_CLOSED', payload: { reason: 'EXPIRED' } });
-    expect(harness.controller.getState()).toStrictEqual({ phase: 'opening', intent: 'create' });
+    expect(harness.controller.getState()).toBe(before);
   });
 });
 
@@ -489,23 +529,15 @@ describe('leave, disconnect, and cleanup', () => {
     expect(harness.socket().closeCalls).toStrictEqual([]);
   });
 
-  it('tears the peer down when signaling drops, and never reconnects', async () => {
-    vi.useFakeTimers();
-    try {
-      const harness = await guestJoins(await hostInRoom());
-      const { pc } = await connectHost(harness);
-      harness.socket().drop();
-      expect(pc.closed).toBe(true);
-      expect(harness.controller.getState()).toStrictEqual({
-        phase: 'idle',
-        notice: 'signaling_lost',
-      });
-      await vi.advanceTimersByTimeAsync(120_000);
-      expect(harness.sockets).toHaveLength(1);
-      expect(harness.connections).toHaveLength(1);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('does not reconnect a connection that carried no room', async () => {
+    const harness = await hostInRoom();
+    harness.controller.leaveRoom();
+    harness.socket().deliver({ type: 'ROOM_LEFT', payload: {} });
+    harness.socket().drop();
+    await harness.timers.advance(120_000);
+    expect(harness.sockets).toHaveLength(1);
+    expect(harness.timers.pendingCount).toBe(0);
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
   });
 
   it('reports the reason for a connection the service closed after an error', async () => {

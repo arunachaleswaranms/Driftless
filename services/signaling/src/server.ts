@@ -23,12 +23,30 @@ export const DEFAULT_MAX_CONNECTIONS = 256;
 /** How long shutdown waits for clients to finish the close handshake. */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
+/**
+ * Provisional default reconnect grace period: how long a participant whose
+ * connection was lost keeps its membership. An implementation bound, not a
+ * user-experience guarantee.
+ */
+export const DEFAULT_RECONNECT_GRACE_MS = 30_000;
+
+/**
+ * Provisional default interval of WebSocket protocol pings. A connection that
+ * has not answered the previous ping when the next one is due is treated as
+ * lost, so a dead path is detected within two intervals. Not tuned for
+ * mobile networks.
+ */
+export const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+
 export interface SignalingServerOptions {
   readonly host: string;
   readonly port: number;
   /** Exact origins allowed to open a WebSocket. Never a wildcard. */
   readonly allowedOrigins: readonly string[];
   readonly roomTtlMs: number;
+  readonly reconnectGraceMs?: number;
+  readonly heartbeatIntervalMs?: number;
+  readonly maxRooms?: number;
   readonly logger?: Logger;
   readonly clock?: () => number;
   readonly random?: RandomSource;
@@ -75,12 +93,15 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
 
   const store = new RoomStore({
     roomTtlMs: options.roomTtlMs,
+    reconnectGraceMs: options.reconnectGraceMs ?? DEFAULT_RECONNECT_GRACE_MS,
+    ...(options.maxRooms === undefined ? {} : { maxRooms: options.maxRooms }),
     ...(options.random === undefined ? {} : { random: options.random }),
   });
   const controller = new SignalingController({
     store,
     logger,
     clock,
+    ...(options.random === undefined ? {} : { random: options.random }),
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
   });
 
@@ -91,8 +112,10 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
     perMessageDeflate: false,
     clientTracking: false,
   });
-  const sockets = new Set<WebSocket>();
+  /** Live sockets, each with whether it answered the latest ping. */
+  const sockets = new Map<WebSocket, { alive: boolean; connection: number }>();
   let sweep: ScheduledTask | undefined;
+  let heartbeat: ScheduledTask | undefined;
   let starting: Promise<void> | undefined;
   let stopping: Promise<void> | undefined;
   // Read through a function: stop() can begin while start() awaits, which
@@ -143,7 +166,15 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
   }
 
   function acceptConnection(ws: WebSocket): void {
-    sockets.add(ws);
+    const liveness = { alive: true, connection: 0 };
+    sockets.set(ws, liveness);
+    // Browsers answer protocol pings themselves; no application message is involved.
+    ws.on('pong', () => {
+      liveness.alive = true;
+    });
+    // Set when ws itself closes the connection because the client broke the
+    // WebSocket protocol; such a close is a policy violation, not a loss.
+    let policyViolation = false;
     const connection = controller.connect({
       send(text) {
         if (ws.readyState === WebSocket.OPEN) ws.send(text);
@@ -152,6 +183,7 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
         ws.close(code, reason);
       },
     });
+    liveness.connection = connection.id;
     ws.on('message', (data: RawData, isBinary: boolean) => {
       if (isBinary) connection.receiveBinary();
       else connection.receiveText(rawDataToText(data));
@@ -165,12 +197,34 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
           : typeof error.code === 'string' && error.code.startsWith('WS_ERR_')
             ? 'invalid_frame'
             : 'socket';
+      if (detail !== 'socket') policyViolation = true;
       logger.log({ event: 'transport_error', connection: connection.id, detail });
     });
     ws.on('close', (code: number) => {
       sockets.delete(ws);
-      connection.transportClosed(code);
+      connection.transportClosed(code, policyViolation);
     });
+  }
+
+  /**
+   * One periodic liveness pass over every socket: a socket that did not
+   * answer the previous ping is terminated, which the controller treats as a
+   * lost connection, so its membership enters the reconnect grace period.
+   */
+  function checkLiveness(): void {
+    for (const [ws, liveness] of sockets) {
+      if (!liveness.alive) {
+        logger.log({
+          event: 'transport_error',
+          connection: liveness.connection,
+          detail: 'liveness_timeout',
+        });
+        ws.terminate();
+        continue;
+      }
+      liveness.alive = false;
+      ws.ping();
+    }
   }
 
   function handleRequest(request: IncomingMessage, response: ServerResponse): void {
@@ -215,11 +269,15 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
       if (isStopping()) throw new Error('The server was stopped during start.');
       sweep = scheduler.every(options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS, () => {
         try {
-          controller.expireDueRooms();
+          controller.sweep();
         } catch {
           logger.log({ event: 'internal_error', context: 'sweep' });
         }
       });
+      heartbeat = scheduler.every(
+        options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+        checkLiveness,
+      );
       const address = httpServer.address() as AddressInfo;
       logger.log({ event: 'server_started', host: options.host, port: address.port });
       return { host: options.host, port: address.port };
@@ -237,7 +295,9 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
     await starting?.catch(() => undefined);
     sweep?.cancel();
     sweep = undefined;
-    const closing = [...sockets].map(
+    heartbeat?.cancel();
+    heartbeat = undefined;
+    const closing = [...sockets.keys()].map(
       (ws) =>
         new Promise<void>((resolve) => {
           ws.once('close', () => {
@@ -254,7 +314,7 @@ export function createSignalingServer(options: SignalingServerOptions): Signalin
       }),
     ]);
     clearTimeout(grace);
-    for (const ws of sockets) ws.terminate();
+    for (const ws of sockets.keys()) ws.terminate();
     await new Promise<void>((resolve) => {
       wss.close(() => {
         resolve();

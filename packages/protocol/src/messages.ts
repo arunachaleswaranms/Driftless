@@ -1,5 +1,14 @@
 import type { ErrorCode } from './errors.js';
-import type { InviteSecret, NegotiationId, ParticipantId, RoomId } from './identifiers.js';
+import type {
+  InviteSecret,
+  NegotiationId,
+  ParticipantId,
+  ResumeChallenge,
+  ResumeProof,
+  ResumeSecret,
+  RoomId,
+  SessionId,
+} from './identifiers.js';
 import type { IceCandidate } from './webrtc.js';
 
 /** The only protocol version this package understands. */
@@ -49,6 +58,26 @@ export type RoomJoinMessage = Envelope<
 
 export type RoomLeaveMessage = Envelope<'ROOM_LEAVE', EmptyPayload>;
 
+// Session resume: client → server
+//
+// A new connection, not in any room, asks to take over the membership of a
+// participant whose previous connection was lost. It carries no secret. The
+// service always answers with a challenge, whether or not the session and
+// participant exist, and the client answers the challenge with a proof that
+// it holds the participant's resume secret; see `resumeProofInput`.
+
+/** Asks for a resume challenge for one participant of one room session. */
+export type SessionResumeBeginMessage = Envelope<
+  'SESSION_RESUME_BEGIN',
+  { readonly sessionId: SessionId; readonly participantId: ParticipantId }
+>;
+
+/** Answers this connection's pending challenge. */
+export type SessionResumeProveMessage = Envelope<
+  'SESSION_RESUME_PROVE',
+  { readonly challenge: ResumeChallenge; readonly proof: ResumeProof }
+>;
+
 // WebRTC negotiation: client → server → the other participant
 //
 // The same four messages travel from the sender to the service and from the
@@ -81,11 +110,45 @@ export type IceCompleteMessage = Envelope<
   { readonly negotiationId: NegotiationId }
 >;
 
+/**
+ * Guest → host. The guest's peer connection for the active negotiation
+ * failed; it asks the host for a fresh recovery offer. The guest never offers.
+ */
+export type RtcRecoveryRequestMessage = Envelope<
+  'RTC_RECOVERY_REQUEST',
+  { readonly negotiationId: NegotiationId }
+>;
+
+/**
+ * Host → guest. Replaces the active negotiation `previousNegotiationId` with
+ * the fresh negotiation `negotiationId`, for a fresh peer connection, and
+ * carries its offer. The previous negotiation is over.
+ */
+export type RtcRecoverMessage = Envelope<
+  'RTC_RECOVER',
+  {
+    readonly previousNegotiationId: NegotiationId;
+    readonly negotiationId: NegotiationId;
+    /** Opaque session description text, at most `MAX_SDP_BYTES`. */
+    readonly sdp: string;
+  }
+>;
+
 export type NegotiationMessage =
-  RtcOfferMessage | RtcAnswerMessage | IceCandidateMessage | IceCompleteMessage;
+  | RtcOfferMessage
+  | RtcAnswerMessage
+  | IceCandidateMessage
+  | IceCompleteMessage
+  | RtcRecoveryRequestMessage
+  | RtcRecoverMessage;
 
 export type ClientMessage =
-  RoomCreateMessage | RoomJoinMessage | RoomLeaveMessage | NegotiationMessage;
+  | RoomCreateMessage
+  | RoomJoinMessage
+  | RoomLeaveMessage
+  | SessionResumeBeginMessage
+  | SessionResumeProveMessage
+  | NegotiationMessage;
 
 // Server → client
 
@@ -94,7 +157,10 @@ export type RoomCreatedMessage = Envelope<
   'ROOM_CREATED',
   {
     readonly roomId: RoomId;
+    readonly sessionId: SessionId;
     readonly inviteSecret: InviteSecret;
+    /** This participant's own resume credential. Sent once, never again. */
+    readonly resumeSecret: ResumeSecret;
     readonly participantId: ParticipantId;
     readonly role: 'host';
     /** Server clock, milliseconds since the Unix epoch. */
@@ -107,6 +173,9 @@ export type RoomJoinedMessage = Envelope<
   'ROOM_JOINED',
   {
     readonly roomId: RoomId;
+    readonly sessionId: SessionId;
+    /** This participant's own resume credential. Sent once, never again. */
+    readonly resumeSecret: ResumeSecret;
     readonly participantId: ParticipantId;
     readonly role: 'guest';
     readonly peer: ParticipantSummary<'host'>;
@@ -123,10 +192,18 @@ export type RoomParticipantJoinedMessage = Envelope<
   { readonly participant: ParticipantSummary<'guest'> }
 >;
 
-export const PARTICIPANT_LEFT_REASONS = ['LEFT', 'DISCONNECTED'] as const;
+/**
+ * - `LEFT`: the guest sent `ROOM_LEAVE`.
+ * - `DISCONNECTED`: the guest's connection ended in a way that is not
+ *   resumable: it closed normally, or the service closed it for a policy or
+ *   protocol violation.
+ * - `RECONNECT_TIMEOUT`: the guest's connection was lost and it did not
+ *   resume within the reconnect grace period.
+ */
+export const PARTICIPANT_LEFT_REASONS = ['LEFT', 'DISCONNECTED', 'RECONNECT_TIMEOUT'] as const;
 export type ParticipantLeftReason = (typeof PARTICIPANT_LEFT_REASONS)[number];
 
-/** Sent to the host when the guest leaves or its connection closes. */
+/** Sent to the host when the guest's membership ends. */
 export type RoomParticipantLeftMessage = Envelope<
   'ROOM_PARTICIPANT_LEFT',
   {
@@ -135,11 +212,92 @@ export type RoomParticipantLeftMessage = Envelope<
   }
 >;
 
-export const ROOM_CLOSED_REASONS = ['EXPIRED', 'HOST_LEFT', 'HOST_DISCONNECTED'] as const;
+/** Room closure reasons; `HOST_*` mirror `ParticipantLeftReason` for the host. */
+export const ROOM_CLOSED_REASONS = [
+  'EXPIRED',
+  'HOST_LEFT',
+  'HOST_DISCONNECTED',
+  'HOST_RECONNECT_TIMEOUT',
+] as const;
 export type RoomClosedReason = (typeof ROOM_CLOSED_REASONS)[number];
 
 /** Sent to every remaining member when the room ends. Membership has ended. */
 export type RoomClosedMessage = Envelope<'ROOM_CLOSED', { readonly reason: RoomClosedReason }>;
+
+/**
+ * A participant's signaling presence: whether the service currently has a
+ * connection for it, or is holding its membership while it reconnects.
+ */
+export const PARTICIPANT_SIGNALING_STATES = ['CONNECTED', 'RECONNECTING'] as const;
+export type ParticipantSignalingState = (typeof PARTICIPANT_SIGNALING_STATES)[number];
+
+/**
+ * The service's negotiation state for the current guest membership, sent
+ * whenever a participant must reconcile with it. `activeNegotiationId` is
+ * the latest negotiation the service accepted, whether or not its peer
+ * connection still works, and is null exactly when `negotiationCount` is 0.
+ * `negotiationCount` counts the negotiations this membership has used, at
+ * most `MAX_NEGOTIATIONS_PER_MEMBERSHIP`.
+ */
+export interface NegotiationSnapshot {
+  readonly activeNegotiationId: NegotiationId | null;
+  readonly negotiationCount: number;
+}
+
+/** The other member as a resume snapshot describes it. */
+export interface PeerPresence<
+  Role extends ParticipantRole = ParticipantRole,
+> extends ParticipantSummary<Role> {
+  readonly signaling: ParticipantSignalingState;
+}
+
+/**
+ * Sent to a participant when the other member's signaling connection is lost
+ * (`RECONNECTING`) or resumed (`CONNECTED`), with the service's negotiation
+ * state. Presence only: no address, description, candidate, or secret.
+ */
+export type RoomParticipantConnectionMessage = Envelope<
+  'ROOM_PARTICIPANT_CONNECTION',
+  NegotiationSnapshot & {
+    readonly participantId: ParticipantId;
+    readonly signaling: ParticipantSignalingState;
+  }
+>;
+
+/** Session resume: the challenge for this connection. Reveals nothing about the session. */
+export type SessionResumeChallengeMessage = Envelope<
+  'SESSION_RESUME_CHALLENGE',
+  { readonly challenge: ResumeChallenge }
+>;
+
+/**
+ * Session resume succeeded: this connection now carries the participant's
+ * membership, and this authoritative snapshot is what the client reconciles
+ * with. It never carries a secret, description, candidate, or address.
+ */
+export type SessionResumedMessage = Envelope<
+  'SESSION_RESUMED',
+  NegotiationSnapshot &
+    (
+      | {
+          readonly sessionId: SessionId;
+          readonly roomId: RoomId;
+          readonly participantId: ParticipantId;
+          readonly role: 'host';
+          readonly expiresAt: number;
+          /** The guest, or null if there is none. */
+          readonly peer: PeerPresence<'guest'> | null;
+        }
+      | {
+          readonly sessionId: SessionId;
+          readonly roomId: RoomId;
+          readonly participantId: ParticipantId;
+          readonly role: 'guest';
+          readonly expiresAt: number;
+          readonly peer: PeerPresence<'host'>;
+        }
+    )
+>;
 
 export type ErrorMessage = Envelope<
   'ERROR',
@@ -158,6 +316,9 @@ export type ServerMessage =
   | RoomParticipantJoinedMessage
   | RoomParticipantLeftMessage
   | RoomClosedMessage
+  | RoomParticipantConnectionMessage
+  | SessionResumeChallengeMessage
+  | SessionResumedMessage
   | ErrorMessage
   | NegotiationMessage;
 
@@ -166,12 +327,16 @@ export const NEGOTIATION_MESSAGE_TYPES = [
   'RTC_ANSWER',
   'ICE_CANDIDATE',
   'ICE_COMPLETE',
+  'RTC_RECOVERY_REQUEST',
+  'RTC_RECOVER',
 ] as const satisfies readonly NegotiationMessage['type'][];
 
 export const CLIENT_MESSAGE_TYPES = [
   'ROOM_CREATE',
   'ROOM_JOIN',
   'ROOM_LEAVE',
+  'SESSION_RESUME_BEGIN',
+  'SESSION_RESUME_PROVE',
   ...NEGOTIATION_MESSAGE_TYPES,
 ] as const satisfies readonly ClientMessage['type'][];
 
@@ -182,6 +347,9 @@ export const SERVER_MESSAGE_TYPES = [
   'ROOM_PARTICIPANT_JOINED',
   'ROOM_PARTICIPANT_LEFT',
   'ROOM_CLOSED',
+  'ROOM_PARTICIPANT_CONNECTION',
+  'SESSION_RESUME_CHALLENGE',
+  'SESSION_RESUMED',
   'ERROR',
   ...NEGOTIATION_MESSAGE_TYPES,
 ] as const satisfies readonly ServerMessage['type'][];
@@ -192,12 +360,14 @@ export type NegotiationMessageType = NegotiationMessage['type'];
 
 // Peer → peer over the RTCDataChannel
 //
-// Phase 2B defines only a connection handshake on the control channel. Each
-// peer sends PEER_HELLO when the channel opens and answers the other's valid
-// PEER_HELLO with PEER_READY, so each side observes delivery in both
-// directions before it treats the channel as usable. The payload carries only
-// identifiers both peers already learned through authenticated signaling;
-// it carries no secret, and the invite secret is never used here.
+// Only a connection handshake is defined on the control channel. The host
+// sends PEER_HELLO when its channel opens; the guest answers with its own
+// PEER_HELLO and a PEER_READY, and the host answers the guest's PEER_HELLO
+// with PEER_READY. Each side thus receives both messages, observing delivery
+// in both directions, before it treats the channel as usable. The payload carries only
+// identifiers both peers already learned through authenticated signaling,
+// binding the handshake to one room session, one negotiation, and both
+// participants; it carries no secret, and no credential is ever used here.
 
 /** Label of the single ordered, reliable control channel the host creates. */
 export const PEER_CONTROL_CHANNEL_LABEL = 'driftless-control';
@@ -206,6 +376,8 @@ export const PEER_CONTROL_CHANNEL_LABEL = 'driftless-control';
 export const MAX_PEER_MESSAGE_BYTES = 1024;
 
 export interface PeerHandshakePayload {
+  /** The room session both participants belong to. */
+  readonly sessionId: SessionId;
   readonly negotiationId: NegotiationId;
   /** The sending participant. */
   readonly senderId: ParticipantId;

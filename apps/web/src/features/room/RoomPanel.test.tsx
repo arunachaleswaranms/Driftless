@@ -1,8 +1,21 @@
-import type { InviteSecret, NegotiationId, ParticipantId, RoomId } from '@driftless/protocol';
+import type {
+  InviteSecret,
+  NegotiationId,
+  ParticipantId,
+  ResumeSecret,
+  RoomId,
+  SessionId,
+} from '@driftless/protocol';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { FakePeerConnection, FakeWebSocket, flush } from '../../test/room.ts';
+import {
+  FakePeerConnection,
+  FakeTimers,
+  FakeWebSocket,
+  fakeProver,
+  flush,
+} from '../../test/room.ts';
 import { RoomController } from './roomController.ts';
 import { RoomPanel } from './RoomPanel.tsx';
 
@@ -10,8 +23,10 @@ const ROOM_ID = `${'R'.repeat(21)}Q` as RoomId;
 const SECRET = `${'S'.repeat(42)}E` as InviteSecret;
 const HOST_ID = 'H'.repeat(16) as ParticipantId;
 const GUEST_ID = 'G'.repeat(16) as ParticipantId;
+const RESUME_SECRET = 'r'.repeat(44) as ResumeSecret;
 
 function setup() {
+  const timers = new FakeTimers();
   const sockets: FakeWebSocket[] = [];
   const connections: FakePeerConnection[] = [];
   const controller = new RoomController({
@@ -28,7 +43,9 @@ function setup() {
       return connection.asPeerConnection();
     },
     createNegotiationId: () => 'N'.repeat(24) as NegotiationId,
+    proveResume: fakeProver().prove,
     clock: () => 0,
+    timers,
   });
   const view = render(<RoomPanel controller={controller} />);
   const region = screen.getByRole('region', { name: 'Room' });
@@ -37,7 +54,7 @@ function setup() {
     if (current === undefined) throw new Error('no socket');
     return current;
   };
-  return { controller, sockets, connections, view, region, socket };
+  return { controller, sockets, connections, view, region, socket, timers };
 }
 
 async function createdRoom() {
@@ -52,7 +69,9 @@ async function createdRoom() {
       type: 'ROOM_CREATED',
       payload: {
         roomId: ROOM_ID,
+        sessionId: 'Q'.repeat(27) as SessionId,
         inviteSecret: SECRET,
+        resumeSecret: RESUME_SECRET,
         participantId: HOST_ID,
         role: 'host',
         expiresAt: 1,
@@ -92,7 +111,9 @@ describe('RoomPanel', () => {
       createPeerConnection: (configuration) =>
         new FakePeerConnection(configuration).asPeerConnection(),
       createNegotiationId: () => 'N'.repeat(24) as NegotiationId,
+      proveResume: fakeProver().prove,
       clock: () => 0,
+      timers: new FakeTimers(),
     });
     render(
       <StrictMode>
@@ -173,8 +194,8 @@ describe('RoomPanel', () => {
     expect(within(region).getByLabelText<HTMLInputElement>('Room ID').value).toBe('');
   });
 
-  it('shows connection progress as text and a failure with the next step', async () => {
-    const { region, socket, connections } = await createdRoom();
+  it('shows connection progress and recovery as text, alerting only when recovery stops', async () => {
+    const { region, socket, connections, timers } = await createdRoom();
     act(() => {
       socket().deliver({
         type: 'ROOM_PARTICIPANT_JOINED',
@@ -185,15 +206,67 @@ describe('RoomPanel', () => {
       'A guest joined. Setting up the peer connection…',
     );
     expect(region.textContent).toContain('Setting up');
-    act(() => {
-      connections[0]?.setConnectionState('failed');
-    });
+    for (let index = 0; index < 4; index += 1) {
+      await act(async () => {
+        connections[index]?.setConnectionState('failed');
+        await timers.advance(1000);
+      });
+      if (index < 3) {
+        expect(within(region).getByRole('status').textContent).toBe(
+          'Peer connection lost. Recovering…',
+        );
+        expect(region.textContent).toContain('Recovering');
+        expect(within(region).queryByRole('alert')).toBeNull();
+      }
+    }
     expect(within(region).getByRole('status').textContent).toBe(
-      'The peer connection to the guest failed.',
+      'The peer connection to the guest could not be recovered.',
     );
-    expect(within(region).getByRole('alert').textContent).toContain('Driftless does not retry.');
+    expect(within(region).getByRole('alert').textContent).toContain(
+      'Driftless stopped trying to recover it.',
+    );
     expect(region.textContent).toContain('Failed');
     expect(within(region).getByRole('button', { name: 'Leave room' })).toBeDefined();
+  });
+
+  it('shows signaling reconnect without retry details and keeps Leave usable', async () => {
+    const { region, socket, timers, sockets } = await createdRoom();
+    const status = within(region).getByRole('status');
+    act(() => {
+      socket().drop();
+    });
+    expect(status.textContent).toBe('Reconnecting to signaling…');
+    expect(region.textContent).toContain('Reconnecting');
+    // Retries change nothing on the page: no attempt counts or timers are shown.
+    await act(async () => {
+      await timers.advance(0);
+      sockets.at(-1)?.drop();
+      await flush();
+      await timers.advance(250);
+    });
+    expect(status.textContent).toBe('Reconnecting to signaling…');
+    expect(region.textContent).not.toMatch(/attempt|challenge|proof|\d+\s*ms/i);
+    fireEvent.click(within(region).getByRole('button', { name: 'Leave room' }));
+    expect(status.textContent).toBe('You left the room. You are not in a room.');
+    expect(timers.pendingCount).toBe(0);
+  });
+
+  it('says when the room session could not be recovered', async () => {
+    const { region, socket, timers, sockets } = await createdRoom();
+    act(() => {
+      socket().drop();
+    });
+    await act(async () => {
+      for (const delay of [0, 250, 500, 1000, 2000, 4000, 4000, 4000]) {
+        await timers.advance(delay);
+        sockets.at(-1)?.drop();
+        await flush();
+      }
+    });
+    expect(within(region).getByRole('alert').textContent).toBe(
+      'The room session could not be recovered, and the peer connection was closed. Create or join a room to start again.',
+    );
+    expect(within(region).getByRole('button', { name: 'Create room' })).toBeDefined();
   });
 
   it('leaves the room, drops the invite from the page, and keeps focus in the panel', async () => {

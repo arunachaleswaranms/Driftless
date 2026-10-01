@@ -15,19 +15,20 @@ export type RejectionDetail =
   | 'violation_limit'
   | 'room_request'
   | 'negotiation_request'
+  | 'resume_request'
   | 'relay_too_large';
 
 /** Transport-level failure classes. Fixed tokens only. */
-export type TransportErrorDetail = 'oversized' | 'invalid_frame' | 'socket';
+export type TransportErrorDetail = 'oversized' | 'invalid_frame' | 'socket' | 'liveness_timeout';
 
 /**
  * Every event the service may log. The union is closed and each field is a
  * number or a fixed token, so a secret, identifier, payload, URL, header, or
  * IP address cannot be logged without changing this type. Connections are
- * identified only by a process-local counter; room, participant, and
- * negotiation IDs are never logged, nor is any session description, ICE
- * candidate, or username fragment. Individual candidates are not logged at
- * all.
+ * identified only by a process-local counter; room, session, participant,
+ * and negotiation IDs are never logged, nor is any session description, ICE
+ * candidate, username fragment, resume secret, challenge, or proof.
+ * Individual candidates are not logged at all.
  */
 export type LogEvent =
   | { readonly event: 'server_started'; readonly host: string; readonly port: number }
@@ -47,6 +48,13 @@ export type LogEvent =
       readonly reason: ParticipantLeftReason;
     }
   | { readonly event: 'room_closed'; readonly reason: RoomClosedReason }
+  /** A connection was lost; its membership is held for the reconnect grace period. */
+  | { readonly event: 'participant_disconnected'; readonly connection: number }
+  | { readonly event: 'resume_challenge_issued'; readonly connection: number }
+  | { readonly event: 'participant_resumed'; readonly connection: number }
+  /** A resume proof was refused. Deliberately without a reason. */
+  | { readonly event: 'resume_rejected'; readonly connection: number }
+  | { readonly event: 'reconnect_timeout'; readonly role: 'host' | 'guest' }
   | {
       readonly event: 'negotiation_relayed';
       readonly connection: number;

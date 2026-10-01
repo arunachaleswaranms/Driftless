@@ -198,7 +198,9 @@ describe('SignalingClient', () => {
       type: 'ROOM_CREATED',
       payload: {
         roomId: ROOM_ID as never,
+        sessionId: 'Q'.repeat(27) as never,
         inviteSecret: SECRET as never,
+        resumeSecret: 'R'.repeat(44) as never,
         participantId: 'C'.repeat(16) as never,
         role: 'host',
         expiresAt: 1,

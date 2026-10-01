@@ -82,6 +82,7 @@ describe('protocol constants', () => {
       'ROOM_FULL',
       'RATE_LIMITED',
       'SERVER_ERROR',
+      'SESSION_UNAVAILABLE',
     ]);
   });
 });
