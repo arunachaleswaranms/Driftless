@@ -4,6 +4,7 @@ import type {
   ParticipantLeftReason,
   RoomClosedReason,
 } from '@driftless/protocol';
+import type { NegotiationStep } from './roomStore.js';
 
 /** Why a client message was not processed. Fixed tokens only. */
 export type RejectionDetail =
@@ -12,7 +13,9 @@ export type RejectionDetail =
   | 'binary_message'
   | 'rate_limited'
   | 'violation_limit'
-  | 'room_request';
+  | 'room_request'
+  | 'negotiation_request'
+  | 'relay_too_large';
 
 /** Transport-level failure classes. Fixed tokens only. */
 export type TransportErrorDetail = 'oversized' | 'invalid_frame' | 'socket';
@@ -21,8 +24,10 @@ export type TransportErrorDetail = 'oversized' | 'invalid_frame' | 'socket';
  * Every event the service may log. The union is closed and each field is a
  * number or a fixed token, so a secret, identifier, payload, URL, header, or
  * IP address cannot be logged without changing this type. Connections are
- * identified only by a process-local counter; room and participant IDs are
- * never logged.
+ * identified only by a process-local counter; room, participant, and
+ * negotiation IDs are never logged, nor is any session description, ICE
+ * candidate, or username fragment. Individual candidates are not logged at
+ * all.
  */
 export type LogEvent =
   | { readonly event: 'server_started'; readonly host: string; readonly port: number }
@@ -42,6 +47,11 @@ export type LogEvent =
       readonly reason: ParticipantLeftReason;
     }
   | { readonly event: 'room_closed'; readonly reason: RoomClosedReason }
+  | {
+      readonly event: 'negotiation_relayed';
+      readonly connection: number;
+      readonly step: Exclude<NegotiationStep, 'candidate'>;
+    }
   | {
       readonly event: 'message_rejected';
       readonly connection: number;

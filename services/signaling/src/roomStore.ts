@@ -1,4 +1,11 @@
-import type { InviteSecret, ParticipantId, ParticipantRole, RoomId } from '@driftless/protocol';
+import {
+  MAX_ICE_CANDIDATES_PER_NEGOTIATION,
+  type InviteSecret,
+  type NegotiationId,
+  type ParticipantId,
+  type ParticipantRole,
+  type RoomId,
+} from '@driftless/protocol';
 import {
   cryptoRandom,
   digestInviteSecret,
@@ -21,6 +28,18 @@ export interface Member {
   readonly role: ParticipantRole;
 }
 
+/**
+ * The legality state of the room's one WebRTC negotiation. It holds counters
+ * and flags only: session descriptions and candidates are relayed and
+ * dropped, never stored.
+ */
+interface Negotiation {
+  readonly negotiationId: NegotiationId;
+  answered: boolean;
+  readonly candidates: Record<ParticipantRole, number>;
+  readonly complete: Record<ParticipantRole, boolean>;
+}
+
 interface Room {
   readonly roomId: RoomId;
   /** SHA-256 of the invite secret. The secret itself is not retained. */
@@ -28,7 +47,19 @@ interface Room {
   readonly expiresAt: number;
   readonly host: Member;
   guest: Member | undefined;
+  /** The negotiation between the host and the current guest, if started. */
+  negotiation: Negotiation | undefined;
+  /** The most recent negotiation ID, so that it can never be started again. */
+  lastNegotiationId: NegotiationId | undefined;
 }
+
+/** One negotiation message, by what it does. */
+export type NegotiationStep = 'offer' | 'answer' | 'candidate' | 'complete';
+
+export type NegotiationResult =
+  /** The message is legal; relay it to `recipient`, the sender's peer. */
+  | { readonly ok: true; readonly recipient: Member }
+  | { readonly ok: false; readonly code: 'INVALID_STATE' };
 
 export type CreateRoomResult =
   | {
@@ -120,6 +151,13 @@ export class RoomStore {
     return this.#memberships.size;
   }
 
+  /** Rooms with a negotiation in progress or completed, for tests. */
+  get negotiationCount(): number {
+    let count = 0;
+    for (const room of this.#rooms.values()) if (room.negotiation !== undefined) count += 1;
+    return count;
+  }
+
   membershipOf(key: MemberKey): Member | undefined {
     const room = this.#roomOf(key);
     if (room === undefined) return undefined;
@@ -138,6 +176,8 @@ export class RoomStore {
       expiresAt: now + this.#roomTtlMs,
       host,
       guest: undefined,
+      negotiation: undefined,
+      lastNegotiationId: undefined,
     };
     this.#rooms.set(roomId, room);
     this.#memberships.set(key, roomId);
@@ -187,8 +227,68 @@ export class RoomStore {
     const guest = room.guest;
     if (guest === undefined) throw new Error('Membership refers to an empty guest slot.');
     room.guest = undefined;
+    // The negotiation belonged to this guest; a later guest starts afresh.
+    room.negotiation = undefined;
     this.#memberships.delete(key);
     return { ok: true, kind: 'guest_left', guest, host: room.host };
+  }
+
+  /**
+   * Decides whether `key` may send one negotiation message, and to whom. The
+   * room and the recipient come only from `key`'s current membership, and
+   * the roles are fixed: only the host offers, only the guest answers, and
+   * each room has at most one negotiation per guest. Every message must name
+   * the active negotiation, so a stale or foreign negotiation ID is refused.
+   * A legal message updates only counters and flags.
+   */
+  negotiate(
+    key: MemberKey,
+    step: NegotiationStep,
+    negotiationId: NegotiationId,
+  ): NegotiationResult {
+    const refused = { ok: false, code: 'INVALID_STATE' } as const;
+    const room = this.#roomOf(key);
+    const guest = room?.guest;
+    if (room === undefined || guest === undefined) return refused;
+    const sender = room.host.key === key ? room.host : guest;
+    const recipient = sender === room.host ? guest : room.host;
+
+    if (step === 'offer') {
+      // No renegotiation: one offer per guest, and never a reused ID.
+      if (
+        sender.role !== 'host' ||
+        room.negotiation !== undefined ||
+        negotiationId === room.lastNegotiationId
+      ) {
+        return refused;
+      }
+      room.negotiation = {
+        negotiationId,
+        answered: false,
+        candidates: { host: 0, guest: 0 },
+        complete: { host: false, guest: false },
+      };
+      room.lastNegotiationId = negotiationId;
+      return { ok: true, recipient };
+    }
+
+    const negotiation = room.negotiation;
+    if (negotiation?.negotiationId !== negotiationId) return refused;
+    if (step === 'answer') {
+      if (sender.role !== 'guest' || negotiation.answered) return refused;
+      negotiation.answered = true;
+      return { ok: true, recipient };
+    }
+    // The guest gathers candidates only for its answer.
+    const { role } = sender;
+    if ((role === 'guest' && !negotiation.answered) || negotiation.complete[role]) return refused;
+    if (step === 'candidate') {
+      if (negotiation.candidates[role] >= MAX_ICE_CANDIDATES_PER_NEGOTIATION) return refused;
+      negotiation.candidates[role] += 1;
+    } else {
+      negotiation.complete[role] = true;
+    }
+    return { ok: true, recipient };
   }
 
   /** Removes every room whose lifetime has ended at `now`. */

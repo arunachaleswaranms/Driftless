@@ -1,10 +1,12 @@
 import { Buffer } from 'node:buffer';
 import {
   INVITE_SECRET_BYTES,
+  MAX_ICE_CANDIDATES_PER_NEGOTIATION,
   isInviteSecret,
   isParticipantId,
   isRoomId,
   type InviteSecret,
+  type NegotiationId,
   type RoomId,
 } from '@driftless/protocol';
 import { describe, expect, it } from 'vitest';
@@ -329,5 +331,105 @@ describe('RoomStore expiry', () => {
     store.clear();
     expect(store.roomCount).toBe(0);
     expect(store.memberCount).toBe(0);
+  });
+});
+
+describe('RoomStore negotiation', () => {
+  const FIRST = 'A'.repeat(24) as NegotiationId;
+  const SECOND = 'B'.repeat(24) as NegotiationId;
+
+  function pair(store = newStore()) {
+    const room = created(store.createRoom(HOST, T0));
+    const joined = store.joinRoom(GUEST, room.roomId, room.inviteSecret, T0);
+    if (!joined.ok) throw new Error('expected a guest');
+    return { store, room, guest: joined.guest };
+  }
+
+  it('routes each step to the sender peer, derived from membership alone', () => {
+    const { store, room, guest } = pair();
+    expect(store.negotiate(HOST, 'offer', FIRST)).toStrictEqual({ ok: true, recipient: guest });
+    expect(store.negotiate(HOST, 'candidate', FIRST)).toStrictEqual({ ok: true, recipient: guest });
+    expect(store.negotiate(GUEST, 'answer', FIRST)).toStrictEqual({
+      ok: true,
+      recipient: room.host,
+    });
+    expect(store.negotiate(GUEST, 'candidate', FIRST)).toStrictEqual({
+      ok: true,
+      recipient: room.host,
+    });
+    expect(store.negotiate(GUEST, 'complete', FIRST).ok).toBe(true);
+    expect(store.negotiate(HOST, 'complete', FIRST).ok).toBe(true);
+  });
+
+  it('refuses every step for a non-member and for a host without a guest', () => {
+    const store = newStore();
+    for (const step of ['offer', 'answer', 'candidate', 'complete'] as const) {
+      expect(store.negotiate(THIRD, step, FIRST)).toStrictEqual({
+        ok: false,
+        code: 'INVALID_STATE',
+      });
+    }
+    created(store.createRoom(HOST, T0));
+    expect(store.negotiate(HOST, 'offer', FIRST).ok).toBe(false);
+    expect(store.negotiationCount).toBe(0);
+  });
+
+  it('enforces roles, the active ID, and one offer and answer per guest', () => {
+    const { store } = pair();
+    expect(store.negotiate(GUEST, 'offer', FIRST).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'answer', FIRST).ok).toBe(false);
+    expect(store.negotiate(HOST, 'offer', FIRST).ok).toBe(true);
+    expect(store.negotiate(HOST, 'offer', SECOND).ok).toBe(false);
+    expect(store.negotiate(HOST, 'answer', FIRST).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'answer', SECOND).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'candidate', FIRST).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'answer', FIRST).ok).toBe(true);
+    expect(store.negotiate(GUEST, 'answer', FIRST).ok).toBe(false);
+    expect(store.negotiate(HOST, 'candidate', SECOND).ok).toBe(false);
+  });
+
+  it('bounds candidates per participant and closes each side at completion', () => {
+    const { store } = pair();
+    store.negotiate(HOST, 'offer', FIRST);
+    store.negotiate(GUEST, 'answer', FIRST);
+    for (let index = 0; index < MAX_ICE_CANDIDATES_PER_NEGOTIATION; index += 1) {
+      expect(store.negotiate(HOST, 'candidate', FIRST).ok).toBe(true);
+    }
+    expect(store.negotiate(HOST, 'candidate', FIRST).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'candidate', FIRST).ok).toBe(true);
+    expect(store.negotiate(GUEST, 'complete', FIRST).ok).toBe(true);
+    expect(store.negotiate(GUEST, 'complete', FIRST).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'candidate', FIRST).ok).toBe(false);
+    expect(store.negotiate(HOST, 'complete', FIRST).ok).toBe(true);
+  });
+
+  it('gives a replacement guest a fresh negotiation and never reuses an ID', () => {
+    const { store, room } = pair();
+    store.negotiate(HOST, 'offer', FIRST);
+    store.leaveRoom(GUEST);
+    expect(store.negotiationCount).toBe(0);
+    const next = store.joinRoom(THIRD, room.roomId, room.inviteSecret, T0);
+    expect(next.ok).toBe(true);
+    expect(store.negotiate(THIRD, 'answer', FIRST).ok).toBe(false);
+    expect(store.negotiate(HOST, 'candidate', FIRST).ok).toBe(false);
+    expect(store.negotiate(HOST, 'offer', FIRST).ok).toBe(false);
+    expect(store.negotiate(HOST, 'offer', SECOND).ok).toBe(true);
+    expect(store.negotiate(THIRD, 'answer', SECOND).ok).toBe(true);
+    // The departed guest can no longer take part.
+    expect(store.negotiate(GUEST, 'candidate', SECOND).ok).toBe(false);
+  });
+
+  it('retains no negotiation after the room ends', () => {
+    const { store } = pair();
+    store.negotiate(HOST, 'offer', FIRST);
+    expect(store.negotiationCount).toBe(1);
+    store.leaveRoom(HOST);
+    expect(store.negotiationCount).toBe(0);
+    expect(store.negotiate(GUEST, 'answer', FIRST).ok).toBe(false);
+
+    const expiring = pair();
+    expiring.store.negotiate(HOST, 'offer', FIRST);
+    expiring.store.expireDueRooms(T0 + TTL);
+    expect(expiring.store.negotiationCount).toBe(0);
   });
 });

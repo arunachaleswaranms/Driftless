@@ -1,5 +1,14 @@
 import { Buffer } from 'node:buffer';
-import type { InviteSecret, RoomId, ServerMessage } from '@driftless/protocol';
+import {
+  MAX_ICE_CANDIDATE_BYTES,
+  MAX_ICE_CANDIDATES_PER_NEGOTIATION,
+  MAX_SDP_BYTES,
+  MAX_SIGNALING_MESSAGE_BYTES,
+  type InviteSecret,
+  type NegotiationId,
+  type RoomId,
+  type ServerMessage,
+} from '@driftless/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   CLOSE_CODES,
@@ -9,7 +18,7 @@ import {
   type Connection,
 } from '../src/controller.js';
 import { createMemoryLogger } from '../src/logger.js';
-import type { RateLimit } from '../src/rateLimiter.js';
+import { DEFAULT_RATE_LIMIT, type RateLimit } from '../src/rateLimiter.js';
 import { RoomStore } from '../src/roomStore.js';
 import { FakeClock, clientMessage, expectType, parseStrict, sequentialRandom } from './support.js';
 
@@ -499,5 +508,380 @@ describe('secret and identifier leakage', () => {
     client.sendRaw(`{"protocolVersion":1,"type":"${marker}","sequence":0,"sentAt":0,"payload":{}}`);
     client.sendRaw(`{${marker}`);
     for (const text of client.raw) expect(text).not.toContain(marker);
+  });
+});
+
+describe('WebRTC negotiation relay', () => {
+  const NEGOTIATION = 'N'.repeat(24) as NegotiationId;
+  const OTHER_NEGOTIATION = 'M'.repeat(24) as NegotiationId;
+  // Recognizable secret-like material that must never be logged or echoed.
+  const OFFER_SDP =
+    'v=0\r\no=- 1 2 IN IP4 203.0.113.9\r\ns=-\r\nt=0 0\r\na=ice-ufrag:SDPUFRAGMARK\r\na=ice-pwd:SDPPWDMARK\r\na=fingerprint:sha-256 FINGERPRINTMARK\r\n';
+  const ANSWER_SDP = OFFER_SDP.replace('203.0.113.9', '203.0.113.10');
+  const CANDIDATE = {
+    candidate: 'candidate:1 1 udp 2122260223 198.51.100.23 54400 typ host CANDIDATEMARK',
+    sdpMid: '0',
+    sdpMLineIndex: 0,
+    usernameFragment: 'UFRAGMARK',
+  };
+  const MARKERS = [
+    'SDPUFRAGMARK',
+    'SDPPWDMARK',
+    'FINGERPRINTMARK',
+    'CANDIDATEMARK',
+    'UFRAGMARK',
+    '203.0.113',
+    '198.51.100.23',
+    NEGOTIATION,
+  ];
+
+  function offer(negotiationId = NEGOTIATION, sdp = OFFER_SDP) {
+    return { negotiationId, sdp };
+  }
+  function answer(negotiationId = NEGOTIATION, sdp = ANSWER_SDP) {
+    return { negotiationId, sdp };
+  }
+  function ice(negotiationId = NEGOTIATION, candidate: object = CANDIDATE) {
+    return { negotiationId, candidate };
+  }
+
+  /** A room whose host has offered and whose guest has answered. */
+  function negotiated(h = harness()) {
+    const pair = h.roomPair();
+    pair.host.send('RTC_OFFER', offer());
+    pair.guest.send('RTC_ANSWER', answer());
+    return { h, ...pair };
+  }
+
+  it('relays a complete negotiation between host and guest only', () => {
+    const h = harness();
+    const { host, guest } = h.roomPair();
+    const third = h.connect();
+    third.send('ROOM_CREATE');
+    const before = {
+      host: host.received.length,
+      guest: guest.received.length,
+      third: third.received.length,
+    };
+
+    host.send('RTC_OFFER', offer());
+    expect(expectType(guest.last(), 'RTC_OFFER').payload).toStrictEqual(offer());
+    host.send('ICE_CANDIDATE', ice());
+    expect(expectType(guest.last(), 'ICE_CANDIDATE').payload).toStrictEqual(ice());
+    guest.send('RTC_ANSWER', answer());
+    expect(expectType(host.last(), 'RTC_ANSWER').payload).toStrictEqual(answer());
+    guest.send('ICE_CANDIDATE', ice());
+    expect(expectType(host.last(), 'ICE_CANDIDATE').payload).toStrictEqual(ice());
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    expect(expectType(guest.last(), 'ICE_COMPLETE').payload).toStrictEqual({
+      negotiationId: NEGOTIATION,
+    });
+    guest.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    expectType(host.last(), 'ICE_COMPLETE');
+
+    // Each side received exactly the other side's three or four messages,
+    // with no echo to the sender and nothing to an unrelated connection.
+    expect(host.received.slice(before.host).map((m) => m.type)).toStrictEqual([
+      'RTC_ANSWER',
+      'ICE_CANDIDATE',
+      'ICE_COMPLETE',
+    ]);
+    expect(guest.received.slice(before.guest).map((m) => m.type)).toStrictEqual([
+      'RTC_OFFER',
+      'ICE_CANDIDATE',
+      'ICE_COMPLETE',
+    ]);
+    expect(third.received).toHaveLength(before.third);
+    // Server sequences continue per connection across relayed messages.
+    expect(guest.received.map((m) => m.sequence)).toStrictEqual(
+      guest.received.map((_, index) => index),
+    );
+  });
+
+  it('refuses negotiation from a connection that is not in a room', () => {
+    const h = harness();
+    const outsider = h.connect();
+    for (const [type, payload] of [
+      ['RTC_OFFER', offer()],
+      ['RTC_ANSWER', answer()],
+      ['ICE_CANDIDATE', ice()],
+      ['ICE_COMPLETE', { negotiationId: NEGOTIATION }],
+    ] as const) {
+      outsider.send(type, payload);
+      expectError(outsider.last(), 'INVALID_STATE', true);
+    }
+    expect(outsider.closes).toStrictEqual([]);
+  });
+
+  it('lets only the host offer and only the guest answer', () => {
+    const { host, guest } = harness().roomPair();
+    guest.send('RTC_OFFER', offer());
+    expectError(guest.last(), 'INVALID_STATE', true);
+    expectType(host.last(), 'ROOM_PARTICIPANT_JOINED');
+
+    host.send('RTC_OFFER', offer());
+    expectType(guest.last(), 'RTC_OFFER');
+    host.send('RTC_ANSWER', answer());
+    expectError(host.last(), 'INVALID_STATE', true);
+    expectType(guest.last(), 'RTC_OFFER');
+  });
+
+  it('refuses an offer before a guest has joined', () => {
+    const h = harness();
+    const host = h.connect();
+    host.send('ROOM_CREATE');
+    host.send('RTC_OFFER', offer());
+    expectError(host.last(), 'INVALID_STATE', true);
+    host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'INVALID_STATE', true);
+    expect(h.store.negotiationCount).toBe(0);
+  });
+
+  it('refuses an answer or ICE without an active offer', () => {
+    const { host, guest } = harness().roomPair();
+    guest.send('RTC_ANSWER', answer());
+    expectError(guest.last(), 'INVALID_STATE', true);
+    host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'INVALID_STATE', true);
+    guest.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    expectError(guest.last(), 'INVALID_STATE', true);
+  });
+
+  it('refuses messages that name a different negotiation', () => {
+    const { host, guest } = harness().roomPair();
+    host.send('RTC_OFFER', offer());
+    guest.send('RTC_ANSWER', answer(OTHER_NEGOTIATION));
+    expectError(guest.last(), 'INVALID_STATE', true);
+    host.send('ICE_CANDIDATE', ice(OTHER_NEGOTIATION));
+    expectError(host.last(), 'INVALID_STATE', true);
+    host.send('ICE_COMPLETE', { negotiationId: OTHER_NEGOTIATION });
+    expectError(host.last(), 'INVALID_STATE', true);
+    // The real negotiation is unaffected.
+    guest.send('RTC_ANSWER', answer());
+    expectType(host.last(), 'RTC_ANSWER');
+  });
+
+  it('refuses a second offer and a second answer', () => {
+    const { host, guest } = negotiated();
+    host.send('RTC_OFFER', offer(OTHER_NEGOTIATION));
+    expectError(host.last(), 'INVALID_STATE', true);
+    host.send('RTC_OFFER', offer());
+    expectError(host.last(), 'INVALID_STATE', true);
+    guest.send('RTC_ANSWER', answer());
+    expectError(guest.last(), 'INVALID_STATE', true);
+  });
+
+  it('refuses guest ICE before its answer, and ICE after completion', () => {
+    const { host, guest } = harness().roomPair();
+    host.send('RTC_OFFER', offer());
+    guest.send('ICE_CANDIDATE', ice());
+    expectError(guest.last(), 'INVALID_STATE', true);
+    guest.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    expectError(guest.last(), 'INVALID_STATE', true);
+    // The host may trickle before the answer.
+    host.send('ICE_CANDIDATE', ice());
+    expectType(guest.last(), 'ICE_CANDIDATE');
+
+    guest.send('RTC_ANSWER', answer());
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'INVALID_STATE', true);
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    expectError(host.last(), 'INVALID_STATE', true);
+    // Completion is per participant: the guest may still trickle.
+    guest.send('ICE_CANDIDATE', ice());
+    expectType(host.last(), 'ICE_CANDIDATE');
+  });
+
+  it(`bounds each participant to ${String(MAX_ICE_CANDIDATES_PER_NEGOTIATION)} candidates`, () => {
+    const { host, guest } = negotiated();
+    for (let index = 0; index < MAX_ICE_CANDIDATES_PER_NEGOTIATION; index += 1) {
+      host.send('ICE_CANDIDATE', ice());
+      expectType(guest.last(), 'ICE_CANDIDATE');
+    }
+    const relayed = guest.received.length;
+    host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'INVALID_STATE', true);
+    expect(guest.received).toHaveLength(relayed);
+    // The guest's own allowance is separate.
+    guest.send('ICE_CANDIDATE', ice());
+    expectType(host.last(), 'ICE_CANDIDATE');
+  });
+
+  it('forgets the negotiation when the guest leaves, and never relays it to a new guest', () => {
+    const h = harness();
+    const { host, guest, created } = negotiated(h);
+    expect(h.store.negotiationCount).toBe(1);
+    guest.send('ROOM_LEAVE');
+    expectType(host.last(), 'ROOM_PARTICIPANT_LEFT');
+    expect(h.store.negotiationCount).toBe(0);
+
+    // Stale messages for the old negotiation are refused, by both sides.
+    guest.send('ICE_CANDIDATE', ice());
+    expectError(guest.last(), 'INVALID_STATE', true);
+    host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'INVALID_STATE', true);
+
+    const next = h.connect();
+    next.send('ROOM_JOIN', {
+      roomId: created.payload.roomId,
+      inviteSecret: created.payload.inviteSecret,
+    });
+    expectType(next.last(), 'ROOM_JOINED');
+    const joinedAt = next.received.length;
+    // The new guest inherits nothing: old-ID answers and ICE are refused,
+    // the host cannot reuse the old ID, and only a fresh offer is relayed.
+    next.send('RTC_ANSWER', answer());
+    expectError(next.last(), 'INVALID_STATE', true);
+    host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'INVALID_STATE', true);
+    host.send('RTC_OFFER', offer());
+    expectError(host.last(), 'INVALID_STATE', true);
+    expect(next.received.slice(joinedAt).map((m) => m.type)).toStrictEqual(['ERROR']);
+
+    host.send('RTC_OFFER', offer(OTHER_NEGOTIATION));
+    expect(expectType(next.last(), 'RTC_OFFER').payload.negotiationId).toBe(OTHER_NEGOTIATION);
+    next.send('RTC_ANSWER', answer(OTHER_NEGOTIATION));
+    expectType(host.last(), 'RTC_ANSWER');
+  });
+
+  it('forgets the negotiation when the guest disconnects', () => {
+    const h = harness();
+    const { host, guest } = negotiated(h);
+    guest.connection.transportClosed(1006);
+    expect(h.store.negotiationCount).toBe(0);
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    expectError(host.last(), 'INVALID_STATE', true);
+  });
+
+  it('refuses negotiation after the room closes', () => {
+    const first = negotiated();
+    first.host.send('ROOM_LEAVE');
+    expectType(first.guest.last(), 'ROOM_CLOSED');
+    first.guest.send('ICE_CANDIDATE', ice());
+    expectError(first.guest.last(), 'INVALID_STATE', true);
+    expect(first.h.store.negotiationCount).toBe(0);
+
+    const second = negotiated();
+    second.h.clock.advance(TTL);
+    second.h.controller.expireDueRooms();
+    second.host.send('ICE_CANDIDATE', ice());
+    expectError(second.host.last(), 'INVALID_STATE', true);
+    second.guest.send('ICE_CANDIDATE', ice());
+    expectError(second.guest.last(), 'INVALID_STATE', true);
+    expect(second.h.store.negotiationCount).toBe(0);
+  });
+
+  it('rejects malformed, overlong, and destination-bearing negotiation messages', () => {
+    const { host, guest } = harness().roomPair();
+    const rejected = [
+      offer(NEGOTIATION, ''),
+      offer(NEGOTIATION, 'x'.repeat(MAX_SDP_BYTES + 1)),
+      offer(NEGOTIATION, 'é'.repeat(MAX_SDP_BYTES / 2 + 1)),
+      { ...offer(), roomId: 'AAAAAAAAAAAAAAAAAAAAAA' },
+      { ...offer(), participantId: 'AAAAAAAAAAAAAAAA' },
+      { ...offer(), role: 'host' },
+      offer('short' as NegotiationId),
+    ];
+    for (const payload of rejected.slice(0, 4)) {
+      host.send('RTC_OFFER', payload);
+      expectError(host.last(), 'INVALID_MESSAGE', true);
+    }
+    for (const candidate of [
+      { ...CANDIDATE, candidate: 'c'.repeat(MAX_ICE_CANDIDATE_BYTES + 1) },
+      { ...CANDIDATE, extra: true },
+      { candidate: CANDIDATE.candidate },
+    ]) {
+      guest.send('ICE_CANDIDATE', ice(NEGOTIATION, candidate));
+      expectError(guest.last(), 'INVALID_MESSAGE', true);
+    }
+    expectType(guest.last(), 'ERROR');
+    // Nothing reached the other side.
+    expect(
+      guest.received.filter((m) => m.type !== 'ROOM_JOINED' && m.type !== 'ERROR'),
+    ).toStrictEqual([]);
+  });
+
+  it('accepts an SDP exactly at its bound', () => {
+    const { host, guest } = harness().roomPair();
+    const sdp = 'x'.repeat(MAX_SDP_BYTES);
+    host.send('RTC_OFFER', offer(NEGOTIATION, sdp));
+    expect(expectType(guest.last(), 'RTC_OFFER').payload.sdp).toBe(sdp);
+  });
+
+  it('refuses a message whose relay could exceed the message bound, before any state change', () => {
+    const h = harness();
+    const { host, guest } = h.roomPair();
+    // Pad a valid offer with escape-heavy SDP until the sender's text is just
+    // within the bound; the relay's longer envelope would not be.
+    const prefix = clientMessage('RTC_OFFER', offer(NEGOTIATION, ''), 9);
+    const room = MAX_SIGNALING_MESSAGE_BYTES - Buffer.byteLength(prefix);
+    const sdp = '"'.repeat(Math.floor(room / 2));
+    const text = clientMessage('RTC_OFFER', offer(NEGOTIATION, sdp), 9);
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MAX_SIGNALING_MESSAGE_BYTES);
+    host.sendRaw(text);
+    expectError(host.last(), 'INVALID_MESSAGE', true);
+    expect(h.store.negotiationCount).toBe(0);
+    expectType(guest.last(), 'ROOM_JOINED');
+    expect(h.logger.events).toContainEqual({
+      event: 'message_rejected',
+      connection: host.connection.id,
+      code: 'INVALID_MESSAGE',
+      detail: 'relay_too_large',
+    });
+  });
+
+  it('does not count stale negotiation refusals as protocol violations', () => {
+    const { host, guest } = negotiated();
+    guest.send('ROOM_LEAVE');
+    for (let index = 0; index < MAX_PROTOCOL_VIOLATIONS * 3; index += 1) {
+      host.send('ICE_CANDIDATE', ice());
+      expectError(host.last(), 'INVALID_STATE', true);
+    }
+    expect(host.closes).toStrictEqual([]);
+    expect(host.connection.state).toBe('IN_ROOM');
+  });
+
+  it('bounds a negotiation flood with the rate limit', () => {
+    const h = harness({ rateLimit: DEFAULT_RATE_LIMIT });
+    const { host, guest } = h.roomPair();
+    host.send('RTC_OFFER', offer());
+    for (let index = 0; index < 200; index += 1) host.send('ICE_CANDIDATE', ice());
+    expectError(host.last(), 'RATE_LIMITED', false);
+    expect(host.closes[0]?.code).toBe(CLOSE_CODES.POLICY_VIOLATION);
+    const relayed = guest.received.filter((m) => m.type === 'ICE_CANDIDATE');
+    expect(relayed.length).toBeLessThanOrEqual(MAX_ICE_CANDIDATES_PER_NEGOTIATION);
+    expect(expectType(guest.last(), 'ROOM_CLOSED').payload.reason).toBe('HOST_DISCONNECTED');
+  });
+
+  it('never logs or echoes session descriptions, candidates, or negotiation IDs', () => {
+    const h = harness();
+    const { host, guest } = negotiated(h);
+    host.send('ICE_CANDIDATE', ice());
+    guest.send('ICE_CANDIDATE', ice());
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    guest.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    // Rejected copies, both malformed and illegal.
+    host.send('RTC_OFFER', { ...offer(), extra: 1 });
+    host.send('RTC_OFFER', offer());
+    guest.send(
+      'ICE_CANDIDATE',
+      ice(NEGOTIATION, { ...CANDIDATE, candidate: `${CANDIDATE.candidate}\n` }),
+    );
+    guest.sendRaw(`{"sdp":"${OFFER_SDP.replaceAll('\r\n', ' ')}"}`);
+    guest.send('ROOM_LEAVE');
+
+    const logged = JSON.stringify(h.logger.events);
+    for (const marker of MARKERS) expect(logged).not.toContain(marker);
+    const errors = [...host.raw, ...guest.raw].filter((text) => text.includes('"ERROR"'));
+    expect(errors.length).toBeGreaterThan(0);
+    for (const text of errors) for (const marker of MARKERS) expect(text).not.toContain(marker);
+
+    expect(h.logger.events.filter((event) => event.event === 'negotiation_relayed')).toStrictEqual([
+      { event: 'negotiation_relayed', connection: host.connection.id, step: 'offer' },
+      { event: 'negotiation_relayed', connection: guest.connection.id, step: 'answer' },
+      { event: 'negotiation_relayed', connection: host.connection.id, step: 'complete' },
+      { event: 'negotiation_relayed', connection: guest.connection.id, step: 'complete' },
+    ]);
   });
 });

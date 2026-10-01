@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_ICE_CANDIDATES_PER_NEGOTIATION } from '@driftless/protocol';
 import { DEFAULT_RATE_LIMIT, TokenBucket } from '../src/rateLimiter.js';
 
 describe('TokenBucket', () => {
@@ -49,5 +50,23 @@ describe('TokenBucket', () => {
       expect(() => new TokenBucket(limit, 0)).toThrow(RangeError);
     }
     expect(() => new TokenBucket(DEFAULT_RATE_LIMIT, 0)).not.toThrow();
+  });
+});
+
+describe('DEFAULT_RATE_LIMIT', () => {
+  it('admits a complete negotiation burst and still bounds a flood', () => {
+    // Room create, offer or answer, the maximum candidates, completion, leave.
+    const negotiation = 1 + 1 + MAX_ICE_CANDIDATES_PER_NEGOTIATION + 1 + 1;
+    const bucket = new TokenBucket(DEFAULT_RATE_LIMIT, 0);
+    for (let index = 0; index < negotiation; index += 1) expect(bucket.tryTake(0)).toBe(true);
+
+    const flood = new TokenBucket(DEFAULT_RATE_LIMIT, 0);
+    let accepted = 0;
+    // 1000 messages per second for 10 seconds.
+    for (let ms = 0; ms < 10_000; ms += 1) if (flood.tryTake(ms)) accepted += 1;
+    expect(accepted).toBeLessThanOrEqual(
+      DEFAULT_RATE_LIMIT.burst + DEFAULT_RATE_LIMIT.perSecond * 10,
+    );
+    expect(DEFAULT_RATE_LIMIT).toStrictEqual({ burst: 48, perSecond: 10 });
   });
 });

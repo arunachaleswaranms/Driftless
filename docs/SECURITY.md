@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines design requirements. Except for the Phase 2A signaling controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
+This document defines design requirements. Except for the controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a) and [Implemented in Phase 2B](#implemented-in-phase-2b), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
 
 ## Implemented in Phase 2A
 
@@ -14,7 +14,7 @@ The signaling foundation ([`services/signaling/`](../services/signaling/) and [`
 - **Room expiry.** Rooms have a finite, validated lifetime (60 s–24 h, default one hour, provisional) and are removed by a periodic sweep; joins are refused at expiry even before the sweep. A room also closes, invalidating its invite, when its host leaves or disconnects.
 - **Participant limit.** Rooms hold one host and one guest; a third participant is never admitted. One connection belongs to at most one room. Clients cannot claim a participant ID or role.
 - **Strict protocol validation.** Versioned envelope, exact fields at every level, bounded canonical identifiers, no coercion, unknown versions rejected, prototype-pollution keys rejected, typed results constructed only from validated values. Parser errors and exception text are never exposed.
-- **Bounds.** 4096-byte WebSocket messages; binary messages refused; per-connection token-bucket rate limit (burst 20, 5 per second); at most 5 invalid messages per connection; strictly increasing per-connection sequences; at most 256 connections; `perMessageDeflate` disabled. These are provisional implementation bounds.
+- **Bounds.** 4096-byte WebSocket messages (32,768 bytes from Phase 2B); binary messages refused; per-connection token-bucket rate limit (burst 20, 5 per second; burst 48, 10 per second from Phase 2B); at most 5 invalid messages per connection; strictly increasing per-connection sequences; at most 256 connections; `perMessageDeflate` disabled. These are provisional implementation bounds.
 - **Origin policy.** WebSocket upgrades require an `Origin` exactly matching a configured list. Development defaults to the local Vite origins; production requires an explicit `https` list and never accepts `*` or `null`. Origin is a browser policy layer, not authentication.
 - **Conservative exposure.** The service binds to `127.0.0.1` by default. `GET /healthz` returns only `{"status":"ok"}`.
 - **Sanitized logging.** A closed set of structured events whose fields are numbers or fixed tokens. No secrets, room or participant IDs, payloads, URLs, headers, or IP addresses are logged.
@@ -22,7 +22,24 @@ The signaling foundation ([`services/signaling/`](../services/signaling/) and [`
 
 Plain `ws://` is a development-only exception. Production must use HTTPS and WSS through TLS termination in front of the service; no deployment exists yet.
 
-Still future, not implemented: SDP and ICE validation, STUN/TURN credentials, reconnect authentication and session resumption, per-IP or per-room abuse controls beyond the per-connection bounds, idle-connection timeouts and liveness checks, peer data-channel protocol validation, media integrity, transfer and cache resource controls, and every browser-side control for these features.
+## Implemented in Phase 2B
+
+Phase 2B adds WebRTC negotiation through the service and the browser room client. The service controls have Node unit and loopback integration tests; the browser controls have unit tests and automated same-host browser tests (two browser contexts on one development machine). There is no deployment, real-network, NAT-traversal, TURN, or device evidence.
+
+- **Server-derived routing and roles.** Negotiation messages name no destination room, participant, or role. The service relays each one only to the sender's one peer in the sender's current room, so cross-room relay and role impersonation cannot be expressed. Only the host may offer and only the guest may answer.
+- **Negotiation correlation and stale rejection.** Every negotiation message names a negotiation ID; the service accepts only the active one. One negotiation exists per guest membership, a second offer is refused, the room's most recent ID cannot be reused, and a guest's departure discards the negotiation, so a new guest never inherits or receives an old one. The browsers likewise ignore signaling and peer events that do not belong to their current room, guest, and negotiation.
+- **Bounded SDP and ICE.** Session descriptions (16,384 bytes), candidate strings (1024 bytes, printable ASCII), `sdpMid`, username fragments, the m-line index, and candidates per participant per negotiation (32) are bounded and exactly typed, with extra fields refused. Size bounds count UTF-8 bytes in the shared parser, so multi-byte text cannot exceed them. A message whose relay could exceed the message bound is refused. The service keeps only counters and flags: it stores no session description, candidate, or negotiation history, and parses no SDP.
+- **Rate limiting.** Provisional per-connection token bucket of burst 48, 10 per second, enough for one whole negotiation burst, still closing a flooding connection.
+- **No negotiation data in logs or errors.** The closed log union gained one event, `negotiation_relayed`, with a connection counter and a fixed step token; candidates are not logged at all. No SDP, candidate, username fragment, IP address, fingerprint, negotiation ID, or invite secret is logged or echoed in an error; tests inject recognizable values to check this.
+- **Browser validation.** The browser parses every server message with the shared parser before use and closes the connection on an invalid or out-of-sequence message. It sends local candidates only as validated four-field plain objects, holds early remote candidates in a queue bounded by count (32) and size (16 KiB), and drops the queue on every teardown.
+- **One trusted channel, and a handshake.** The guest accepts only the expected ordered, reliable control channel; any other or additional channel is closed and fails the session. The session counts as connected only after a strictly validated handshake that names the negotiation and both participant IDs has crossed the channel both ways. The invite secret never crosses the data channel.
+- **No media.** The peer connection carries one data channel only. The client never calls `getUserMedia`, `getDisplayMedia`, `addTrack`, or `addTransceiver`.
+- **Secret handling in the browser.** The invite secret lives only in memory while its room exists: masked until the host reveals it, copied only on request, never placed in a URL, history, Web Storage, IndexedDB, OPFS, Cache Storage, or a log, and dropped when the room ends. Join fields are cleared after use, use `autocomplete="off"`, and the secret field is not a password field, to avoid prompting a password manager to save it.
+- **Same-origin, secure signaling.** The browser derives the WebSocket URL from its own origin: `wss` for `https` pages, plain `ws` only on a loopback development origin, otherwise no connection. The URL carries no room ID, secret, or query. The development and preview servers forward the path to a loopback signaling service; the Content Security Policy is unchanged, because `default-src 'self'` already admits the same-origin socket.
+- **STUN configuration validation.** ICE servers come only from the build-time `VITE_RTC_STUN_URLS` setting, default none. Only `stun:` and `stuns:` URLs with a host and optional port are accepted, at most four; any invalid entry disables rooms rather than being skipped. TURN URLs and credentials are refused.
+- **No recovery in this phase.** There is no reconnect, ICE restart, or renegotiation. A failure tears the session down and requires the user to act; a peer session does not outlive its signaling connection.
+
+Still future, not implemented: TURN and its short-lived credential issuance, reconnect authentication and session resumption, ICE restart, per-IP or per-room abuse controls beyond the per-connection bounds, idle-connection timeouts and liveness checks, real-network qualification, privacy-conscious selected-path diagnostics, the peer data-channel application protocol beyond the connection handshake, Local Sync controls, media integrity, and transfer and cache resource controls.
 
 ## Threat Model Scope
 

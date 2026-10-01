@@ -1,7 +1,7 @@
 // Smoke test of the built service: runs dist/main.js exactly as `npm start`
 // does, with @driftless/protocol resolved from its built package. It checks
-// startup logging, the health endpoint, one room round trip, configuration
-// refusal, and a clean SIGTERM shutdown.
+// startup logging, the health endpoint, one room round trip with a relayed
+// WebRTC offer, configuration refusal, and a clean SIGTERM shutdown.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -68,20 +68,57 @@ const [data] = await withTimeout(once(socket, 'message'), 'ROOM_CREATED');
 const created = JSON.parse(data.toString('utf8'));
 assert.equal(created.type, 'ROOM_CREATED');
 assert.equal(created.payload.role, 'host');
+
+const guest = new WebSocket(`ws://${host}:${port}/v1/signaling`, { origin: ORIGIN });
+await withTimeout(once(guest, 'open'), 'guest websocket open');
+const envelope = (type, sequence, payload) =>
+  JSON.stringify({ protocolVersion: 1, type, sequence, sentAt: 0, payload });
+guest.send(
+  envelope('ROOM_JOIN', 0, {
+    roomId: created.payload.roomId,
+    inviteSecret: created.payload.inviteSecret,
+  }),
+);
+const [joinedData] = await withTimeout(once(guest, 'message'), 'ROOM_JOINED');
+assert.equal(JSON.parse(joinedData.toString('utf8')).type, 'ROOM_JOINED');
+const [noticeData] = await withTimeout(once(socket, 'message'), 'ROOM_PARTICIPANT_JOINED');
+assert.equal(JSON.parse(noticeData.toString('utf8')).type, 'ROOM_PARTICIPANT_JOINED');
+const offer = { negotiationId: 'N'.repeat(24), sdp: 'v=0\r\na=ice-pwd:SMOKEMARK\r\n' };
+socket.send(envelope('RTC_OFFER', 1, offer));
+const [offerData] = await withTimeout(once(guest, 'message'), 'RTC_OFFER');
+const relayed = JSON.parse(offerData.toString('utf8'));
+assert.equal(relayed.type, 'RTC_OFFER');
+assert.deepEqual(relayed.payload, offer);
+
 const closed = once(socket, 'close');
+const guestClosed = once(guest, 'close');
 
 child.kill('SIGTERM');
 const [exitCode] = await withTimeout(once(child, 'exit'), 'shutdown');
 const [closeCode] = await withTimeout(closed, 'client close');
+const [guestCloseCode] = await withTimeout(guestClosed, 'guest close');
 assert.equal(exitCode, 0);
 assert.equal(closeCode, 1001);
+assert.equal(guestCloseCode, 1001);
 
 const logged = JSON.stringify(logs);
 assert.ok(!logged.includes(created.payload.inviteSecret), 'invite secret was logged');
 assert.ok(!logged.includes(created.payload.roomId), 'room ID was logged');
+assert.ok(!logged.includes('SMOKEMARK'), 'session description was logged');
+assert.ok(!logged.includes(offer.negotiationId), 'negotiation ID was logged');
 assert.deepEqual(
   logs.map((event) => event.event),
-  ['server_started', 'connection_opened', 'room_created', 'connection_closed', 'server_stopped'],
+  [
+    'server_started',
+    'connection_opened',
+    'room_created',
+    'connection_opened',
+    'participant_joined',
+    'negotiation_relayed',
+    'connection_closed',
+    'connection_closed',
+    'server_stopped',
+  ],
 );
 
 console.log('@driftless/signaling dist smoke test passed');

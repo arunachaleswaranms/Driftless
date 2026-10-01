@@ -30,14 +30,14 @@ Phase 1 — Application Foundation: **CLOSED / PASS**. Phase 1 exit gate: **PASS
 
 Phase 2 — Internet P2P Foundation: **IN PROGRESS**.
 
-| Part | Scope | Status |
-| --- | --- | --- |
-| Phase 2A | Protocol & signaling foundation | **IMPLEMENTED** |
-| Phase 2B | Room join & WebRTC negotiation | **NEXT — NOT STARTED** |
-| Phase 2C | Connection lifecycle & reconnect | NOT STARTED |
-| Phase 2D | Diagnostics / real-network closure | NOT STARTED |
+| Part     | Scope                              | Status                                               |
+| -------- | ---------------------------------- | ---------------------------------------------------- |
+| Phase 2A | Protocol & signaling foundation    | **IMPLEMENTED / REVIEWED** (independent review pass) |
+| Phase 2B | Room join & WebRTC negotiation     | **IMPLEMENTED**                                      |
+| Phase 2C | Connection lifecycle & reconnect   | **NEXT — NOT STARTED**                               |
+| Phase 2D | Diagnostics / real-network closure | NOT STARTED                                          |
 
-Phase 2 exit gate: **NOT PASSED**. No real device or real network has been tested in Phase 2.
+Phase 2 exit gate: **NOT PASSED**. No real device or real network has been tested in Phase 2; the Phase 2B browser evidence is two browser contexts on one development machine.
 
 ## Current Branch
 
@@ -58,7 +58,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The Phase 2A shared protocol package exists under `packages/protocol/` and the Phase 2A signaling service under `services/signaling/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. No WebRTC negotiation, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `packages/sync-engine/` and `packages/transfer-engine/` remain empty.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. No TURN, reconnect, synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `packages/sync-engine/` and `packages/transfer-engine/` remain empty.
 
 ## Accepted Architecture
 
@@ -262,9 +262,9 @@ This is development evidence and not a compatibility claim. Playwright's Chromiu
 
 **Phase status:** IN PROGRESS. **Phase 2 exit gate:** NOT PASSED — "Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay." Phase 2A does not evaluate it.
 
-### Phase 2A — Protocol & Signaling Foundation (IMPLEMENTED)
+### Phase 2A — Protocol & Signaling Foundation (IMPLEMENTED / REVIEWED)
 
-Implemented on `phase/2-internet-p2p-foundation`; it awaits independent review.
+Implemented on `phase/2-internet-p2p-foundation` at `810af89` and passed independent GitHub review. The review recorded two non-blocking notes, both resolved in Phase 2B: NB-01, the shared parser's preliminary size check used string length rather than UTF-8 bytes; and NB-02, the timing flakiness of a local-player lifecycle test under host load, described below. The description below is the Phase 2A record; Phase 2B changed the message bound and the rate limit.
 
 - **Workspace.** A root npm workspace now spans `packages/*`, `services/*`, and `apps/*`. The Phase 1 lockfile moved to the root as the single `package-lock.json`: all 253 previously locked packages kept their exact versions, and the web production build is byte-identical to one built from `main`. `apps/web/package-lock.json` is gone, and the unchanged Prettier configuration moved to the root. Every `apps/web` script is unchanged. Root scripts: `npm run check` (protocol, signaling, and web checks), `npm run test`, `npm run test:e2e`, `npm run build`, `npm run verify`. The Phase 1 qualification remains the record for its standalone revision `4bf6e31`.
 - **`packages/protocol/` (`@driftless/protocol`).** A transport-neutral TypeScript contract with no runtime dependency:
@@ -276,6 +276,7 @@ Implemented on `phase/2-internet-p2p-foundation`; it awaits independent review.
   - hand-written parsers that never throw and return typed results or fixed reason tokens. Unknown versions fail closed as `UNSUPPORTED_PROTOCOL`.
 
   `ROOM_LEFT` was added to confirm an intentional leave. See [PROTOCOL.md](docs/PROTOCOL.md).
+
 - **`services/signaling/` (`@driftless/signaling`).** Node's HTTP server plus `ws` 8.22.0: `GET /healthz` returns only `{"status":"ok"}`, and the WebSocket endpoint is `/v1/signaling`. The transport, protocol parser, connection controller, and room store are separate layers; the room store never sees a socket.
   - Rooms are in memory only and lost on restart.
   - The creator becomes host and receives a room ID and a separate 256-bit invite secret from `crypto.randomBytes`. Only a SHA-256 digest of the secret is retained, and it is compared in constant time.
@@ -297,16 +298,48 @@ Implemented on `phase/2-internet-p2p-foundation`; it awaits independent review.
 - `@driftless/web`: typecheck, lint, format, 121 Vitest tests, and build pass. The production bundle is byte-identical to one built from `main`.
 - Playwright Chromium, full suite: most runs passed 29/29, including four runs of this branch alternated with four runs of a `main` worktree, where all eight passed 29/29. The two full-lifecycle tests also passed 20/20 when repeated alone.
 - Two full-suite runs of this branch each had one failure in the same test, "runs the full lifecycle from video/mp4 to video/webm". Both times, playback had not passed 1 s within the 5 s poll after the first trusted click (it reached 0 s and 0.15 s). Both happened while other applications on the machine kept the load average between 10 and 21.
-- Because the bundle is identical and `main` ran the same suite, this is recorded as an intermittent timing failure under host load, not a regression. It remains a known flakiness risk in that test; this environment does not qualify it further.
+- Because the bundle is identical and `main` ran the same suite, this is recorded as an intermittent timing failure under host load, not a regression. Phase 2B hardened the test (NB-02, below).
 - `npm audit`: 0 vulnerabilities.
+
+### Phase 2B — Room Join & WebRTC Negotiation (IMPLEMENTED)
+
+Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2A commit. It awaits independent review.
+
+- **Phase 2A review notes.**
+  - NB-01: the shared parser now enforces its bound in UTF-8 bytes. `fitsUtf8Bytes` and `utf8ByteLength` in `packages/protocol/src/encoding.ts` count bytes from UTF-16 code units with pure arithmetic, exactly as `TextEncoder` and `WebSocket.send()` encode, including lone surrogates as U+FFFD; no `Buffer` or `TextEncoder` is used in the package. The service's `ws` `maxPayload` and the parser use the same constant. Tests compare the count with `TextEncoder` for every code unit and random strings, and show that 2-, 3-, and 4-byte text whose string length fits but whose bytes do not is rejected, both by the parser and over a real socket.
+  - NB-02: the local-player tests now wait, after the trusted click, for the element's own `playing` event and then poll until `currentTime` passes the unchanged thresholds (more than 1 s in the lifecycle tests) and new frames have been decoded. Only the polling bound changed, from the 5 s default to 30 s, with the reason recorded in the test: under load averages of 10–21 playback had advanced only 0–0.15 s within 5 s. The waits remain event- and state-driven, with no fixed sleeps, retries, or skips. The two full-lifecycle tests then passed 40/40 (20 each) with retries disabled, and the full suite passed in every run below.
+- **Protocol.** A negotiation ID (18 random bytes, 24 base64url characters; 18 rather than 16 bytes keeps every identifier a distinct length). `RTC_OFFER` and `RTC_ANSWER` `{ negotiationId, sdp }`, `ICE_CANDIDATE` `{ negotiationId, candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment } }`, and `ICE_COMPLETE` `{ negotiationId }`, valid in both directions and naming no destination or role. Peer handshake `PEER_HELLO` and `PEER_READY` `{ negotiationId, senderId, recipientId }` on the data channel. Provisional bounds: signaling message 32,768 B, SDP 16,384 B, candidate 1024 B, `sdpMid` 64 B, m-line index 0–63, username fragment 256 B, 32 candidates per participant per negotiation, peer message 1024 B. Chromium negotiation in the browser tests produced descriptions of about 715 B and two candidates per peer.
+- **Signaling.** The room store decides negotiation legality and the recipient from membership: only the host offers, only the guest answers once, one negotiation per guest, a second offer or the room's most recent ID is refused, every message must name the active negotiation, the guest trickles only after answering, and candidate counts and completion are bounded per participant. A guest's departure discards the negotiation. The controller relays a rebuilt copy of the validated payload to the peer only, and refuses a message whose relay could exceed the bound. Only counters and flags are kept; no SDP or candidate is stored, parsed, or logged. The rate limit is now burst 48, 10 per second, which admits one whole negotiation burst and still closes a flood. One new log event, `negotiation_relayed`, carries a fixed step token.
+- **Browser.** `apps/web/src/features/room/`: `RoomPanel` (React) over `RoomController`, which owns `SignalingClient` (WebSocket) and `PeerSession` (`RTCPeerConnection`).
+  - Signaling uses the page's own origin: `wss` on `https`, `ws` only on loopback; the URL carries no credential. The development and preview servers forward `/v1/signaling` to a loopback service. The CSP is unchanged.
+  - Every server message is parsed with the shared parser; invalid or out-of-sequence messages close the connection. Client sequences increase across rooms on one socket.
+  - The host creates one ordered, reliable channel, `driftless-control`, and offers; the guest answers and accepts only that channel. ICE trickles both ways as validated plain objects; early remote candidates wait in a queue of at most 32 and 16 KiB.
+  - The UI shows "Peer data channel is connected." only after the handshake has crossed the channel in both directions.
+  - STUN: none by default; `VITE_RTC_STUN_URLS` accepts up to four validated `stun:`/`stuns:` URLs. No TURN.
+  - No media: no `getUserMedia`, `getDisplayMedia`, `addTrack`, or `addTransceiver`.
+  - The invite secret is in memory only while its room exists, masked until revealed, copied on request, and never stored, logged, or placed in a URL.
+  - Stale events are rejected by session identity and negotiation ID, so a late event from an earlier room, guest, or negotiation cannot change the current one.
+  - On peer failure the session is torn down and the user decides whether to leave; nothing is retried. When signaling closes, the peer session is torn down too. No reconnect, ICE restart, or renegotiation.
+- **Placement.** The room panel sits below the Phase 1 local player and capability report, spanning the full width, so the Phase 1 layout and keyboard order are unchanged.
+- **Dependencies.** No new external package. `@driftless/web` gained the workspace dependency `@driftless/protocol`; its `dev` script now builds the protocol package first.
+
+**Phase 2B automated evidence.** `AUTOMATED PASS` on macOS 26.6.2 with Node.js 26.3.0 and npm 11.16.0, from `npm ci` at the root. The browser results are `AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE`: separate browser contexts in one browser on one machine, a loopback signaling service, and no ICE server. They are not real-network, NAT-traversal, TURN, Android, or compatibility evidence, and no selected ICE path is claimed.
+
+- `npm run check`: typecheck, lint, format, tests, builds, and both smoke tests pass. `@driftless/protocol` 153 Vitest tests; `@driftless/signaling` 125 Vitest tests; `@driftless/web` 225 Vitest tests. 0 failed, 0 skipped.
+- Playwright, retries disabled, Playwright Chromium 153.0.8010.12: three consecutive full runs passed 37/37 (the 29 Phase 1 tests and 8 room tests), 0 flaky, 0 skipped.
+- The room happy path passed 10/10 when repeated alone, and the whole room file 24/24 when repeated three times. The two local-player full-lifecycle tests passed 40/40.
+- `DRIFTLESS_E2E_CHROME=1`: 74/74, adding Google Chrome 154.0.8037.92.
+- Each room run started its own signaling service and preview server and stopped both: nothing remained listening on ports 8790 or 4173 afterwards.
+- The room tests observed one peer connection per side, `connected`, with no senders, receivers, or transceivers; exactly one open `driftless-control` channel, ordered, with no retransmit or lifetime limit; `PEER_HELLO` and `PEER_READY` sent and received by both peers for the same negotiation; and, after leave, a closed connection and channel. They also observed no media call, no CSP violation, only same-origin static requests and one same-origin socket, no room data in the URL or storage, and no console warning or error.
+- `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities.
 
 ## Open Deferred Qualification
 
-- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests do not satisfy `DEFERRED-PHYSICAL-002`.
+- Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests and Phase 2B's same-host browser tests do not satisfy `DEFERRED-PHYSICAL-002`.
 
 ## Not Started
 
-- Phase 2B — Room Join & WebRTC Negotiation (**NEXT — NOT STARTED**), Phase 2C — Connection Lifecycle & Reconnect, and Phase 2D — Diagnostics / Real-Network Closure: browser room flow, WebRTC negotiation, STUN/TURN, data channels, reconnect, and diagnostics.
+- Phase 2C — Connection Lifecycle & Reconnect (**NEXT — NOT STARTED**) and Phase 2D — Diagnostics / Real-Network Closure: reconnect and session resumption, ICE restart, TURN and its credential issuance, selected-path diagnostics, and real-network and physical-device qualification.
 - Later phases: synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
 
 ## Evidence Classification Policy
@@ -421,7 +454,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent GitHub review of the exact pushed Phase 2A commit on `phase/2-internet-p2p-foundation`. Do not begin Phase 2B before that review passes.
+Independent GitHub review of the exact pushed Phase 2B commit on `phase/2-internet-p2p-foundation`. Do not begin Phase 2C before that review passes.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -444,4 +477,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-09-30
+2026-10-01

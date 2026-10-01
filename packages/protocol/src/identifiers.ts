@@ -35,12 +35,26 @@ export type InviteSecret = Brand<string, 'InviteSecret'>;
  */
 export type ParticipantId = Brand<string, 'ParticipantId'>;
 
+/**
+ * Opaque, non-secret identifier of one WebRTC negotiation: 18 random bytes
+ * (144 bits), 24 characters. The host's browser creates a fresh one from its
+ * cryptographically secure generator for every offer; it correlates the
+ * offer, answer, and ICE messages of that negotiation, so messages of an
+ * earlier negotiation cannot be mistaken for a later one. It is not a
+ * credential.
+ */
+export type NegotiationId = Brand<string, 'NegotiationId'>;
+
 export const ROOM_ID_BYTES = 16;
 export const ROOM_ID_LENGTH = 22;
 export const INVITE_SECRET_BYTES = 32;
 export const INVITE_SECRET_LENGTH = 43;
 export const PARTICIPANT_ID_BYTES = 12;
 export const PARTICIPANT_ID_LENGTH = 16;
+// 18 rather than 16 bytes keeps every identifier kind a distinct length; a
+// 16-byte value would have the room ID's 22-character form.
+export const NEGOTIATION_ID_BYTES = 18;
+export const NEGOTIATION_ID_LENGTH = 24;
 
 // 16 bytes: the final character carries 2 data bits and 4 zero bits.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{21}[AQgw]$/;
@@ -48,6 +62,8 @@ const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{21}[AQgw]$/;
 const INVITE_SECRET_PATTERN = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 // 12 bytes: a whole number of 3-byte groups, so every character is data.
 const PARTICIPANT_ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
+// 18 bytes: a whole number of 3-byte groups, so every character is data.
+const NEGOTIATION_ID_PATTERN = /^[A-Za-z0-9_-]{24}$/;
 
 export function isRoomId(value: unknown): value is RoomId {
   return typeof value === 'string' && ROOM_ID_PATTERN.test(value);
@@ -59,4 +75,8 @@ export function isInviteSecret(value: unknown): value is InviteSecret {
 
 export function isParticipantId(value: unknown): value is ParticipantId {
   return typeof value === 'string' && PARTICIPANT_ID_PATTERN.test(value);
+}
+
+export function isNegotiationId(value: unknown): value is NegotiationId {
+  return typeof value === 'string' && NEGOTIATION_ID_PATTERN.test(value);
 }

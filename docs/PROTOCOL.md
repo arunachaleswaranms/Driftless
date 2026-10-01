@@ -4,8 +4,8 @@
 
 This is the design specification for `protocolVersion: 1`.
 
-- **Implemented (Phase 2A):** the common JSON envelope and the client ↔ signaling-service room lifecycle messages, with strict validation, in [`packages/protocol/`](../packages/protocol/). They are specified exactly in [Implemented in Phase 2A](#implemented-in-phase-2a-signaling-and-rooms) below and used by [`services/signaling/`](../services/signaling/).
-- **Still conceptual:** every other message family in this document — WebRTC negotiation, readiness, media, playback, synchronization, social, transfer, connection diagnostics — and binary framing. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, heartbeat intervals, retry counts, and drift thresholds, remain undecided.
+- **Implemented through Phase 2B:** the common JSON envelope; the client ↔ signaling-service room lifecycle messages (Phase 2A); the negotiation ID and the relayed WebRTC negotiation messages `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, and `ICE_COMPLETE`; and a two-message peer connection handshake on the data channel (Phase 2B). All are strictly validated in [`packages/protocol/`](../packages/protocol/), specified exactly in [Implemented through Phase 2B](#implemented-through-phase-2b-signaling-rooms-and-negotiation) below, and used by [`services/signaling/`](../services/signaling/) and the web client.
+- **Still conceptual:** every other message family in this document — reconnect and session resumption, readiness, media identity, host-authoritative playback, synchronization, social, transfer, Progressive Watch, connection diagnostics — and binary framing. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, heartbeat intervals, retry counts, and drift thresholds, remain undecided.
 
 Implementing one subset does not freeze the rest of this conceptual protocol.
 
@@ -40,9 +40,9 @@ Conceptually, every control message contains:
 
 Session, participant, correlation, and media identifiers are expected where needed, but their exact placement and representation are not yet frozen. Binary media data may use a compact frame separate from JSON control messages while retaining equivalent version, type, transfer, ordering, and integrity context.
 
-## Implemented in Phase 2A: Signaling and Rooms
+## Implemented through Phase 2B: Signaling, Rooms, and Negotiation
 
-This section is normative for the implemented subset. It covers only traffic between a client and the signaling service over the `/v1/signaling` WebSocket. Peer-to-peer data-channel messages are not implemented.
+This section is normative for the implemented subset. It covers traffic between a client and the signaling service over the `/v1/signaling` WebSocket, and the connection handshake on the peer data channel. No other peer-to-peer message exists.
 
 ### Envelope
 
@@ -56,7 +56,7 @@ This section is normative for the implemented subset. It covers only traffic bet
 }
 ```
 
-- A message is one UTF-8 JSON text of at most 4096 bytes (`MAX_SIGNALING_MESSAGE_BYTES`). This is an implementation and security bound for Phase 2A, not a benchmark-derived limit; it must be revisited when Phase 2B forwards SDP and ICE. Binary messages are never valid.
+- A message is one UTF-8 JSON text of at most 32,768 encoded bytes (`MAX_SIGNALING_MESSAGE_BYTES`), in either direction. The bound counts UTF-8 bytes, exactly as the WebSocket frame carries them, not JavaScript string length; the shared parser enforces it itself, and the service's WebSocket payload limit is the same value. It was raised from Phase 2A's 4096 bytes so that a session description of up to `MAX_SDP_BYTES`, JSON-escaped, fits. This is a provisional implementation and security bound, not a benchmark-derived limit. Binary messages are never valid.
 - The root must be a plain object with exactly the five fields above. Unknown fields fail, at every level. No value is coerced.
 - `protocolVersion` must be exactly `1`. Any other non-negative integer is reported as `UNSUPPORTED_PROTOCOL`, checked before the other fields, because a future version may define a different envelope. Anything else is `INVALID_MESSAGE`.
 - `type` must be a known type for the direction of travel: a server type sent by a client is unknown.
@@ -65,33 +65,40 @@ This section is normative for the implemented subset. It covers only traffic bet
 
 ### Identifiers
 
-All three are canonical, unpadded base64url of cryptographically random bytes, with distinct lengths so that one kind cannot be mistaken for another. Where the byte count does not fill the final character, its unused bits must be zero.
+All four are canonical, unpadded base64url of cryptographically random bytes, with distinct lengths so that one kind cannot be mistaken for another. Where the byte count does not fill the final character, its unused bits must be zero.
 
-| Value           | Bytes          | Characters | Secret | Purpose                                                                        |
-| --------------- | -------------- | ---------- | ------ | ------------------------------------------------------------------------------ |
-| `roomId`        | 16 (128 bits)  | 22         | No     | Opaque room identifier. Knowing it grants nothing.                             |
-| `inviteSecret`  | 32 (256 bits)  | 43         | Yes    | Authorizes joining one room. Never logged, never placed in a URL.               |
-| `participantId` | 12 (96 bits)   | 16         | No     | Opaque identifier the server assigns to a member. Clients never send it.       |
+| Value           | Bytes         | Characters | Secret | Purpose                                                                                                   |
+| --------------- | ------------- | ---------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| `roomId`        | 16 (128 bits) | 22         | No     | Opaque room identifier. Knowing it grants nothing.                                                        |
+| `inviteSecret`  | 32 (256 bits) | 43         | Yes    | Authorizes joining one room. Never logged, never placed in a URL.                                         |
+| `participantId` | 12 (96 bits)  | 16         | No     | Opaque identifier the server assigns to a member. Clients never send it to the service.                   |
+| `negotiationId` | 18 (144 bits) | 24         | No     | Opaque identifier of one WebRTC negotiation, created by the host's browser from `crypto.getRandomValues`. |
+
+The negotiation ID is 18 rather than 16 bytes only to keep every identifier a distinct length; 16 bytes would share the room ID's 22-character form.
 
 ### Client → server messages
 
-| Type          | Payload                        | Meaning                                                              |
-| ------------- | ------------------------------ | -------------------------------------------------------------------- |
-| `ROOM_CREATE` | `{}`                           | Create a private room; the sender becomes its host.                  |
-| `ROOM_JOIN`   | `{ roomId, inviteSecret }`     | Join a room as its guest.                                            |
-| `ROOM_LEAVE`  | `{}`                           | End the sender's membership in its current room.                     |
+| Type          | Payload                    | Meaning                                             |
+| ------------- | -------------------------- | --------------------------------------------------- |
+| `ROOM_CREATE` | `{}`                       | Create a private room; the sender becomes its host. |
+| `ROOM_JOIN`   | `{ roomId, inviteSecret }` | Join a room as its guest.                           |
+| `ROOM_LEAVE`  | `{}`                       | End the sender's membership in its current room.    |
+
+The negotiation messages below are also client → server messages.
 
 ### Server → client messages
 
-| Type                      | Payload                                                                                   | Sent to                           |
-| ------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------- |
-| `ROOM_CREATED`            | `{ roomId, inviteSecret, participantId, role: "host", expiresAt }`                        | The creator only.                 |
-| `ROOM_JOINED`             | `{ roomId, participantId, role: "guest", peer: { participantId, role: "host" }, expiresAt }` | The joining guest.                |
-| `ROOM_LEFT`               | `{}`                                                                                      | The sender of `ROOM_LEAVE`.       |
-| `ROOM_PARTICIPANT_JOINED` | `{ participant: { participantId, role: "guest" } }`                                       | The host, when a guest joins.     |
-| `ROOM_PARTICIPANT_LEFT`   | `{ participantId, reason: "LEFT" \| "DISCONNECTED" }`                                     | The host, when the guest departs. |
-| `ROOM_CLOSED`             | `{ reason: "EXPIRED" \| "HOST_LEFT" \| "HOST_DISCONNECTED" }`                              | Every remaining member.           |
-| `ERROR`                   | `{ code, message, recoverable }`                                                          | The connection whose message failed. |
+| Type                      | Payload                                                                                      | Sent to                              |
+| ------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `ROOM_CREATED`            | `{ roomId, inviteSecret, participantId, role: "host", expiresAt }`                           | The creator only.                    |
+| `ROOM_JOINED`             | `{ roomId, participantId, role: "guest", peer: { participantId, role: "host" }, expiresAt }` | The joining guest.                   |
+| `ROOM_LEFT`               | `{}`                                                                                         | The sender of `ROOM_LEAVE`.          |
+| `ROOM_PARTICIPANT_JOINED` | `{ participant: { participantId, role: "guest" } }`                                          | The host, when a guest joins.        |
+| `ROOM_PARTICIPANT_LEFT`   | `{ participantId, reason: "LEFT" \| "DISCONNECTED" }`                                        | The host, when the guest departs.    |
+| `ROOM_CLOSED`             | `{ reason: "EXPIRED" \| "HOST_LEFT" \| "HOST_DISCONNECTED" }`                                | Every remaining member.              |
+| `ERROR`                   | `{ code, message, recoverable }`                                                             | The connection whose message failed. |
+
+The negotiation messages below are also server → client messages: the relayed copy a participant receives from its peer.
 
 `expiresAt` is the server clock in milliseconds since the Unix epoch. `ROOM_CLOSED` ends the recipient's membership. The invite secret appears only in `ROOM_CREATED`; no other message carries it.
 
@@ -102,7 +109,65 @@ All three are canonical, unpadded base64url of cryptographically random bytes, w
 - A join with a missing room, an expired room, or a wrong secret fails with the same `ROOM_UNAVAILABLE`. `ROOM_FULL` is returned only to a caller that presented the correct secret.
 - When the guest leaves or disconnects, the room stays open and the invite remains usable until the room ends. When the host leaves or disconnects, the room closes and the invite becomes invalid; the guest is not promoted.
 - Rooms expire at a configured lifetime after creation. Rooms are held in memory only.
-- A dropped connection loses its membership. No reconnect or resumption exists.
+- A dropped connection loses its membership. No reconnect or resumption exists. In Phase 2B a browser tears down its peer connection when its signaling connection closes; the peer session does not outlive signaling.
+
+### WebRTC negotiation
+
+| Type            | Payload                        | Sender → recipient             |
+| --------------- | ------------------------------ | ------------------------------ |
+| `RTC_OFFER`     | `{ negotiationId, sdp }`       | Host → guest                   |
+| `RTC_ANSWER`    | `{ negotiationId, sdp }`       | Guest → host                   |
+| `ICE_CANDIDATE` | `{ negotiationId, candidate }` | Either participant → the other |
+| `ICE_COMPLETE`  | `{ negotiationId }`            | Either participant → the other |
+
+`candidate` is exactly `{ candidate, sdpMid, sdpMLineIndex, usernameFragment }`, the browser-defined fields of `RTCIceCandidateInit`. All four keys are present; `sdpMid`, `sdpMLineIndex`, and `usernameFragment` may be `null`, but not both `sdpMid` and `sdpMLineIndex`. A browser builds this plain object field by field; it never forwards an `RTCIceCandidate` object. An empty candidate string, which browsers use to mark the end of a generation, is never sent; the end of gathering is `ICE_COMPLETE`.
+
+The messages are identical in both directions: the service relays the validated payload, re-enveloped with its own sequence. They name no destination room or participant, and no role. The service routes each one from the sender's current membership to its one peer, so a client cannot address another room or participant, and cannot claim a role.
+
+Rules, enforced by the service from membership:
+
+- A connection that is not in a room, or a room without a guest, cannot negotiate.
+- Only the host sends `RTC_OFFER`. The offer starts the room's one negotiation for its current guest and names a fresh negotiation ID. A second offer while a negotiation exists is refused; renegotiation is not supported. The room's most recent negotiation ID cannot be reused for a later guest.
+- Only the guest sends `RTC_ANSWER`, once, naming the active negotiation.
+- Every `RTC_ANSWER`, `ICE_CANDIDATE`, and `ICE_COMPLETE` must name the active negotiation; a stale or unknown ID is refused.
+- The host may trickle candidates as soon as it has offered; the guest only after it has answered.
+- Each participant sends at most `MAX_ICE_CANDIDATES_PER_NEGOTIATION` candidates and one `ICE_COMPLETE` per negotiation, and no candidate after its `ICE_COMPLETE`.
+- When the guest leaves or disconnects, the negotiation is discarded. A later guest starts a new negotiation, with a new ID, and never receives messages of an earlier one. When the room closes, everything is discarded.
+- A message whose relayed copy could exceed `MAX_SIGNALING_MESSAGE_BYTES` with the service's envelope is refused as `INVALID_MESSAGE` before any state changes.
+
+A refused negotiation message receives a recoverable `INVALID_STATE` error, or `INVALID_MESSAGE` if it is malformed. Because a refusal can concern a message sent just before the peer left, a client treats a recoverable error received while in a room as a stale refusal, not a failure of its current session.
+
+The service treats `sdp` as opaque text: it checks only that it is a non-empty string within the bound. Only the browsers interpret it.
+
+### Bounds
+
+These are provisional implementation and security bounds chosen for Phase 2B, not limits of WebRTC. Data-channel-only Chromium sessions on the development machine produced descriptions of about 715 bytes and two candidates per peer.
+
+| Bound                                | Value    | Applies to                                                          |
+| ------------------------------------ | -------- | ------------------------------------------------------------------- |
+| `MAX_SIGNALING_MESSAGE_BYTES`        | 32,768 B | One signaling WebSocket message, UTF-8, either direction            |
+| `MAX_SDP_BYTES`                      | 16,384 B | `sdp`, UTF-8; non-empty                                             |
+| `MAX_ICE_CANDIDATE_BYTES`            | 1024 B   | `candidate.candidate`; printable ASCII, non-empty                   |
+| `MAX_SDP_MID_BYTES`                  | 64 B     | `candidate.sdpMid`; printable ASCII, non-empty, or `null`           |
+| `MAX_SDP_MLINE_INDEX`                | 63       | `candidate.sdpMLineIndex`; integer 0–63, or `null`                  |
+| `MAX_USERNAME_FRAGMENT_BYTES`        | 256 B    | `candidate.usernameFragment`; printable ASCII, non-empty, or `null` |
+| `MAX_ICE_CANDIDATES_PER_NEGOTIATION` | 32       | Candidates one participant sends in one negotiation                 |
+| `MAX_PEER_MESSAGE_BYTES`             | 1024 B   | One peer data-channel message, UTF-8                                |
+
+A message must satisfy every bound that applies to it.
+
+### Peer connection handshake
+
+The host creates one data channel, labelled `driftless-control` (`PEER_CONTROL_CHANNEL_LABEL`), ordered and reliable: no `maxRetransmits`, no `maxPacketLifeTime`, no subprotocol, negotiated in band. A guest accepts exactly that channel; any other channel, or a second one, is closed and fails the session. On it, the peers exchange only:
+
+| Type         | Payload                                    |
+| ------------ | ------------------------------------------ |
+| `PEER_HELLO` | `{ negotiationId, senderId, recipientId }` |
+| `PEER_READY` | `{ negotiationId, senderId, recipientId }` |
+
+Messages use the common envelope, with `sequence` strictly increasing per channel and direction. Each peer sends `PEER_HELLO` when the channel opens and answers the other's `PEER_HELLO` with `PEER_READY`. A peer treats the channel as usable only after it has received both the other's `PEER_HELLO` and its `PEER_READY`, which shows that data crossed the channel in both directions; a connected `RTCPeerConnection` alone is not enough.
+
+`senderId` and `recipientId` are participant IDs both peers learned through authenticated signaling, and `negotiationId` names the negotiation. A receiver requires the active negotiation, the expected peer as sender, itself as recipient, and an increasing sequence; a mismatch, a repeat, an unknown type, binary data, or an oversized message fails the session. The invite secret is never sent over the data channel. This handshake is not the Phase 3 control protocol: it carries no media, playback, chat, or arbitrary text.
 
 ### Errors
 
@@ -122,15 +187,15 @@ All three are canonical, unpadded base64url of cryptographically random bytes, w
 
 ### Terminology relative to the conceptual families
 
-`ROOM_JOIN` and `ROOM_LEAVE` keep their conceptual names but are currently client-to-signaling messages; capability negotiation at join is not implemented. `ROOM_CREATE`, the server replies, and `ROOM_LEFT` are new. `ROOM_LEFT` was added so that a leaving client receives explicit confirmation that its membership ended. The Phase 2A `ERROR` code set is the implemented signaling vocabulary; peer-protocol error codes remain open.
+`ROOM_JOIN` and `ROOM_LEAVE` keep their conceptual names but are currently client-to-signaling messages; capability negotiation at join is not implemented. `ROOM_CREATE`, the server replies, and `ROOM_LEFT` are new. `ROOM_LEFT` was added so that a leaving client receives explicit confirmation that its membership ended. The negotiation messages and the peer handshake are new in Phase 2B; the handshake is not the readiness family below. The `ERROR` code set is the implemented signaling vocabulary; peer-protocol error codes remain open, and the handshake reports no errors to the peer: a violation ends the session.
 
 ## Message Families
 
-The families below are the conceptual baseline. Apart from the Phase 2A signaling subset, none is implemented.
+The families below are the conceptual baseline. Apart from the implemented signaling, negotiation, and handshake subset above, none is implemented.
 
 ### Room and Session
 
-The signaling-level room messages are implemented; see [above](#implemented-in-phase-2a-signaling-and-rooms). The capability negotiation described for `ROOM_JOIN` and the readiness messages remain conceptual.
+The signaling-level room messages are implemented; see [above](#implemented-through-phase-2b-signaling-rooms-and-negotiation). The capability negotiation described for `ROOM_JOIN` and the readiness messages remain conceptual.
 
 | Type | Purpose |
 | --- | --- |
@@ -228,7 +293,6 @@ Peers exchange capabilities before mode activation. A peer that cannot safely in
 
 ## Representation Still to Be Decided
 
-Phase 2A settled, for signaling only: hand-written strict validation in `packages/protocol` rather than a schema library, the room ID, invite secret, and participant ID encodings, and the signaling error codes.
+Phase 2A settled, for signaling only: hand-written strict validation in `packages/protocol` rather than a schema library, the room ID, invite secret, and participant ID encodings, and the signaling error codes. Phase 2B settled the negotiation message shapes and the negotiation ID, the provisional negotiation bounds, and the control channel's label and settings and its connection handshake.
 
-The following remain open: WebRTC negotiation message shapes, peer data-channel message shapes and their sequence scope, binary frame layout, channel count and settings, media and transfer identifier encodings, fingerprint format, chunk size, acknowledgement strategy, peer-protocol error codes, timing intervals, and numeric correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.
-
+The following remain open: reconnect and session resumption, peer data-channel message shapes beyond the handshake, binary frame layout, any further channels and their settings, media and transfer identifier encodings, fingerprint format, chunk size, acknowledgement strategy, peer-protocol error codes, timing intervals, and numeric correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.

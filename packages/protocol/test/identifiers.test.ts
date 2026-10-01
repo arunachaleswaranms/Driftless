@@ -3,15 +3,18 @@ import { describe, expect, it } from 'vitest';
 import {
   INVITE_SECRET_BYTES,
   INVITE_SECRET_LENGTH,
+  NEGOTIATION_ID_BYTES,
+  NEGOTIATION_ID_LENGTH,
   PARTICIPANT_ID_BYTES,
   PARTICIPANT_ID_LENGTH,
   ROOM_ID_BYTES,
   ROOM_ID_LENGTH,
   isInviteSecret,
+  isNegotiationId,
   isParticipantId,
   isRoomId,
 } from '../src/index.js';
-import { INVITE_SECRET, PARTICIPANT_ID, ROOM_ID } from './fixtures.js';
+import { INVITE_SECRET, NEGOTIATION_ID, PARTICIPANT_ID, ROOM_ID } from './fixtures.js';
 
 const formats = [
   { name: 'room ID', check: isRoomId, bytes: ROOM_ID_BYTES, length: ROOM_ID_LENGTH },
@@ -27,12 +30,22 @@ const formats = [
     bytes: PARTICIPANT_ID_BYTES,
     length: PARTICIPANT_ID_LENGTH,
   },
+  {
+    name: 'negotiation ID',
+    check: isNegotiationId,
+    bytes: NEGOTIATION_ID_BYTES,
+    length: NEGOTIATION_ID_LENGTH,
+  },
 ] as const;
 
 describe('identifier formats', () => {
   it('uses at least 256 bits for the invite secret and distinct lengths per kind', () => {
     expect(INVITE_SECRET_BYTES * 8).toBeGreaterThanOrEqual(256);
-    expect(new Set([ROOM_ID_LENGTH, INVITE_SECRET_LENGTH, PARTICIPANT_ID_LENGTH]).size).toBe(3);
+    expect(NEGOTIATION_ID_BYTES * 8).toBeGreaterThanOrEqual(128);
+    expect(
+      new Set([ROOM_ID_LENGTH, INVITE_SECRET_LENGTH, PARTICIPANT_ID_LENGTH, NEGOTIATION_ID_LENGTH])
+        .size,
+    ).toBe(4);
   });
 
   it.each(formats)('accepts canonical random $name values', ({ check, bytes, length }) => {
@@ -83,5 +96,11 @@ describe('identifier formats', () => {
     expect(isInviteSecret(PARTICIPANT_ID)).toBe(false);
     expect(isParticipantId(ROOM_ID)).toBe(false);
     expect(isParticipantId(INVITE_SECRET)).toBe(false);
+    for (const other of [ROOM_ID, INVITE_SECRET, PARTICIPANT_ID]) {
+      expect(isNegotiationId(other)).toBe(false);
+    }
+    expect(isRoomId(NEGOTIATION_ID)).toBe(false);
+    expect(isInviteSecret(NEGOTIATION_ID)).toBe(false);
+    expect(isParticipantId(NEGOTIATION_ID)).toBe(false);
   });
 });

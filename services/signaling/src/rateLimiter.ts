@@ -6,11 +6,14 @@ export interface RateLimit {
 }
 
 /**
- * Provisional per-connection bound. Phase 2A clients send a handful of room
- * messages per session; this rejects floods while leaving ample headroom. It
- * must be revisited when Phase 2B adds negotiation traffic.
+ * Provisional per-connection bound. A participant sends a few room messages,
+ * one offer or answer, and its trickled ICE candidates, which a browser
+ * gathers in a burst; one negotiation may carry at most
+ * MAX_ICE_CANDIDATES_PER_NEGOTIATION (32) of them. The burst admits a whole
+ * negotiation at once with headroom, and the refill bounds sustained
+ * traffic. It is an implementation and security bound, not a measured limit.
  */
-export const DEFAULT_RATE_LIMIT: RateLimit = { burst: 20, perSecond: 5 };
+export const DEFAULT_RATE_LIMIT: RateLimit = { burst: 48, perSecond: 10 };
 
 /**
  * Deterministic token bucket. The caller supplies the time, so tests need no

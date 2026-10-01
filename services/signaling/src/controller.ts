@@ -1,15 +1,19 @@
 import {
+  MAX_SIGNALING_MESSAGE_BYTES,
   PROTOCOL_VERSION,
+  fitsUtf8Bytes,
   parseClientMessage,
   serializeMessage,
   type ClientMessage,
   type ErrorCode,
+  type NegotiationMessage,
+  type NegotiationMessageType,
   type ParticipantLeftReason,
   type ServerMessage,
 } from '@driftless/protocol';
 import type { Logger, RejectionDetail } from './logger.js';
 import { DEFAULT_RATE_LIMIT, TokenBucket, type RateLimit } from './rateLimiter.js';
-import type { LeaveRoomResult, MemberKey, RoomStore } from './roomStore.js';
+import type { LeaveRoomResult, MemberKey, NegotiationStep, RoomStore } from './roomStore.js';
 
 /** What the controller needs from a live transport connection. */
 export interface ConnectionTransport {
@@ -69,6 +73,13 @@ export interface SignalingControllerOptions {
   readonly rateLimit?: RateLimit;
   readonly maxViolations?: number;
 }
+
+const NEGOTIATION_STEPS: Readonly<Record<NegotiationMessageType, NegotiationStep>> = {
+  RTC_OFFER: 'offer',
+  RTC_ANSWER: 'answer',
+  ICE_CANDIDATE: 'candidate',
+  ICE_COMPLETE: 'complete',
+};
 
 /** A server message without the envelope fields the controller fills in. */
 type ServerBody = ServerMessage extends infer Message
@@ -293,6 +304,45 @@ export class SignalingController {
         this.#announceDeparture(record.id, result, 'LEFT');
         return;
       }
+      case 'RTC_OFFER':
+      case 'RTC_ANSWER':
+      case 'ICE_CANDIDATE':
+      case 'ICE_COMPLETE':
+        this.#relayNegotiation(record, message);
+        return;
+    }
+  }
+
+  /**
+   * Relays one negotiation message to the sender's peer. The room store
+   * decides legality and the recipient from the sender's membership alone.
+   * The relayed message is rebuilt from the validated payload, and neither
+   * the session description nor the candidate is retained or logged.
+   */
+  #relayNegotiation(record: ConnectionRecord, message: NegotiationMessage): void {
+    const body = { type: message.type, payload: message.payload } as ServerBody;
+    // The relay carries the service's own envelope, which may be longer than
+    // the sender's. Refuse a message whose relay could exceed the bound
+    // before any state changes, so the recipient never receives one its
+    // parser must reject.
+    if (
+      !fitsUtf8Bytes(
+        serializeMessage(withEnvelope(body, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)),
+        MAX_SIGNALING_MESSAGE_BYTES,
+      )
+    ) {
+      this.#violation(record, 'relay_too_large');
+      return;
+    }
+    const step = NEGOTIATION_STEPS[message.type];
+    const result = this.#store.negotiate(record.id, step, message.payload.negotiationId);
+    if (!result.ok) {
+      this.#reject(record, result.code, 'negotiation_request', true);
+      return;
+    }
+    this.#sendTo(result.recipient.key, body);
+    if (step !== 'candidate') {
+      this.#logger.log({ event: 'negotiation_relayed', connection: record.id, step });
     }
   }
 
@@ -350,12 +400,11 @@ export class SignalingController {
   }
 
   #send(record: ConnectionRecord, body: ServerBody): void {
-    const message = {
-      protocolVersion: PROTOCOL_VERSION,
-      sequence: record.nextServerSequence++,
-      sentAt: this.#clock(),
-      ...body,
-    } as ServerMessage;
+    const message = withEnvelope(body, record.nextServerSequence++, this.#clock());
     record.transport.send(serializeMessage(message));
   }
+}
+
+function withEnvelope(body: ServerBody, sequence: number, sentAt: number): ServerMessage {
+  return { protocolVersion: PROTOCOL_VERSION, sequence, sentAt, ...body };
 }

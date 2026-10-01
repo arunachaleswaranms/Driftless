@@ -43,10 +43,19 @@ These responsibilities remain the accepted target architecture. Current implemen
 - `apps/web/` contains the Phase 1 production web foundation: the application shell, PWA foundation, and test tooling, plus the local media player — local file selection, browser-local object URL lifecycle, HTML5 video integration, reported media metadata, and playback, error, and reset behavior.
 - `apps/web/` also contains the runtime capability-reporting foundation (Phase 1C): a local report of which browser API surfaces the page observes, for the current foundation and for later-phase prerequisites. It reports observations only. It derives no browser support status and no mode eligibility; mode gating, including the Progressive Watch runtime checks of media, codecs, storage, and protocol, is not implemented.
 - Phase 1 — Application Foundation is closed with its exit gate passed; see [PHASE1_QUALIFICATION.md](PHASE1_QUALIFICATION.md). The qualification changed no architecture and no product code.
-- Room/session UI is not implemented, and the web client does not connect to signaling.
-- `packages/protocol/` (Phase 2A) contains the shared, transport-neutral contract implemented so far: the versioned JSON envelope, the client ↔ signaling room messages, identifier formats, the signaling error vocabulary, and strict parsing. Other message families remain conceptual; see [PROTOCOL.md](PROTOCOL.md).
-- `services/signaling/` (Phase 2A) contains an ephemeral signaling service: Node's HTTP server, a `ws` WebSocket endpoint at `/v1/signaling`, a health endpoint, and an in-memory store of two-person rooms with room creation, invite-secret join, leave, disconnect cleanup, and expiry. Room state is kept separate from the transport (socket → protocol parser → connection controller → room store). It performs no WebRTC offer/answer/ICE exchange yet, has no persistence, and never handles media.
-- `packages/sync-engine/` and `packages/transfer-engine/` are empty; synchronization, WebRTC, and media transfer, including the production Progressive Watch components, are not implemented.
+- `apps/web/src/features/room/` (Phase 2B) contains the room UI and the client side of signaling and WebRTC, layered so that React renders state and nothing else:
+
+  ```text
+  RoomPanel (React)  →  RoomController  →  SignalingClient  →  WebSocket (same origin, /v1/signaling)
+                                         →  PeerSession      →  RTCPeerConnection + one RTCDataChannel
+  ```
+
+  The controller owns one room session and its state machine (idle, opening, in room, leaving; and per peer: negotiating, connecting, connected, failed). The signaling client validates every server message with the shared parser. The peer session performs the host-offer/guest-answer negotiation with trickle ICE, holds early remote candidates in a bounded queue, validates the single control channel, and runs the connection handshake. Each layer takes its browser APIs as injected interfaces, so its races are unit-tested with deterministic fakes. Nothing connects until the user creates or joins a room, nothing is persisted, and there is no reconnect: a peer session is torn down with its signaling connection.
+
+- `packages/protocol/` (Phase 2A, extended in Phase 2B) contains the shared, transport-neutral contract implemented so far: the versioned JSON envelope, the client ↔ signaling room messages, the WebRTC negotiation messages and negotiation ID, the peer connection handshake, identifier formats, bounds counted in UTF-8 bytes, the signaling error vocabulary, and strict parsing. Other message families remain conceptual; see [PROTOCOL.md](PROTOCOL.md).
+- `services/signaling/` (Phase 2A, extended in Phase 2B) contains an ephemeral signaling service: Node's HTTP server, a `ws` WebSocket endpoint at `/v1/signaling`, a health endpoint, and an in-memory store of two-person rooms with room creation, invite-secret join, leave, disconnect cleanup, and expiry. Room state is kept separate from the transport (socket → protocol parser → connection controller → room store). In Phase 2B it relays offer, answer, and ICE messages between the two members of a room; the room store decides legality and the recipient from membership and keeps only counters and flags. It has no persistence, parses no SDP, and never handles media.
+- In production the client expects the signaling path on its own origin, so a deployment routes `/v1/signaling` to the service behind TLS. The development and preview servers forward the path to a loopback service. No deployment exists.
+- `packages/sync-engine/` and `packages/transfer-engine/` are empty; synchronization, STUN/TURN infrastructure, reconnect, connection diagnostics, and media transfer, including the production Progressive Watch components, are not implemented.
 - The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root lockfile.
 
 ## Web Client Components
@@ -161,4 +170,3 @@ The choice has costs: connectivity variability, TURN exposure, browser constrain
 ## Unresolved Design Areas
 
 Phase 0 supplied controlled desktop evidence for fragmentation, bounded data-channel transfer, MSE, OPFS, and parts of multi-GB resource behavior; see the [Phase 0 results](../spikes/phase0/). Physical Android, real-network/TURN behavior, broad browser compatibility, fingerprinting, reconnect semantics, and production parameter choices still need evidence. These choices are intentionally not frozen here.
-

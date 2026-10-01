@@ -1,6 +1,8 @@
 import { request } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
+  MAX_ICE_CANDIDATES_PER_NEGOTIATION,
+  MAX_SDP_BYTES,
   MAX_SIGNALING_MESSAGE_BYTES,
   type ServerMessage,
   type ServerMessageType,
@@ -619,6 +621,110 @@ describe('malformed and abusive input', () => {
     for (let index = 0; index < 10; index += 1) client.sendRaw('nope');
     expect((await client.closed).code).toBe(1008);
     expect(client.messages).toHaveLength(5);
+  });
+});
+
+describe('WebRTC negotiation relay', () => {
+  const NEGOTIATION = 'N'.repeat(24);
+  const SDP = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\na=ice-pwd:INTEGRATIONPWDMARK\r\n';
+  const CANDIDATE = {
+    candidate: 'candidate:1 1 udp 2122260223 192.0.2.44 50000 typ host INTEGRATIONMARK',
+    sdpMid: '0',
+    sdpMLineIndex: 0,
+    usernameFragment: 'INTEGRATIONUFRAG',
+  };
+
+  it('relays offer, answer, and trickled ICE in both directions over real sockets', async () => {
+    const instance = await startServer();
+    const { host, guest } = await roomPair(instance);
+    host.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp: SDP });
+    expect((await guest.expect('RTC_OFFER')).payload).toStrictEqual({
+      negotiationId: NEGOTIATION,
+      sdp: SDP,
+    });
+    host.send('ICE_CANDIDATE', { negotiationId: NEGOTIATION, candidate: CANDIDATE });
+    expect((await guest.expect('ICE_CANDIDATE')).payload.candidate).toStrictEqual(CANDIDATE);
+    guest.send('RTC_ANSWER', { negotiationId: NEGOTIATION, sdp: SDP });
+    expect((await host.expect('RTC_ANSWER')).payload.sdp).toBe(SDP);
+    guest.send('ICE_CANDIDATE', { negotiationId: NEGOTIATION, candidate: CANDIDATE });
+    expect((await host.expect('ICE_CANDIDATE')).payload.candidate).toStrictEqual(CANDIDATE);
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    await guest.expect('ICE_COMPLETE');
+    guest.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    await host.expect('ICE_COMPLETE');
+
+    // Leaving drops the negotiation: the host's late candidate is refused.
+    guest.send('ROOM_LEAVE');
+    await guest.expect('ROOM_LEFT');
+    await host.expect('ROOM_PARTICIPANT_LEFT');
+    host.send('ICE_CANDIDATE', { negotiationId: NEGOTIATION, candidate: CANDIDATE });
+    await host.expectError('INVALID_STATE', true);
+
+    const logged = JSON.stringify(instance.logs);
+    for (const marker of [
+      'INTEGRATIONPWDMARK',
+      'INTEGRATIONMARK',
+      'INTEGRATIONUFRAG',
+      '192.0.2.44',
+      NEGOTIATION,
+    ]) {
+      expect(logged).not.toContain(marker);
+    }
+  });
+
+  it('relays an SDP at its bound and agrees with the parser on multi-byte size', async () => {
+    const instance = await startServer();
+    const { host, guest } = await roomPair(instance);
+    const sdp = 'é'.repeat(MAX_SDP_BYTES / 2);
+    host.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp });
+    expect((await guest.expect('RTC_OFFER')).payload.sdp).toBe(sdp);
+
+    // A text frame whose string length fits but whose UTF-8 bytes do not is
+    // refused by the transport bound, which counts the same bytes.
+    const over = '€'.repeat(Math.floor(MAX_SIGNALING_MESSAGE_BYTES / 3) + 1);
+    expect(over.length).toBeLessThan(MAX_SIGNALING_MESSAGE_BYTES);
+    guest.sendRaw(over);
+    expect((await guest.closed).code).toBe(1009);
+    expect((await host.expect('ROOM_PARTICIPANT_LEFT')).payload.reason).toBe('DISCONNECTED');
+  });
+
+  it('refuses a third participant and keeps its traffic out of the room', async () => {
+    const instance = await startServer();
+    const { host, guest, created } = await roomPair(instance);
+    const third = await TestClient.open(instance.port);
+    third.send('ROOM_JOIN', {
+      roomId: created.payload.roomId,
+      inviteSecret: created.payload.inviteSecret,
+    });
+    await third.expectError('ROOM_FULL', true);
+    third.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp: SDP });
+    await third.expectError('INVALID_STATE', true);
+    third.send('ICE_CANDIDATE', { negotiationId: NEGOTIATION, candidate: CANDIDATE });
+    await third.expectError('INVALID_STATE', true);
+    host.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp: SDP });
+    await guest.expect('RTC_OFFER');
+    expect(third.messages.map((message) => message.type)).toStrictEqual([
+      'ERROR',
+      'ERROR',
+      'ERROR',
+    ]);
+  });
+
+  it('admits an ordinary candidate burst under the default rate limit', async () => {
+    // The default limit; the test clock does not advance, so no tokens refill.
+    const instance = await startServer();
+    const { host, guest } = await roomPair(instance);
+    host.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp: SDP });
+    for (let index = 0; index < MAX_ICE_CANDIDATES_PER_NEGOTIATION; index += 1) {
+      host.send('ICE_CANDIDATE', { negotiationId: NEGOTIATION, candidate: CANDIDATE });
+    }
+    host.send('ICE_COMPLETE', { negotiationId: NEGOTIATION });
+    await guest.expect('RTC_OFFER');
+    for (let index = 0; index < MAX_ICE_CANDIDATES_PER_NEGOTIATION; index += 1) {
+      await guest.expect('ICE_CANDIDATE');
+    }
+    await guest.expect('ICE_COMPLETE');
+    expect(host.socket.readyState).toBe(WebSocket.OPEN);
   });
 });
 

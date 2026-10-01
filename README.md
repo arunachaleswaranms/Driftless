@@ -2,7 +2,7 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Status: Phase 2 — Internet P2P Foundation is in progress. Phase 2A (protocol and signaling foundation) is implemented; Phase 2B (room join and WebRTC negotiation) is next. The Phase 2 exit gate has not passed.** Phase 1 — Application Foundation closed with its exit gate passed. Phase 2A added a shared protocol package and an ephemeral, in-memory signaling service for private two-person rooms; the web client does not connect to it yet, and there is no WebRTC, STUN, TURN, or reconnect behavior. Phase 0 software feasibility closed after Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. The production web client under `apps/web/` provides an application shell, PWA foundation, automated test baseline, a local video player for a file on the same device, and a local report of the browser APIs the page can observe. It cannot synchronize or transfer media, and its capability report is not a browser support claim. Closing Phase 1 does not change any compatibility status. Physical Android and real external-network qualification remain deferred.
+> **Status: Phase 2 — Internet P2P Foundation is in progress. Phase 2A (protocol and signaling foundation) is implemented and passed independent review; Phase 2B (room join and WebRTC negotiation) is implemented; Phase 2C (connection lifecycle and reconnect) is next. The Phase 2 exit gate has not passed.** Phase 1 — Application Foundation closed with its exit gate passed. Phase 2A added a shared protocol package and an ephemeral, in-memory signaling service for private two-person rooms. Phase 2B lets two browsers create and join a room through it, negotiate WebRTC, and open one data channel between them. That has been shown only for two browser contexts on one development machine; there is no TURN, no reconnect, and no real-network evidence. Phase 0 software feasibility closed after Spikes 0.1–0.7 and final independent review validated the architecture in controlled software testing; no architecture change was required. The production web client under `apps/web/` provides an application shell, PWA foundation, automated test baseline, a local video player for a file on the same device, and a local report of the browser APIs the page can observe. It cannot synchronize or transfer media, and its capability report is not a browser support claim. Closing Phase 1 does not change any compatibility status. Physical Android and real external-network qualification remain deferred.
 
 ## Goals
 
@@ -37,7 +37,7 @@ The initial compatibility target is **MP4 with H.264/AVC video and AAC audio**. 
 
 The accepted baseline is TypeScript, React, Vite, a Progressive Web App, and the HTML5 video element. WebRTC and `RTCDataChannel` are planned for peer communication. Phase 0 provided controlled desktop evidence for MSE, OPFS, and MP4Box.js, but their production use remains subject to later design and qualification.
 
-A small signaling service coordinates room entry (implemented in Phase 2A) and will coordinate WebRTC negotiation (Phase 2B). STUN will help establish direct connections. TURN will relay traffic when direct connectivity is impossible; this may include media traffic and therefore has bandwidth and cost implications. Signaling should not normally carry or permanently store media.
+A small signaling service coordinates room entry (Phase 2A) and relays WebRTC negotiation (Phase 2B). STUN servers can be configured to help establish direct connections; none is configured by default. TURN will relay traffic when direct connectivity is impossible; this may include media traffic and therefore has bandwidth and cost implications. Signaling should not normally carry or permanently store media.
 
 The [architecture](docs/ARCHITECTURE.md) keeps signaling, synchronization, and media transfer logically independent.
 
@@ -58,18 +58,19 @@ Progressive Watch is a runtime-detected capability. A browser or device that can
 
 ## Development status
 
-The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No synchronization engine, binary transfer engine, WebRTC negotiation, or Progressive Watch implementation has been initialized.
+The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
 
-Phase 1 — Application Foundation is **CLOSED / PASS**. Its exit gate passed at revision `4bf6e31`; see the [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md). Phase 2 — Internet P2P Foundation is **IN PROGRESS**: Phase 2A is implemented, Phase 2B is next, and the Phase 2 exit gate has **not passed**.
+Phase 1 — Application Foundation is **CLOSED / PASS**. Its exit gate passed at revision `4bf6e31`; see the [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md). Phase 2 — Internet P2P Foundation is **IN PROGRESS**: Phase 2A is implemented and reviewed, Phase 2B is implemented, Phase 2C is next, and the Phase 2 exit gate has **not passed**.
 
 - **Phase 1A — implemented:** the React/TypeScript/Vite web client in [`apps/web/`](apps/web/), with an application shell, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser tests.
 - **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. The file is never uploaded or read by the application.
 - **Phase 1C — implemented:** capability detection. The capabilities area reports, on the page only, whether the API surfaces used by the current foundation and planned for later phases are present. These are runtime observations: API presence is not browser or product support, and it establishes no mode, including Progressive Watch. Product compatibility remains governed by the [compatibility policy](docs/COMPATIBILITY.md).
 - **Phase 1D — complete:** qualification and closure. It added a synthetic MP4/H.264/AAC local-playback fixture, full-lifecycle and PWA qualification tests, and an opt-in run in the installed Google Chrome. The exit gate passed in Playwright Chromium 153 and Google Chrome 154. These are development browsers, not supported browsers.
 
-- **Phase 2A — implemented:** the protocol and signaling foundation. [`packages/protocol/`](packages/protocol/) defines the versioned envelope (`protocolVersion: 1`), the room lifecycle messages, identifier formats, errors, and strict validation. [`services/signaling/`](services/signaling/) is a Node WebSocket service with in-memory two-person rooms: a non-secret room ID and a separate 256-bit invite secret, enumeration-safe join failures, expiry, a hard two-participant limit, bounded and rate-limited messages, an origin policy, and sanitized logging. Rooms are lost on restart. It has no WebRTC negotiation, STUN, TURN, or reconnect, never handles media, and has been tested only in Node on loopback.
+- **Phase 2A — implemented:** the protocol and signaling foundation. [`packages/protocol/`](packages/protocol/) defines the versioned envelope (`protocolVersion: 1`), the room lifecycle messages, identifier formats, errors, and strict validation. [`services/signaling/`](services/signaling/) is a Node WebSocket service with in-memory two-person rooms: a non-secret room ID and a separate 256-bit invite secret, enumeration-safe join failures, expiry, a hard two-participant limit, bounded and rate-limited messages, an origin policy, and sanitized logging. Rooms are lost on restart. It never handles media. It passed independent review.
+- **Phase 2B — implemented:** room join and WebRTC negotiation. The web client's room area creates a room (showing the room ID and a masked, copyable invite secret) or joins one, over a same-origin `/v1/signaling` WebSocket. The service relays offer, answer, and trickled ICE between the two members only, enforcing host-offers/guest-answers roles, a per-negotiation ID, and bounds. The browsers open one ordered, reliable `RTCDataChannel` and exchange a tiny handshake across it before showing "Peer data channel is connected." No media is captured or sent, nothing is persisted, and there is no TURN, reconnect, or diagnostics UI. Evidence is automated same-host development browser evidence only.
 
-Automated Chromium results are development evidence, not browser support claims. Node and loopback signaling tests are not browser, device, or network evidence. Physical-device and real-network qualification remains deferred.
+Automated Chromium results are development evidence, not browser support claims. Node and loopback signaling tests, and same-host two-context WebRTC tests, are not device, NAT-traversal, TURN, or real-network evidence. Physical-device and real-network qualification remains deferred.
 
 ## Development
 
@@ -84,13 +85,15 @@ npm run test:e2e                  # web Playwright regression (Chromium)
 npm run verify                    # check, then test:e2e
 ```
 
+`npm run test:e2e` starts its own signaling service on `127.0.0.1:8790` and a preview server that forwards `/v1/signaling` to it. To try a room by hand, run `npm run dev --workspace @driftless/signaling` (port 8787) and `npm run dev --workspace @driftless/web`, then open `http://localhost:5173` in two browser windows or profiles. The development server forwards `/v1/signaling` to the signaling service.
+
 Package details: [web client](apps/web/README.md), [protocol](packages/protocol/README.md), [signaling service](services/signaling/README.md).
 
 ## Documentation
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [Protocol (Phase 2A subset implemented; the rest conceptual)](docs/PROTOCOL.md)
+- [Protocol (Phase 2A–2B subset implemented; the rest conceptual)](docs/PROTOCOL.md)
 - [Media pipeline](docs/MEDIA_PIPELINE.md)
 - [Roadmap and phase gates](docs/ROADMAP.md)
 - [Security baseline](docs/SECURITY.md)

@@ -10,22 +10,40 @@ const EXPECTED_EXPORTS = [
   'INVITE_SECRET_BYTES',
   'INVITE_SECRET_LENGTH',
   'MAX_ERROR_MESSAGE_LENGTH',
+  'MAX_ICE_CANDIDATES_PER_NEGOTIATION',
+  'MAX_ICE_CANDIDATE_BYTES',
+  'MAX_PEER_MESSAGE_BYTES',
+  'MAX_SDP_BYTES',
+  'MAX_SDP_MID_BYTES',
+  'MAX_SDP_MLINE_INDEX',
   'MAX_SIGNALING_MESSAGE_BYTES',
+  'MAX_USERNAME_FRAGMENT_BYTES',
+  'NEGOTIATION_ID_BYTES',
+  'NEGOTIATION_ID_LENGTH',
+  'NEGOTIATION_MESSAGE_TYPES',
   'PARTICIPANT_ID_BYTES',
   'PARTICIPANT_ID_LENGTH',
   'PARTICIPANT_LEFT_REASONS',
+  'PEER_CONTROL_CHANNEL_LABEL',
+  'PEER_MESSAGE_TYPES',
   'PROTOCOL_VERSION',
   'ROOM_CLOSED_REASONS',
   'ROOM_ID_BYTES',
   'ROOM_ID_LENGTH',
   'SERVER_MESSAGE_TYPES',
+  'fitsUtf8Bytes',
   'isErrorCode',
   'isInviteSecret',
+  'isNegotiationId',
   'isParticipantId',
   'isRoomId',
+  'isSessionDescription',
   'parseClientMessage',
+  'parsePeerMessage',
   'parseServerMessage',
   'serializeMessage',
+  'toIceCandidate',
+  'utf8ByteLength',
 ];
 
 assert.deepEqual(Object.keys(protocol).sort(), [...EXPECTED_EXPORTS].sort());
@@ -51,5 +69,21 @@ assert.deepEqual(
   protocol.parseClientMessage(join.replace('"protocolVersion":1', '"protocolVersion":2')),
   { ok: false, code: 'UNSUPPORTED_PROTOCOL', reason: 'unsupported_version' },
 );
+
+// The size bound counts UTF-8 bytes, not string length.
+const multiByte = '€'.repeat(Math.floor(protocol.MAX_SIGNALING_MESSAGE_BYTES / 3) + 1);
+assert.ok(multiByte.length < protocol.MAX_SIGNALING_MESSAGE_BYTES);
+assert.equal(protocol.parseServerMessage(multiByte).reason, 'too_large');
+assert.equal(protocol.utf8ByteLength('€😀'), 7);
+
+const offer = JSON.stringify({
+  protocolVersion: 1,
+  type: 'RTC_OFFER',
+  sequence: 2,
+  sentAt: 0,
+  payload: { negotiationId: 'A'.repeat(24), sdp: 'v=0\r\n' },
+});
+assert.equal(protocol.parseClientMessage(offer).ok, true);
+assert.equal(protocol.parseServerMessage(offer).ok, true);
 
 console.log('@driftless/protocol dist smoke test passed');

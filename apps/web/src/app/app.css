@@ -317,6 +317,132 @@ main:focus {
   overflow-wrap: anywhere;
 }
 
+/* The room spans the full width below the local player and capability
+   report, which keep their Phase 1 side-by-side layout above it. */
+.room {
+  display: grid;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.room h2:focus {
+  outline: none;
+}
+
+.room h2:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.room h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.room-status {
+  font-weight: 600;
+}
+
+.room-alert {
+  padding: var(--space-2);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  background: var(--color-error-surface);
+}
+
+.room-entry {
+  display: grid;
+  gap: var(--space-3);
+}
+
+@media (min-width: 48rem) {
+  .room-entry {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.room-option,
+.room-session,
+.room-invite {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-width: 0;
+}
+
+.room-session {
+  gap: var(--space-2);
+}
+
+.room-note {
+  color: var(--color-text-muted);
+}
+
+.room-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.room-field label {
+  font-weight: 600;
+}
+
+.room-input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--color-text);
+  background: var(--color-background);
+}
+
+.room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.room-facts {
+  display: grid;
+  gap: var(--space-1);
+}
+
+@media (min-width: 30rem) {
+  .room-facts > div {
+    display: grid;
+    grid-template-columns: 10rem minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+}
+
+.room-facts dt {
+  color: var(--color-text-muted);
+}
+
+.room-credential {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Identifiers have no break opportunities; let them wrap anywhere rather
+   than widen the panel on a narrow screen. */
+.room-value {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.room-sensitive {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .skip-link {
     transition: transform 0.15s ease-out;

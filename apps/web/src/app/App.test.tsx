@@ -29,6 +29,15 @@ describe('App shell', () => {
     expect(within(region).getByRole('status').textContent).toBe('No video selected.');
   });
 
+  it('renders the room as a labelled region that starts outside any room', () => {
+    render(<App />);
+
+    const region = screen.getByRole('region', { name: 'Room' });
+    expect(within(region).getByRole('status').textContent).toBe('Not in a room.');
+    expect(within(region).getByRole('button', { name: 'Create room' })).toBeDefined();
+    expect(within(region).getByRole('button', { name: 'Join room' })).toBeDefined();
+  });
+
   it('renders the browser capability report as a labelled region', () => {
     render(<App />);
 

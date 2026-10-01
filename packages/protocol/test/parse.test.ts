@@ -4,6 +4,7 @@ import {
   ERROR_CODES,
   MAX_ERROR_MESSAGE_LENGTH,
   MAX_SIGNALING_MESSAGE_BYTES,
+  NEGOTIATION_MESSAGE_TYPES,
   PROTOCOL_VERSION,
   SERVER_MESSAGE_TYPES,
   parseClientMessage,
@@ -42,12 +43,12 @@ const clientJoin = (payload: unknown, overrides: object = {}): string =>
   envelope('ROOM_JOIN', payload, overrides);
 
 describe('protocol constants', () => {
-  it('fixes protocolVersion 1 and a small message bound', () => {
+  it('fixes protocolVersion 1 and a bounded message size', () => {
     expect(PROTOCOL_VERSION).toBe(1);
-    expect(MAX_SIGNALING_MESSAGE_BYTES).toBe(4096);
+    expect(MAX_SIGNALING_MESSAGE_BYTES).toBe(32_768);
   });
 
-  it('defines only the Phase 2A signaling message types', () => {
+  it('defines only the room and negotiation signaling message types', () => {
     expect([...CLIENT_MESSAGE_TYPES].sort()).toStrictEqual(
       Object.keys(VALID_CLIENT_PAYLOADS).sort(),
     );
@@ -55,7 +56,19 @@ describe('protocol constants', () => {
       Object.keys(VALID_SERVER_PAYLOADS).sort(),
     );
     const all: readonly string[] = [...CLIENT_MESSAGE_TYPES, ...SERVER_MESSAGE_TYPES];
-    for (const outOfScope of ['OFFER', 'ANSWER', 'ICE_CANDIDATE', 'PLAY', 'SYNC', 'CHAT']) {
+    for (const outOfScope of [
+      'OFFER',
+      'ANSWER',
+      'PLAY',
+      'PAUSE',
+      'SEEK',
+      'SYNC',
+      'MEDIA_INFO',
+      'CHAT',
+      'REACTION',
+      'TRANSFER_CHUNK',
+      'PEER_HELLO',
+    ]) {
       expect(all).not.toContain(outOfScope);
     }
   });
@@ -225,7 +238,8 @@ describe('message type', () => {
       'ROOM_DELETE',
       'OFFER',
       'ANSWER',
-      'ICE_CANDIDATE',
+      'rtc_offer',
+      'PEER_HELLO',
       'PLAY',
       'CHAT',
       'TRANSFER_CHUNK',
@@ -240,11 +254,12 @@ describe('message type', () => {
     }
   });
 
-  it('keeps client and server message sets apart', () => {
-    for (const type of SERVER_MESSAGE_TYPES) {
+  it('keeps the room messages of each direction apart', () => {
+    const negotiation: readonly string[] = NEGOTIATION_MESSAGE_TYPES;
+    for (const type of SERVER_MESSAGE_TYPES.filter((type) => !negotiation.includes(type))) {
       expectRejected(parseClientMessage(envelope(type, {})), 'unknown_type');
     }
-    for (const type of CLIENT_MESSAGE_TYPES) {
+    for (const type of CLIENT_MESSAGE_TYPES.filter((type) => !negotiation.includes(type))) {
       expectRejected(parseServerMessage(envelope(type, {})), 'unknown_type');
     }
   });

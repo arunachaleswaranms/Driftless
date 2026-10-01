@@ -1,6 +1,8 @@
+import { fitsUtf8Bytes } from './encoding.js';
 import { isErrorCode, MAX_ERROR_MESSAGE_LENGTH } from './errors.js';
-import { isInviteSecret, isParticipantId, isRoomId } from './identifiers.js';
+import { isInviteSecret, isNegotiationId, isParticipantId, isRoomId } from './identifiers.js';
 import {
+  MAX_PEER_MESSAGE_BYTES,
   MAX_SIGNALING_MESSAGE_BYTES,
   PARTICIPANT_LEFT_REASONS,
   PROTOCOL_VERSION,
@@ -8,6 +10,9 @@ import {
   type ClientMessage,
   type EmptyPayload,
   type ErrorMessage,
+  type IceCandidateMessage,
+  type IceCompleteMessage,
+  type NegotiationMessage,
   type ParticipantRole,
   type ParticipantSummary,
   type RoomClosedMessage,
@@ -16,8 +21,12 @@ import {
   type RoomJoinMessage,
   type RoomParticipantJoinedMessage,
   type RoomParticipantLeftMessage,
+  type PeerHandshakePayload,
+  type PeerMessage,
   type ServerMessage,
+  type SessionDescriptionPayload,
 } from './messages.js';
+import { isSessionDescription, toIceCandidate } from './webrtc.js';
 
 /**
  * Why a message was rejected. Every value is a fixed token, so it is safe to
@@ -67,22 +76,33 @@ type DecoderTable<Message extends { type: string; payload: unknown }> = {
 
 /**
  * Parses one untrusted client → server signaling message. Never throws; any
- * input that is not exactly a valid Phase 2A client message is rejected.
+ * input that is not exactly a valid client message, or that exceeds
+ * `MAX_SIGNALING_MESSAGE_BYTES` of UTF-8, is rejected.
  */
 export function parseClientMessage(text: string): ParseResult<ClientMessage> {
-  return parseMessage(text, CLIENT_DECODERS);
+  return parseMessage(text, MAX_SIGNALING_MESSAGE_BYTES, CLIENT_DECODERS);
 }
 
 /**
  * Parses one untrusted server → client signaling message. Never throws; any
- * input that is not exactly a valid Phase 2A server message is rejected.
+ * input that is not exactly a valid server message, or that exceeds
+ * `MAX_SIGNALING_MESSAGE_BYTES` of UTF-8, is rejected.
  */
 export function parseServerMessage(text: string): ParseResult<ServerMessage> {
-  return parseMessage(text, SERVER_DECODERS);
+  return parseMessage(text, MAX_SIGNALING_MESSAGE_BYTES, SERVER_DECODERS);
+}
+
+/**
+ * Parses one untrusted peer → peer data-channel message. Never throws; any
+ * input that is not exactly a valid peer message, or that exceeds
+ * `MAX_PEER_MESSAGE_BYTES` of UTF-8, is rejected.
+ */
+export function parsePeerMessage(text: string): ParseResult<PeerMessage> {
+  return parseMessage(text, MAX_PEER_MESSAGE_BYTES, PEER_DECODERS);
 }
 
 /** Serializes a message. Only the envelope fields are written. */
-export function serializeMessage(message: ClientMessage | ServerMessage): string {
+export function serializeMessage(message: ClientMessage | ServerMessage | PeerMessage): string {
   return JSON.stringify({
     protocolVersion: message.protocolVersion,
     type: message.type,
@@ -94,11 +114,12 @@ export function serializeMessage(message: ClientMessage | ServerMessage): string
 
 function parseMessage<Message extends { type: string; payload: unknown }>(
   text: string,
+  maxBytes: number,
   decoders: DecoderTable<Message>,
 ): ParseResult<Message> {
-  // String length never exceeds UTF-8 byte length, so this cheap check never
-  // rejects a message that fits the byte bound.
-  if (text.length > MAX_SIGNALING_MESSAGE_BYTES) return failure('too_large');
+  // The bound is on encoded bytes, as the transport carries them, so a
+  // string of multi-byte characters cannot exceed it.
+  if (!fitsUtf8Bytes(text, maxBytes)) return failure('too_large');
 
   let value: unknown;
   try {
@@ -203,7 +224,56 @@ function decodeParticipant<Role extends ParticipantRole>(
   return { participantId, role };
 }
 
+function decodeSessionDescription(value: unknown): SessionDescriptionPayload | undefined {
+  const object = exactObject(value, ['negotiationId', 'sdp']);
+  if (object === undefined) return undefined;
+  const { negotiationId, sdp } = object;
+  if (!isNegotiationId(negotiationId) || !isSessionDescription(sdp)) return undefined;
+  return { negotiationId, sdp };
+}
+
+/** The same decoders serve both directions: the service relays these unchanged. */
+const NEGOTIATION_DECODERS: DecoderTable<NegotiationMessage> = {
+  RTC_OFFER: decodeSessionDescription,
+  RTC_ANSWER: decodeSessionDescription,
+  ICE_CANDIDATE: (value): IceCandidateMessage['payload'] | undefined => {
+    const object = exactObject(value, ['negotiationId', 'candidate']);
+    if (object === undefined) return undefined;
+    const { negotiationId } = object;
+    const candidate = toIceCandidate(object.candidate);
+    if (!isNegotiationId(negotiationId) || candidate === undefined) return undefined;
+    return { negotiationId, candidate };
+  },
+  ICE_COMPLETE: (value): IceCompleteMessage['payload'] | undefined => {
+    const object = exactObject(value, ['negotiationId']);
+    if (object === undefined) return undefined;
+    const { negotiationId } = object;
+    return isNegotiationId(negotiationId) ? { negotiationId } : undefined;
+  },
+};
+
+function decodePeerHandshake(value: unknown): PeerHandshakePayload | undefined {
+  const object = exactObject(value, ['negotiationId', 'senderId', 'recipientId']);
+  if (object === undefined) return undefined;
+  const { negotiationId, senderId, recipientId } = object;
+  if (
+    !isNegotiationId(negotiationId) ||
+    !isParticipantId(senderId) ||
+    !isParticipantId(recipientId) ||
+    senderId === recipientId
+  ) {
+    return undefined;
+  }
+  return { negotiationId, senderId, recipientId };
+}
+
+const PEER_DECODERS: DecoderTable<PeerMessage> = {
+  PEER_HELLO: decodePeerHandshake,
+  PEER_READY: decodePeerHandshake,
+};
+
 const CLIENT_DECODERS: DecoderTable<ClientMessage> = {
+  ...NEGOTIATION_DECODERS,
   ROOM_CREATE: decodeEmpty,
   ROOM_JOIN: (value): RoomJoinMessage['payload'] | undefined => {
     const object = exactObject(value, ['roomId', 'inviteSecret']);
@@ -216,6 +286,7 @@ const CLIENT_DECODERS: DecoderTable<ClientMessage> = {
 };
 
 const SERVER_DECODERS: DecoderTable<ServerMessage> = {
+  ...NEGOTIATION_DECODERS,
   ROOM_CREATED: (value): RoomCreatedMessage['payload'] | undefined => {
     const object = exactObject(value, [
       'roomId',
