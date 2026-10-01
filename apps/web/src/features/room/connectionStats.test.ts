@@ -252,6 +252,38 @@ describe('classifySelectedPath', () => {
     }
   });
 
+  it('accepts a selected pair being re-checked only with responses already received', () => {
+    // Chrome 154 reports the working selected pair as in-progress while a
+    // periodic connectivity check is outstanding.
+    const rechecked = (extra: Stats) =>
+      classifySelectedPath(
+        report(
+          transport('CP1'),
+          pair('CP1', { state: 'in-progress', ...extra }),
+          local('L1', 'srflx'),
+          remote('R1', 'prflx'),
+        ),
+      );
+    expect(rechecked({ responsesReceived: 12 })).toMatchObject({
+      classification: 'DIRECT',
+      localCandidateType: 'srflx',
+      remoteCandidateType: 'prflx',
+    });
+    for (const responsesReceived of [0, undefined, -1, 1.5, '3', null, Number.NaN]) {
+      expect(rechecked({ responsesReceived })).toStrictEqual({
+        classification: 'UNKNOWN',
+        reason: 'pair_not_succeeded',
+      });
+    }
+    // Responses do not rescue a pair in any other state.
+    for (const state of ['failed', 'waiting', 'frozen', undefined]) {
+      expect(rechecked({ state, responsesReceived: 12 })).toStrictEqual({
+        classification: 'UNKNOWN',
+        reason: 'pair_not_succeeded',
+      });
+    }
+  });
+
   it('is unknown when a candidate is missing or of the wrong kind', () => {
     expect(
       classifySelectedPath(report(transport('CP1'), pair('CP1'), remote('R1', 'relay'))),

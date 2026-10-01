@@ -5,7 +5,7 @@
  * path the connection is using, from the standard selected candidate pair:
  *
  *   transport.selectedCandidatePairId
- *     → candidate-pair (state "succeeded")
+ *     → candidate-pair (succeeded; see `pairHasSucceeded`)
  *     → localCandidateId / remoteCandidateId
  *     → local-candidate / remote-candidate (candidateType)
  *
@@ -43,7 +43,7 @@ export type UnknownPathReason =
   | 'ambiguous_selected_pair'
   /** The named selected pair is missing, or is not a candidate pair. */
   | 'missing_pair'
-  /** The selected pair has not succeeded (for example, it failed). */
+  /** The selected pair shows no success (for example, it failed). */
   | 'pair_not_succeeded'
   /** A candidate the pair names is missing from the report. */
   | 'missing_candidate'
@@ -96,7 +96,7 @@ export function classifySelectedPath(report: StatsReportLike | undefined): Selec
 
   const pair = byId.get(selected);
   if (pair?.type !== 'candidate-pair') return unknownPath('missing_pair');
-  if (pair.state !== 'succeeded') return unknownPath('pair_not_succeeded');
+  if (!pairHasSucceeded(pair)) return unknownPath('pair_not_succeeded');
 
   const local = candidate(byId, pair.localCandidateId, 'local-candidate');
   const remote = candidate(byId, pair.remoteCandidateId, 'remote-candidate');
@@ -148,6 +148,26 @@ function selectedPairId(
     return transportPair;
   }
   return markedPair ?? { reason: 'no_selected_pair' };
+}
+
+/**
+ * Whether the selected pair has succeeded. `succeeded` is accepted as is.
+ * Chrome also reports the selected, working pair as `in-progress` while one
+ * of its periodic connectivity re-checks is outstanding (observed in Chrome
+ * 154 on a connected pair); that is accepted only with evidence of an
+ * earlier success, at least one connectivity check response received.
+ * `failed`, `waiting`, `frozen`, an absent state, and an `in-progress` pair
+ * without responses are not.
+ */
+function pairHasSucceeded(pair: StatsRecord): boolean {
+  if (pair.state === 'succeeded') return true;
+  const { responsesReceived } = pair;
+  return (
+    pair.state === 'in-progress' &&
+    typeof responsesReceived === 'number' &&
+    Number.isSafeInteger(responsesReceived) &&
+    responsesReceived > 0
+  );
 }
 
 function candidate(

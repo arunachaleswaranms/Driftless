@@ -445,9 +445,13 @@ export function selectedPairTypes(page: Page) {
     const pair = all.get(String(pairIds[0]));
     const local = all.get(String(pair?.localCandidateId));
     const remote = all.get(String(pair?.remoteCandidateId));
+    const responses = pair?.responsesReceived;
     return {
       transports: pairIds.length,
-      pairState: pair?.state,
+      // Chrome reports the working pair as in-progress during a re-check.
+      pairSucceeded:
+        pair?.state === 'succeeded' ||
+        (pair?.state === 'in-progress' && typeof responses === 'number' && responses > 0),
       local: local?.candidateType,
       remote: remote?.candidateType,
       protocol: local?.protocol,

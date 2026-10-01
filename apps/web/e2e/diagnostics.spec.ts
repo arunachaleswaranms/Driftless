@@ -57,7 +57,7 @@ test('reports the selected path from the browser’s own statistics, once, witho
     await expect(section).toContainText('Statistics read from this browser.');
     const truth = await selectedPairTypes(peer.page);
     expect(truth.transports).toBe(1);
-    expect(truth.pairState).toBe('succeeded');
+    expect(truth.pairSucceeded).toBe(true);
     // Same host, no TURN server: whatever pair won, it is not relayed.
     expect(truth.local).not.toBe('relay');
     expect(truth.remote).not.toBe('relay');
