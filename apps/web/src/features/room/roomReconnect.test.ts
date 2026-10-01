@@ -23,9 +23,11 @@ import {
 } from '../../test/room.ts';
 import {
   HOST_RECOVERY_DELAY_MS,
+  LEAVE_RETRY_DELAYS_MS,
   RECONNECT_DELAYS_MS,
   RESUME_ATTEMPT_TIMEOUT_MS,
 } from './reconnectSchedule.ts';
+import type { ProveResume } from './resumeProof.ts';
 import { RoomController, type RoomState } from './roomController.ts';
 import { statusText } from './roomText.ts';
 
@@ -43,7 +45,7 @@ const GUEST_RESUME = 'g'.repeat(44) as ResumeSecret;
 const CHALLENGE = 'c'.repeat(32) as ResumeChallenge;
 const OTHER = 'X'.repeat(24) as NegotiationId;
 
-function setup() {
+function setup(options: { proveResume?: ProveResume } = {}) {
   const sockets: FakeWebSocket[] = [];
   const connections: FakePeerConnection[] = [];
   const timers = new FakeTimers();
@@ -66,7 +68,7 @@ function setup() {
       negotiations += 1;
       return String(negotiations).padStart(24, 'N') as NegotiationId;
     },
-    proveResume: prover.prove,
+    proveResume: options.proveResume ?? prover.prove,
     clock: () => 0,
     timers,
   });
@@ -431,20 +433,6 @@ describe('bounded reconnect schedule', () => {
     expect(harness.timers.pendingCount).toBe(0);
     await harness.timers.advance(600_000);
     expect(harness.sockets).toHaveLength(1 + RECONNECT_DELAYS_MS.length);
-  });
-
-  it('cancels the schedule when the user leaves, and leaves at once', async () => {
-    const { harness, pc } = await connectedHost();
-    harness.socket().drop();
-    await harness.timers.advance(0);
-    const attempt = harness.socket();
-    harness.controller.leaveRoom();
-    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
-    expect(pc.closed).toBe(true);
-    expect(attempt.closeCalls).toStrictEqual([1000]);
-    expect(harness.timers.pendingCount).toBe(0);
-    await harness.timers.advance(60_000);
-    expect(harness.sockets).toHaveLength(2);
   });
 
   it('cancels the schedule on shutdown and on a room closed after resume', async () => {
@@ -1019,5 +1007,266 @@ describe('peer transport recovery', () => {
     });
     await flush();
     expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_PER_MEMBERSHIP);
+  });
+});
+
+describe('leaving while signaling is reconnecting', () => {
+  /** Opens the due attempt's socket, answers the challenge, and returns the socket. */
+  async function resumedForLeave(harness: Harness, delay = 0) {
+    const socket = await attemptUntilProof(harness, delay);
+    expect(socket.sent.map((message) => message.type)).toStrictEqual([
+      'SESSION_RESUME_BEGIN',
+      'SESSION_RESUME_PROVE',
+    ]);
+    return socket;
+  }
+
+  it('guest: closes the peer at once, then resumes only to send ROOM_LEAVE', async () => {
+    const { harness, pc, channel, negotiationId } = await connectedGuest();
+    harness.socket().drop();
+    const states: RoomState[] = [];
+    harness.controller.subscribe(() => states.push(harness.controller.getState()));
+    harness.controller.leaveRoom();
+    // Local intent is immediate: no peer, no room view.
+    expect(pc.closed).toBe(true);
+    expect(channel.closed).toBe(true);
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+
+    const socket = await resumedForLeave(harness);
+    socket.deliver({
+      type: 'SESSION_RESUMED',
+      payload: resumedPayload('guest', { activeNegotiationId: negotiationId }),
+    });
+    await flush();
+    // The resume is used only to end the membership.
+    expect(socket.sent.map((message) => message.type)).toStrictEqual([
+      'SESSION_RESUME_BEGIN',
+      'SESSION_RESUME_PROVE',
+      'ROOM_LEAVE',
+    ]);
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+    socket.deliver({ type: 'ROOM_LEFT', payload: {} });
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+    expect(socket.closeCalls).toStrictEqual([1000]);
+    // Never back in the room, no new peer connection or recovery, no timers.
+    expect(states.some((state) => state.phase === 'in-room')).toBe(false);
+    expect(harness.connections).toHaveLength(1);
+    expect(socket.sentOfType('RTC_RECOVERY_REQUEST')).toStrictEqual([]);
+    expect(harness.timers.pendingCount).toBe(0);
+    expect(socket.sentText.join('')).not.toContain(GUEST_RESUME);
+    // The credentials are gone: nothing more is ever attempted.
+    await harness.timers.advance(600_000);
+    expect(harness.sockets).toHaveLength(2);
+    expect(harness.prover.calls).toHaveLength(1);
+  });
+
+  it('host: sends ROOM_LEAVE right after the resume instead of reconciling', async () => {
+    const { harness, pc, negotiationId } = await connectedHost();
+    harness.socket().drop();
+    harness.controller.leaveRoom();
+    expect(pc.closed).toBe(true);
+    const socket = await resumedForLeave(harness);
+    // Even a snapshot whose negotiation does not match starts no negotiation.
+    socket.deliver({
+      type: 'SESSION_RESUMED',
+      payload: resumedPayload('host', { activeNegotiationId: OTHER, negotiationCount: 2 }),
+    });
+    await flush();
+    expect(socket.sent.at(-1)?.type).toBe('ROOM_LEAVE');
+    expect(socket.sentOfType('RTC_RECOVER')).toStrictEqual([]);
+    expect(socket.sentOfType('RTC_OFFER')).toStrictEqual([]);
+    // A peer message that races the leave changes nothing.
+    socket.deliver({
+      type: 'RTC_RECOVERY_REQUEST',
+      payload: { negotiationId },
+    });
+    // Within the attempt's bound on ROOM_LEFT, past any host recovery wait.
+    await harness.timers.advance(HOST_RECOVERY_DELAY_MS * 2);
+    expect(harness.connections).toHaveLength(1);
+    socket.deliver({ type: 'ROOM_LEFT', payload: {} });
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+    expect(harness.timers.pendingCount).toBe(0);
+  });
+
+  it('converts an attempt in flight: its late challenge and resume lead only to the leave', async () => {
+    const { harness, negotiationId } = await connectedGuest();
+    harness.socket().drop();
+    await harness.timers.advance(0);
+    const attempt = harness.socket();
+    attempt.open();
+    await flush();
+    // The user leaves while the normal attempt waits for its challenge.
+    harness.controller.leaveRoom();
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+    attempt.deliver({ type: 'SESSION_RESUME_CHALLENGE', payload: { challenge: CHALLENGE } });
+    await flush();
+    attempt.deliver({
+      type: 'SESSION_RESUMED',
+      payload: resumedPayload('guest', { activeNegotiationId: negotiationId }),
+    });
+    await flush();
+    expect(attempt.sent.at(-1)?.type).toBe('ROOM_LEAVE');
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+    expect(harness.sockets).toHaveLength(2);
+    expect(harness.connections).toHaveLength(1);
+  });
+
+  it('treats a resume accepted just before Leave as authorization to leave', async () => {
+    const { harness, negotiationId } = await connectedHost();
+    harness.socket().drop();
+    const socket = await attemptUntilProof(harness);
+    // The proof is out; the service may already have bound this socket.
+    harness.controller.leaveRoom();
+    socket.deliver({
+      type: 'SESSION_RESUMED',
+      payload: resumedPayload('host', { activeNegotiationId: negotiationId }),
+    });
+    await flush();
+    expect(socket.sent.at(-1)?.type).toBe('ROOM_LEAVE');
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+  });
+
+  it('a proof still being computed when the user leaves only serves the leave', async () => {
+    let release: (() => void) | undefined;
+    const prove: ProveResume = () =>
+      new Promise((resolve) => {
+        release = () => {
+          resolve(FAKE_PROOF);
+        };
+      });
+    const harness = setup({ proveResume: prove });
+    await guestInRoom(harness);
+    harness.socket().drop();
+    await harness.timers.advance(0);
+    const attempt = harness.socket();
+    attempt.open();
+    await flush();
+    attempt.deliver({ type: 'SESSION_RESUME_CHALLENGE', payload: { challenge: CHALLENGE } });
+    await flush();
+    harness.controller.leaveRoom();
+    release?.();
+    await flush();
+    expect(attempt.sentOfType('SESSION_RESUME_PROVE')).toHaveLength(1);
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+    attempt.deliver({ type: 'SESSION_RESUMED', payload: resumedPayload('guest') });
+    await flush();
+    expect(attempt.sent.at(-1)?.type).toBe('ROOM_LEAVE');
+    expect(harness.connections).toStrictEqual([]);
+  });
+
+  it('a leave between attempts tries at once, not after the pending delay', async () => {
+    const { harness } = await connectedGuest();
+    harness.socket().drop();
+    await harness.timers.advance(0);
+    harness.socket().drop();
+    await flush();
+    expect(harness.timers.pendingDelays).toStrictEqual([RECONNECT_DELAYS_MS[1]]);
+    harness.controller.leaveRoom();
+    expect(harness.timers.pendingDelays).toStrictEqual([0]);
+    const socket = await resumedForLeave(harness);
+    socket.deliver({ type: 'SESSION_RESUMED', payload: resumedPayload('guest') });
+    expect(socket.sent.at(-1)?.type).toBe('ROOM_LEAVE');
+  });
+
+  it('completes the leave when the service says the session is unavailable', async () => {
+    const { harness, pc } = await connectedHost();
+    harness.socket().drop();
+    harness.controller.leaveRoom();
+    const socket = await resumedForLeave(harness);
+    socket.deliver({
+      type: 'ERROR',
+      payload: { code: 'SESSION_UNAVAILABLE', message: 'x', recoverable: true },
+    });
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+    expect(pc.closed).toBe(true);
+    expect(harness.timers.pendingCount).toBe(0);
+    await harness.timers.advance(600_000);
+    expect(harness.sockets).toHaveLength(2);
+  });
+
+  it('retries the leave a bounded number of times, then leaves locally', async () => {
+    const { harness, pc } = await connectedGuest();
+    harness.socket().drop();
+    harness.controller.leaveRoom();
+    for (const delay of LEAVE_RETRY_DELAYS_MS) {
+      await harness.timers.advance(delay);
+      // The service cannot be reached.
+      harness.socket().drop();
+      await flush();
+    }
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+    expect(harness.sockets).toHaveLength(1 + LEAVE_RETRY_DELAYS_MS.length);
+    expect(pc.closed).toBe(true);
+    expect(harness.connections).toHaveLength(1);
+    expect(harness.timers.pendingCount).toBe(0);
+    await harness.timers.advance(600_000);
+    expect(harness.sockets).toHaveLength(1 + LEAVE_RETRY_DELAYS_MS.length);
+  });
+
+  it('tries again if the connection fails after ROOM_LEAVE but before ROOM_LEFT', async () => {
+    const { harness } = await connectedGuest();
+    harness.socket().drop();
+    harness.controller.leaveRoom();
+    const first = await resumedForLeave(harness);
+    first.deliver({ type: 'SESSION_RESUMED', payload: resumedPayload('guest') });
+    expect(first.sent.at(-1)?.type).toBe('ROOM_LEAVE');
+    first.drop();
+    await flush();
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'leaving' });
+    // The next attempt learns the leave took effect.
+    const second = await resumedForLeave(harness, LEAVE_RETRY_DELAYS_MS[1]);
+    second.deliver({
+      type: 'ERROR',
+      payload: { code: 'SESSION_UNAVAILABLE', message: 'x', recoverable: true },
+    });
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+  });
+
+  it('bounds the wait for ROOM_LEFT and treats a refused leave as done', async () => {
+    const silent = await connectedGuest();
+    silent.harness.socket().drop();
+    silent.harness.controller.leaveRoom();
+    const socket = await resumedForLeave(silent.harness);
+    socket.deliver({ type: 'SESSION_RESUMED', payload: resumedPayload('guest') });
+    await silent.harness.timers.advance(RESUME_ATTEMPT_TIMEOUT_MS);
+    // No answer in time: abandoned (resumable), and the next attempt runs.
+    expect(socket.closeCalls).toStrictEqual([4000]);
+    expect(silent.harness.timers.pendingDelays).toStrictEqual([LEAVE_RETRY_DELAYS_MS[1]]);
+
+    const refused = await connectedHost();
+    refused.harness.socket().drop();
+    refused.harness.controller.leaveRoom();
+    const next = await resumedForLeave(refused.harness);
+    next.deliver({ type: 'SESSION_RESUMED', payload: resumedPayload('host') });
+    next.deliver({
+      type: 'ERROR',
+      payload: { code: 'INVALID_STATE', message: 'x', recoverable: true },
+    });
+    expect(refused.harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+  });
+
+  it('ignores a second Leave, and shutdown cancels the leave schedule', async () => {
+    const { harness } = await connectedGuest();
+    harness.socket().drop();
+    harness.controller.leaveRoom();
+    harness.controller.leaveRoom();
+    expect(harness.timers.pendingDelays).toStrictEqual([0]);
+    harness.controller.shutdown();
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: null });
+    expect(harness.timers.pendingCount).toBe(0);
+    await harness.timers.advance(600_000);
+    expect(harness.sockets).toHaveLength(1);
+  });
+
+  it('a connected leave still sends ROOM_LEAVE directly, with no resume', async () => {
+    const { harness } = await connectedGuest();
+    harness.controller.leaveRoom();
+    expect(harness.socket().sent.at(-1)?.type).toBe('ROOM_LEAVE');
+    expect(harness.sockets).toHaveLength(1);
+    expect(harness.timers.pendingCount).toBe(0);
+    harness.socket().deliver({ type: 'ROOM_LEFT', payload: {} });
+    expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
+    expect(harness.socket().closeCalls).toStrictEqual([]);
+    expect(harness.prover.calls).toStrictEqual([]);
   });
 });

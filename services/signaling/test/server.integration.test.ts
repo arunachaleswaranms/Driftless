@@ -1028,6 +1028,98 @@ describe('session resume over real sockets', () => {
     expectType(reply, 'SESSION_RESUMED');
   });
 
+  it('ends a resumed guest at once on ROOM_LEAVE, freeing its slot', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await roomPair(instance);
+    guest.socket.terminate();
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe(
+      'RECONNECTING',
+    );
+    const { client, reply } = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expectType(reply, 'SESSION_RESUMED');
+    client.send('ROOM_LEAVE');
+    await client.expect('ROOM_LEFT');
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe('CONNECTED');
+    expect((await host.expect('ROOM_PARTICIPANT_LEFT')).payload).toStrictEqual({
+      participantId: joined.payload.participantId,
+      reason: 'LEFT',
+    });
+    // The old resume secret is useless, and the slot is free for a new guest.
+    const replay = await resume(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expect(expectType(replay.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+    const next = await TestClient.open(instance.port);
+    next.send('ROOM_JOIN', {
+      roomId: created.payload.roomId,
+      inviteSecret: created.payload.inviteSecret,
+    });
+    expect((await next.expect('ROOM_JOINED')).payload.participantId).not.toBe(
+      joined.payload.participantId,
+    );
+  });
+
+  it('closes a resumed host room at once on ROOM_LEAVE, with or without a guest', async () => {
+    const instance = await startServer();
+    const { host, guest, created } = await roomPair(instance);
+    host.socket.terminate();
+    await guest.expect('ROOM_PARTICIPANT_CONNECTION');
+    const withGuest = await resume(
+      instance,
+      created.payload.sessionId,
+      created.payload.participantId,
+      created.payload.resumeSecret,
+    );
+    expectType(withGuest.reply, 'SESSION_RESUMED');
+    withGuest.client.send('ROOM_LEAVE');
+    await withGuest.client.expect('ROOM_LEFT');
+    await guest.expect('ROOM_PARTICIPANT_CONNECTION');
+    expect((await guest.expect('ROOM_CLOSED')).payload.reason).toBe('HOST_LEFT');
+
+    // A host alone: the room is deleted as soon as the leave is processed.
+    const lone = await TestClient.open(instance.port);
+    lone.send('ROOM_CREATE');
+    const alone = await lone.expect('ROOM_CREATED');
+    lone.socket.terminate();
+    await until(() => instance.server.connectionCount === 2, 'host release');
+    expect(instance.server.roomCount).toBe(1);
+    const resumedAlone = await resume(
+      instance,
+      alone.payload.sessionId,
+      alone.payload.participantId,
+      alone.payload.resumeSecret,
+    );
+    expectType(resumedAlone.reply, 'SESSION_RESUMED');
+    resumedAlone.client.send('ROOM_LEAVE');
+    await resumedAlone.client.expect('ROOM_LEFT');
+    expect(instance.server.roomCount).toBe(0);
+
+    // In both cases the invite no longer admits anyone and the host cannot resume.
+    for (const room of [created, alone]) {
+      const late = await TestClient.open(instance.port);
+      late.send('ROOM_JOIN', {
+        roomId: room.payload.roomId,
+        inviteSecret: room.payload.inviteSecret,
+      });
+      await late.expectError('ROOM_UNAVAILABLE', true);
+      const replay = await resume(
+        instance,
+        room.payload.sessionId,
+        room.payload.participantId,
+        room.payload.resumeSecret,
+      );
+      expect(expectType(replay.reply, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+    }
+  });
+
   it('logs no secret, proof, challenge, or identifier', async () => {
     const instance = await startServer();
     const { guest, created, joined } = await roomPair(instance);

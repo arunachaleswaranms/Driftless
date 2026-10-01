@@ -4,6 +4,7 @@ import {
   CONNECT_TIMEOUT_MS,
   EMPTY_STORAGE,
   OFFLINE_SOCKET_ERROR,
+  WAITING,
   breakDataChannel,
   closePeers,
   createRoom,
@@ -54,7 +55,7 @@ async function connectedPair(
   const { roomId, inviteSecret } = await createRoom(host);
   await join(guest, roomId, inviteSecret);
   await expectConnected(host, guest);
-  return { host, guest };
+  return { host, guest, roomId, inviteSecret };
 }
 
 async function expectStatus(peer: Peer, text: string | RegExp): Promise<void> {
@@ -383,4 +384,108 @@ test('recovers the data channel up to the negotiation bound, then stops safely',
   await room(guest.page).getByRole('button', { name: 'Leave room' }).click();
   await expectStatus(guest, 'You left the room. You are not in a room.');
   await expectStatus(host, 'The guest left. Room created. Waiting for a guest to join.');
+});
+
+const LEAVING = 'Leaving the room…';
+const LEFT = 'You left the room. You are not in a room.';
+
+/** The terminal-leave socket resumed only to send ROOM_LEAVE, without the secret. */
+function expectTerminalLeave(peer: Peer): void {
+  const last = peer.sockets.length - 1;
+  expect(frameTypes(peer, last, 'sent')).toStrictEqual([
+    'SESSION_RESUME_BEGIN',
+    'SESSION_RESUME_PROVE',
+    'ROOM_LEAVE',
+  ]);
+  // The other participant may already have relayed something to the resumed
+  // membership before the leave took effect, such as a recovery request; it
+  // is ignored, and nothing but ROOM_LEAVE was ever sent in reply.
+  const received = frameTypes(peer, last, 'received');
+  expect(received.slice(0, 2)).toStrictEqual(['SESSION_RESUME_CHALLENGE', 'SESSION_RESUMED']);
+  expect(received.at(-1)).toBe('ROOM_LEFT');
+  for (const type of received.slice(2, -1)) {
+    expect(['RTC_RECOVERY_REQUEST', 'ROOM_PARTICIPANT_CONNECTION']).toContain(type);
+  }
+  expect(framesContain(peer, resumeSecretOf(peer))).toBe(false);
+  expect(peer.sockets.every((socket) => socket.isClosed())).toBe(true);
+}
+
+/** What the page shows and stores after leaving: nothing of the room. */
+async function expectNothingLeft(peer: Peer): Promise<void> {
+  const secret = resumeSecretOf(peer);
+  expect((await peer.page.content()).includes(secret)).toBe(false);
+  expect(peer.page.url().includes(secret)).toBe(false);
+  expect(await storageSnapshot(peer.page)).toEqual(EMPTY_STORAGE);
+  expect(peer.navigations).toHaveLength(1);
+  const rtc = await rtcState(peer.page);
+  expect(rtc.peerConnections.map((connection) => connection.connectionState)).toStrictEqual([
+    'closed',
+  ]);
+  expect(rtc.mediaCalls).toStrictEqual([]);
+}
+
+test('a guest that leaves while reconnecting leaves the room for the service too', async ({
+  browser,
+  baseURL,
+  pageProblems,
+}) => {
+  const { host, guest, roomId, inviteSecret } = await connectedPair(browser, baseURL, pageProblems);
+  await guest.context.setOffline(true);
+  await dropSignaling(guest);
+  await expectStatus(guest, SIGNALING_RECONNECTING);
+  await expectStatus(host, PEER_RECONNECTING);
+
+  await room(guest.page).getByRole('button', { name: 'Leave room' }).click();
+  // The peer connection closes at once; the room controls are gone.
+  await expectStatus(guest, LEAVING);
+  expect((await rtcState(guest.page)).peerConnections[0]?.connectionState).toBe('closed');
+  await expect(room(guest.page).getByRole('button', { name: 'Leave room' })).toHaveCount(0);
+
+  await guest.context.setOffline(false);
+  await expectStatus(guest, LEFT);
+  // The service ended the membership at once, as an intentional leave.
+  await expectStatus(host, `The guest left. ${WAITING}`);
+  expectTerminalLeave(guest);
+  await expectNothingLeft(guest);
+  const log = await statusLog(guest);
+  expect(log.slice(log.indexOf(LEAVING))).toStrictEqual([LEAVING, LEFT]);
+
+  // The slot is free: a new guest joins with the same invite and connects.
+  const next = await openPeer(browser, baseURL, pageProblems);
+  await join(next, roomId, inviteSecret);
+  await expectStatus(next, CONNECTED_STATUS);
+  await expectStatus(host, CONNECTED_STATUS);
+  expect(acceptOfflineErrors(pageProblems)).toBeGreaterThan(0);
+});
+
+test('a host that leaves while reconnecting closes the room and invalidates the invite', async ({
+  browser,
+  baseURL,
+  pageProblems,
+}) => {
+  const { host, guest, roomId, inviteSecret } = await connectedPair(browser, baseURL, pageProblems);
+  await host.context.setOffline(true);
+  await dropSignaling(host);
+  await expectStatus(host, SIGNALING_RECONNECTING);
+  await expectStatus(guest, PEER_RECONNECTING);
+
+  await room(host.page).getByRole('button', { name: 'Leave room' }).click();
+  await expectStatus(host, LEAVING);
+  expect((await rtcState(host.page)).peerConnections[0]?.connectionState).toBe('closed');
+
+  await host.context.setOffline(false);
+  await expectStatus(host, LEFT);
+  await expectStatus(guest, 'The host closed the room. You are not in a room.');
+  // The guest is not promoted.
+  await expect(room(guest.page).getByRole('button', { name: 'Create room' })).toBeVisible();
+  expectTerminalLeave(host);
+  await expectNothingLeft(host);
+
+  // The invite no longer admits anyone.
+  const late = await openPeer(browser, baseURL, pageProblems);
+  await join(late, roomId, inviteSecret);
+  await expect(room(late.page).getByRole('alert')).toHaveText(
+    'That room is not available. Check the room ID and invite secret, or ask the host for a new invite.',
+  );
+  expect(acceptOfflineErrors(pageProblems)).toBeGreaterThan(0);
 });

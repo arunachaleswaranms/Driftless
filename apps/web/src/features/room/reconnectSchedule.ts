@@ -8,6 +8,16 @@
 export const RECONNECT_DELAYS_MS: readonly number[] = [0, 250, 500, 1000, 2000, 4000, 4000, 4000];
 
 /**
+ * Delays before each attempt to reach the service after the user leaves a
+ * room while its signaling connection is reconnecting. Each attempt resumes
+ * the membership only to end it at once with `ROOM_LEAVE`. Shorter than the
+ * reconnect schedule, because the user is waiting to leave; finite, so a
+ * service that cannot be reached leaves the cleanup to its grace period.
+ * Provisional.
+ */
+export const LEAVE_RETRY_DELAYS_MS: readonly number[] = [0, 250, 500, 1000, 2000];
+
+/**
  * How long one resume attempt may take, from opening the socket to the
  * authoritative snapshot, before it is abandoned and the next one is
  * scheduled. Provisional.

@@ -247,7 +247,20 @@ describe('RoomPanel', () => {
     expect(status.textContent).toBe('Reconnecting to signaling…');
     expect(region.textContent).not.toMatch(/attempt|challenge|proof|\d+\s*ms/i);
     fireEvent.click(within(region).getByRole('button', { name: 'Leave room' }));
+    // The leave is being made authoritative; the room controls are gone.
+    expect(status.textContent).toBe('Leaving the room…');
+    expect(within(region).queryByRole('button', { name: 'Leave room' })).toBeNull();
+    // The service cannot be reached: after the finite leave schedule, the
+    // room is left locally, without alarming the user.
+    await act(async () => {
+      for (const delay of [0, 250, 500, 1000, 2000]) {
+        await timers.advance(delay);
+        sockets.at(-1)?.drop();
+        await flush();
+      }
+    });
     expect(status.textContent).toBe('You left the room. You are not in a room.');
+    expect(within(region).queryByRole('alert')).toBeNull();
     expect(timers.pendingCount).toBe(0);
   });
 

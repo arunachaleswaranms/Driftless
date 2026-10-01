@@ -25,6 +25,7 @@ import {
 } from './peerSession.ts';
 import {
   HOST_RECOVERY_DELAY_MS,
+  LEAVE_RETRY_DELAYS_MS,
   RECONNECT_DELAYS_MS,
   RESUME_ATTEMPT_TIMEOUT_MS,
   browserTimers,
@@ -149,9 +150,21 @@ interface Membership {
   readonly resumeSecret: ResumeSecret;
 }
 
-/** One bounded schedule of resume attempts after signaling was lost. */
+/**
+ * One bounded schedule of resume attempts after signaling was lost.
+ *
+ * - `resume`: resume the membership and continue the room.
+ * - `leave`: the user left while signaling was down; resume the membership
+ *   only to end it at once with `ROOM_LEAVE`. A resume under this purpose
+ *   never restores the room.
+ *
+ * The purpose changes once at most, from `resume` to `leave`, when the user
+ * leaves; an attempt already in flight then continues under the new purpose.
+ */
 interface Reconnect {
-  /** Index of the next attempt in RECONNECT_DELAYS_MS. */
+  purpose: 'resume' | 'leave';
+  delays: readonly number[];
+  /** Index of the next attempt in `delays`. */
   next: number;
   /** The pending delay or attempt timeout. */
   cancelTimer: Cancel | undefined;
@@ -280,7 +293,7 @@ export class RoomController {
     }
     if (phase !== 'in-room') return;
     if (!this.#signalingReady) {
-      this.#endRoom('left');
+      this.#beginTerminalLeave();
       return;
     }
     // The leave goes out before the peer teardown, so the service's notice
@@ -292,6 +305,39 @@ export class RoomController {
     if (!sent) {
       this.#closeSignaling();
       this.#setState({ phase: 'idle', notice: 'left' });
+    }
+  }
+
+  /**
+   * Leave while signaling is reconnecting. The peer session closes now and
+   * nothing renegotiates. The room's credentials stay in private memory
+   * only while a short, finite schedule tries to reach the service, resume
+   * the membership, and end it with `ROOM_LEAVE`, so the service frees the
+   * slot, or closes the host's room and invalidates its invite, at once.
+   * If the service cannot be reached in that time the room is left locally
+   * and the credentials discarded, and the service ends the membership when
+   * its reconnect grace or the room's lifetime does.
+   */
+  #beginTerminalLeave(): void {
+    const reconnect = this.#reconnect;
+    if (reconnect === undefined || this.#membership === undefined) {
+      this.#endRoom('left');
+      return;
+    }
+    this.#closePeer();
+    this.#resetNegotiation();
+    reconnect.purpose = 'leave';
+    reconnect.delays = LEAVE_RETRY_DELAYS_MS;
+    this.#setState({ phase: 'leaving' });
+    if (this.#signaling === undefined) {
+      // Waiting between attempts: try at once instead.
+      reconnect.cancelTimer?.();
+      reconnect.cancelTimer = undefined;
+      reconnect.next = 0;
+      this.#scheduleAttempt();
+    } else {
+      // An attempt is in flight; it continues as the first leave attempt.
+      reconnect.next = 1;
     }
   }
 
@@ -445,12 +491,12 @@ export class RoomController {
         }
         return;
       case 'ROOM_LEFT':
-        if (state.phase === 'leaving') this.#setState({ phase: 'idle', notice: 'left' });
+        if (state.phase === 'leaving') this.#leaveConfirmed();
         return;
       case 'ROOM_CLOSED':
         // The connection stays open for a later room.
         if (state.phase === 'in-room') this.#endRoom(CLOSED_NOTICES[message.payload.reason], true);
-        else if (state.phase === 'leaving') this.#setState({ phase: 'idle', notice: 'left' });
+        else if (state.phase === 'leaving') this.#leaveConfirmed();
         return;
       case 'ERROR':
         this.#error(message.payload.code, message.payload.recoverable);
@@ -524,9 +570,28 @@ export class RoomController {
     const notice = errorNotice(code);
     if (!recoverable) this.#closingNotice = notice;
     else if (this.#state.phase === 'opening') this.#setState({ phase: 'idle', notice });
+    // A terminal leave sent nothing but ROOM_LEAVE on this connection, so a
+    // refusal means the membership is already gone.
+    else if (this.#reconnect?.purpose === 'leave') this.#endRoom('left');
+  }
+
+  /** The service confirmed the leave, or closed the room first. */
+  #leaveConfirmed(): void {
+    if (this.#reconnect?.purpose === 'leave') this.#endRoom('left');
+    else this.#setState({ phase: 'idle', notice: 'left' });
   }
 
   #signalingClosed(reason: SignalingCloseReason): void {
+    if (this.#reconnect?.purpose === 'leave') {
+      // A terminal-leave connection ended: before or after the resume, and
+      // possibly before ROOM_LEAVE took effect. Try again within the
+      // schedule; a later attempt finds the membership held again, or gone.
+      this.#signaling = undefined;
+      this.#signalingReady = false;
+      if (reason === 'closed') this.#attemptFailed();
+      else this.#endRoom('left');
+      return;
+    }
     const state = this.#state;
     // An ordinary loss of the connection carrying a room is resumable. A
     // protocol error, or a close after a non-recoverable error (a policy
@@ -565,7 +630,12 @@ export class RoomController {
     this.#signalingReady = false;
     this.#abandonUnfinishedPeer();
     this.#setInRoom({ ...this.#withPeerProgress(state), signaling: 'reconnecting' });
-    this.#reconnect = { next: 0, cancelTimer: undefined };
+    this.#reconnect = {
+      purpose: 'resume',
+      delays: RECONNECT_DELAYS_MS,
+      next: 0,
+      cancelTimer: undefined,
+    };
     this.#scheduleAttempt();
   }
 
@@ -573,9 +643,10 @@ export class RoomController {
   #scheduleAttempt(): void {
     const reconnect = this.#reconnect;
     if (reconnect === undefined) return;
-    const delay = RECONNECT_DELAYS_MS[reconnect.next];
+    const delay = reconnect.delays[reconnect.next];
     if (delay === undefined) {
-      this.#endRoom('session_unrecoverable');
+      // A leave that could not reach the service is still a leave.
+      this.#endRoom(reconnect.purpose === 'leave' ? 'left' : 'session_unrecoverable');
       return;
     }
     reconnect.next += 1;
@@ -645,15 +716,43 @@ export class RoomController {
         return;
       }
       case 'SESSION_RESUMED':
-        this.#resumed(membership, message.payload);
+        if (this.#reconnect.purpose === 'leave') this.#resumedToLeave(membership, message.payload);
+        else this.#resumed(membership, message.payload);
         return;
       case 'ERROR':
-        // SESSION_UNAVAILABLE, or any other refusal: this attempt is over.
-        this.#attemptFailed();
+        // For a leave, an unavailable membership is already what the user
+        // wants. Otherwise, or for any other refusal, this attempt is over.
+        if (this.#reconnect.purpose === 'leave' && message.payload.code === 'SESSION_UNAVAILABLE') {
+          this.#endRoom('left');
+        } else {
+          this.#attemptFailed();
+        }
         return;
       default:
         // Nothing else is expected before the snapshot.
         this.#attemptFailed();
+    }
+  }
+
+  /**
+   * The membership is back on this connection, for the leave only: nothing
+   * is reconciled or renegotiated, and the room view is not restored.
+   * `ROOM_LEAVE` goes out at once. The attempt's timeout keeps running as
+   * the bound on `ROOM_LEFT`; if the connection fails first, the next
+   * attempt finds the membership held again or already gone.
+   */
+  #resumedToLeave(membership: Membership, snapshot: SessionResumedMessage['payload']): void {
+    if (
+      snapshot.sessionId !== membership.sessionId ||
+      snapshot.participantId !== membership.participantId
+    ) {
+      this.#endRoom('left');
+      return;
+    }
+    this.#signalingReady = true;
+    if (this.#signaling?.send({ type: 'ROOM_LEAVE', payload: {} }) !== true) {
+      this.#signalingReady = false;
+      this.#attemptFailed();
     }
   }
 
