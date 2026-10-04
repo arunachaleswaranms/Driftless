@@ -5,6 +5,7 @@ import {
   parsePeerMessage,
 } from '@driftless/protocol';
 import { test, expect } from './support.ts';
+import { PEER_APPLICATION_RATE_BURST } from '../src/features/room/peerSession.ts';
 import {
   openPeer,
   closePeers,
@@ -15,6 +16,7 @@ import {
   dropSignaling,
   identities,
   status,
+  statusLog,
   CONNECTED_STATUS,
   EMPTY_STORAGE,
   storageSnapshot,
@@ -59,6 +61,12 @@ async function privacy(peer: Peer, names: string[]) {
     whole: window.rtcProbe.wholeFileReads,
   }));
   expect(evidence.sends.length).toBeGreaterThan(2);
+  // Normal Phase 3A setup remains well below one inbound burst, even without refill.
+  const applications = evidence.sends.filter((send) => {
+    const parsed = parsePeerMessage(send.text);
+    return parsed.ok && !['PEER_HELLO', 'PEER_READY'].includes(parsed.message.type);
+  });
+  expect(applications.length).toBeLessThan(PEER_APPLICATION_RATE_BURST / 2);
   for (const send of evidence.sends) {
     expect(send.kind).toBe('string');
     expect(send.bytes).toBeLessThanOrEqual(MAX_PEER_MESSAGE_BYTES);
@@ -274,4 +282,70 @@ test('Local Sync signaling-only reconnect preserves channel, identity and both-r
       reads: window.rtcProbe.slices.length,
     })),
   ).toEqual(before);
+});
+
+test('Local Sync valid application flooding closes the receiver session and recovers with Ready reset', async ({
+  browser,
+  baseURL,
+  pageProblems,
+}) => {
+  const { host, guest } = await readyPair(browser, baseURL, pageProblems);
+  // The existing E2E probe holds the real channel. No production hook is needed.
+  // Exact admission timing is asserted by injected-clock PeerSession unit tests.
+  const injected = await guest.page.evaluate((burst) => {
+    const probe = window.rtcProbe;
+    const channel = probe.channels.at(-1);
+    const lastText = probe.controlSends.at(-1)?.text;
+    const readyText = probe.controlSends.find(
+      (m) => (JSON.parse(m.text) as { type: string }).type === 'READY',
+    )?.text;
+    if (!channel || !lastText || !readyText) throw new Error('no ready control channel');
+    const last = JSON.parse(lastText) as { sequence: number };
+    const ready = JSON.parse(readyText) as { sequence: number; sentAt: number };
+    const texts: string[] = [];
+    for (let i = 0; i <= burst; i++) {
+      const text = JSON.stringify({ ...ready, sequence: last.sequence + 1 + i, sentAt: 0 });
+      texts.push(text);
+      channel.send(text);
+    }
+    return texts;
+  }, PEER_APPLICATION_RATE_BURST);
+  expect(injected).toHaveLength(PEER_APPLICATION_RATE_BURST + 1);
+  for (const text of injected) expect(parsePeerMessage(text).ok).toBe(true);
+  await expect
+    .poll(() =>
+      host.page.evaluate(() => ({
+        channel: window.rtcProbe.channels[0]?.readyState,
+        connection: window.rtcProbe.peerConnections[0]?.connectionState,
+      })),
+    )
+    .toEqual({ channel: 'closed', connection: 'closed' });
+  for (const peer of [host, guest]) {
+    await expect.poll(() => peer.page.evaluate(() => window.rtcProbe.channels.length)).toBe(2);
+    await expect(status(peer.page)).toHaveText(CONNECTED_STATUS, { timeout: 20_000 });
+    expect(await statusLog(peer)).toContain('Peer connection lost. Recovering…');
+    await expect(
+      setupPanel(peer).getByText('Both participants are ready.', { exact: true }),
+    ).toHaveCount(0);
+    const evidence = await peer.page.evaluate(() => ({
+      reads: window.rtcProbe.slices.length,
+      infos: window.rtcProbe.controlSends
+        .map(
+          (m) =>
+            JSON.parse(m.text) as {
+              type: string;
+              payload: { negotiationId: string; fingerprint: string; selectionId: string };
+            },
+        )
+        .filter((m) => m.type === 'MEDIA_INFO'),
+    }));
+    expect(evidence.reads).toBe(1);
+    expect(evidence.infos).toHaveLength(2);
+    expect(evidence.infos[1]?.payload.negotiationId).not.toBe(
+      evidence.infos[0]?.payload.negotiationId,
+    );
+    expect(evidence.infos[1]?.payload.fingerprint).toBe(evidence.infos[0]?.payload.fingerprint);
+    expect(evidence.infos[1]?.payload.selectionId).toBe(evidence.infos[0]?.payload.selectionId);
+  }
+  await bothReady(host, guest);
 });

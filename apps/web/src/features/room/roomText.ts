@@ -106,6 +106,8 @@ const PEER_FAILURES: Readonly<Record<PeerFailure, string>> = {
   unexpected_channel:
     'The other browser opened an unexpected channel, so the connection was closed.',
   peer_protocol: 'The other browser sent an unexpected message, so the connection was closed.',
+  application_rate_limit:
+    'The other browser sent too many application messages, so the connection was closed.',
   candidate_limit: 'The other browser sent too much connection data, so the connection was closed.',
   signaling_unavailable: 'Connection details could not be sent through the signaling service.',
   relay_unavailable:

@@ -409,6 +409,8 @@ The wire identity is bound to the current SessionId. Every new selected file rec
 
 All identity/readiness state stays in page memory. Phase 3A adds no playback controls, heartbeat, clock/drift logic, media transfer, persistence, or Progressive Watch. Automated evidence and exact commands are recorded in [PHASE3A_IMPLEMENTATION.md](docs/PHASE3A_IMPLEMENTATION.md). Phase 3 exit gate remains **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**, and `DEFERRED-PHYSICAL-001` through `007` remain OPEN.
 
+Independent review correction **3A-01** adds a receiver-local inbound application token bucket at the PeerSession control-channel trust boundary: burst **32**, refill **8 messages/second**, per-session state, with handshake traffic excluded. A valid excess message is not dispatched; `application_rate_limit` fails the session once and existing Phase 2C fresh-peer recovery invalidates remote identity/readiness and reannounces retained local identity. Protocol, wire version, fingerprint algorithm, signaling, and outbound application sends are unchanged. The correction remains pending independent re-review; Phase 3B must not begin before review PASS. Updated verification is recorded separately from original evidence in [PHASE3A_IMPLEMENTATION.md](docs/PHASE3A_IMPLEMENTATION.md).
+
 ## Open Deferred Qualification
 
 - Phase 2 physical Android cross-network establishment and recovery, selected-path evidence on both real peers, and public TURN forced-relay qualification remain **DEFERRED / NOT CLOSED**. T1/T2 are **PASS — software**; T3/T4 remain **GAP / DEFERRED** because no publicly reachable TURN service was available. The literal physical exit gate is **NOT PASSED**.

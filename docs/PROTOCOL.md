@@ -288,6 +288,12 @@ The browser's signaling reconnect schedule, its terminal-leave schedule, its per
 
 Phase 3A adds exactly `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, and `NOT_READY`, both directions on `driftless-control` only. They are never signaling messages, room-store fields, or media-transfer messages. `protocolVersion` remains 1; the pre-release endpoints ship together.
 
+### Receiver-local application traffic bound
+
+PeerSession enforces one finite inbound token bucket shared by all five application types, after parsing, current session/negotiation/participant validation, increasing sequence validation, and handshake completion, before application dispatch. Initial allowance and maximum capacity are **32 messages**; lazy refill is **8 messages/second**, based exclusively on the injected local receiver clock in milliseconds. Fractional tokens are retained, capacity is clamped, identical timestamps grant no refill, and backwards readings cannot lower the refill timestamp or double-count elapsed time when the clock catches up. Peer `sentAt` is diagnostic only and grants no allowance.
+
+`PEER_HELLO` and `PEER_READY` retain their strict handshake state machine and consume no application tokens. Malformed, unknown, binary, wrong-context, duplicate/lower-sequence, and premature application messages fail as `peer_protocol`, without consuming application tokens. A valid application message without one full token is not dispatched: the current PeerSession fails once with the fixed local reason `application_rate_limit`, closes its channel and connection, and detaches handlers. Existing fresh-peer recovery decides the next action; each fresh PeerSession starts with the full burst. Outbound sends are unchanged. This provisional abuse bound is transport enforcement, not a throughput guarantee or wire field: no counter, acknowledgement, rate-limit message, new timestamp, or version change is introduced.
+
 ### Media identifiers and bounds
 
 - `MediaSelectionId`: 16 browser Web Crypto random bytes (128 bits), canonical unpadded base64url, exactly 22 characters including zero unused tail bits. Non-secret; generated for each new selection, never intentionally reused. It has its own branded type even though its encoding shares the room-ID width.

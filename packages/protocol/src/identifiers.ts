@@ -1,8 +1,9 @@
 // Identifier and credential formats shared by every Driftless endpoint.
 //
 // Each value is fixed-length, unpadded base64url encoding of a fixed number of
-// random bytes. The formats differ in length so that one kind of value cannot
-// be mistaken for another. Validation accepts only the canonical encoding:
+// random bytes. Several security-sensitive kinds intentionally use distinct
+// lengths; kinds sharing a representation are accepted only in their exact
+// protocol field/context. Validation accepts only the canonical encoding:
 // where the byte count is not a multiple of three, the unused low bits of the
 // final character must be zero, so every accepted string decodes to exactly
 // one byte sequence and re-encodes to itself.
@@ -81,8 +82,8 @@ export const INVITE_SECRET_BYTES = 32;
 export const INVITE_SECRET_LENGTH = 43;
 export const PARTICIPANT_ID_BYTES = 12;
 export const PARTICIPANT_ID_LENGTH = 16;
-// 18 rather than 16 bytes keeps every identifier kind a distinct length; a
-// 16-byte value would have the room ID's 22-character form.
+// 18 rather than 16 bytes distinguishes negotiation IDs from the shared
+// 22-character room ID and media selection ID representation.
 export const NEGOTIATION_ID_BYTES = 18;
 export const NEGOTIATION_ID_LENGTH = 24;
 // 20 bytes give a 27-character form that no other identifier uses.

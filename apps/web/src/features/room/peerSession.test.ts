@@ -17,6 +17,8 @@ import {
 } from '../../test/room.ts';
 import {
   MAX_QUEUED_REMOTE_CANDIDATE_BYTES,
+  PEER_APPLICATION_RATE_BURST,
+  PEER_APPLICATION_RATE_PER_SECOND,
   PeerSession,
   type NegotiationBody,
   type PeerFailure,
@@ -38,6 +40,8 @@ function setup(
     onApplicationMessage?: (body: ApplicationBody) => void;
     previousNegotiationId?: NegotiationId;
     configuration?: RTCConfiguration | (() => RTCConfiguration);
+    clock?: () => number;
+    negotiationId?: NegotiationId;
   } = {},
 ) {
   const connections: FakePeerConnection[] = [];
@@ -47,7 +51,7 @@ function setup(
     role,
     ...(options.onApplicationMessage ? { onApplicationMessage: options.onApplicationMessage } : {}),
     sessionId: SESSION_ID,
-    negotiationId: NEGOTIATION,
+    negotiationId: options.negotiationId ?? NEGOTIATION,
     ...(options.previousNegotiationId === undefined
       ? {}
       : { previousNegotiationId: options.previousNegotiationId }),
@@ -65,7 +69,7 @@ function setup(
         signals.push(body);
         return true;
       }),
-    clock: () => 7,
+    clock: options.clock ?? (() => 7),
     onStateChange: (state, failure) => states.push({ state, failure }),
   });
   const connection = () => {
@@ -790,9 +794,9 @@ function incomingApp(
     },
   });
 }
-async function appHost(connected = true) {
+async function appHost(connected = true, options: Parameters<typeof setup>[1] = {}) {
   const received: ApplicationBody[] = [];
-  const h = setup('host', { onApplicationMessage: (body) => received.push(body) });
+  const h = setup('host', { ...options, onApplicationMessage: (body) => received.push(body) });
   void h.session.start();
   await flush();
   await h.connection().settle('createOffer');
@@ -801,8 +805,14 @@ async function appHost(connected = true) {
   if (!channel) throw new Error('no channel');
   channel.open();
   if (connected) {
-    channel.receive(hello(0));
-    channel.receive(ready(1));
+    const context = {
+      sessionId: SESSION_ID,
+      negotiationId: options.negotiationId ?? NEGOTIATION,
+      senderId: GUEST_ID,
+      recipientId: HOST_ID,
+    };
+    channel.receive(hello(0, context));
+    channel.receive(ready(1, context));
   }
   return { ...h, channel, received };
 }
@@ -876,5 +886,214 @@ describe('peer application boundary', () => {
     );
     expect(received).toEqual([]);
     expect(session.sendApplicationMessage(appBody)).toBe(false);
+  });
+});
+
+describe('inbound peer application rate bound', () => {
+  const burst = PEER_APPLICATION_RATE_BURST;
+  const rate = PEER_APPLICATION_RATE_PER_SECOND;
+  function consumeBurst(channel: FakeDataChannel, context: object = {}) {
+    for (let i = 0; i < burst; i++) channel.receive(incomingApp(i + 2, context));
+  }
+
+  it('accepts the exact burst at one instant with the full allowance after handshake', async () => {
+    const { channel, received, session } = await appHost();
+    consumeBurst(channel);
+    expect(received).toHaveLength(burst);
+    expect(session.state).toBe('connected');
+  });
+
+  it('first excess message fails once, tears down, and makes all captured handlers powerless', async () => {
+    const { channel, connection, states, received, session } = await appHost();
+    const pc = connection();
+    const message = channel.onmessage;
+    const closed = channel.onclose;
+    const error = channel.onerror;
+    const connectionChanged = pc.onconnectionstatechange;
+    consumeBurst(channel);
+    const sends = channel.sent.length;
+    channel.receive(incomingApp(burst + 2));
+    expect(received).toHaveLength(burst);
+    expect(session.state).toBe('failed');
+    expect(states.filter((s) => s.state === 'failed')).toEqual([
+      { state: 'failed', failure: 'application_rate_limit' },
+    ]);
+    expect(channel.closed).toBe(true);
+    expect(pc.closed).toBe(true);
+    expect([
+      channel.onopen,
+      channel.onmessage,
+      channel.onclose,
+      channel.onerror,
+      pc.onicecandidate,
+      pc.onconnectionstatechange,
+      pc.ondatachannel,
+    ]).toEqual([null, null, null, null, null, null, null]);
+    for (let i = 0; i < 3; i++) {
+      message?.call(
+        channel.asChannel(),
+        new MessageEvent('message', {
+          data: incomingApp(burst + 3 + i),
+        }),
+      );
+      closed?.call(channel.asChannel(), new Event('close'));
+      error?.call(channel.asChannel(), new Event('error') as RTCErrorEvent);
+      connectionChanged?.call(
+        pc.asPeerConnection() as RTCPeerConnection,
+        new Event('connectionstatechange'),
+      );
+    }
+    expect(received).toHaveLength(burst);
+    expect(states.filter((s) => s.state === 'failed')).toHaveLength(1);
+    expect(channel.sent).toHaveLength(sends);
+    expect(session.sendApplicationMessage(appBody)).toBe(false);
+  });
+
+  it('refills exactly one second of messages, then refuses the next immediate message', async () => {
+    let now = 1000;
+    const { channel, received, states, session } = await appHost(true, { clock: () => now });
+    consumeBurst(channel);
+    now += 1000;
+    for (let i = 0; i < rate; i++) channel.receive(incomingApp(burst + 2 + i));
+    expect(received).toHaveLength(burst + rate);
+    expect(session.state).toBe('connected');
+    channel.receive(incomingApp(burst + rate + 2));
+    expect(received).toHaveLength(burst + rate);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it('retains fractional refill deterministically across arrivals', async () => {
+    let now = 0;
+    const { channel, received, session, states } = await appHost(true, { clock: () => now });
+    consumeBurst(channel);
+    now = 187.5; // 1.5 tokens; one admitted leaves 0.5.
+    channel.receive(incomingApp(burst + 2));
+    now += 62.5; // Another 0.5 token allows exactly one more.
+    channel.receive(incomingApp(burst + 3));
+    expect(received).toHaveLength(burst + 2);
+    expect(session.state).toBe('connected');
+    channel.receive(incomingApp(burst + 4));
+    expect(received).toHaveLength(burst + 2);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it('refuses admission below one full token', async () => {
+    let now = 0;
+    const { channel, received, states } = await appHost(true, { clock: () => now });
+    consumeBurst(channel);
+    now = 124; // 0.992 tokens.
+    channel.receive(incomingApp(burst + 2));
+    expect(received).toHaveLength(burst);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it('clamps refill to the burst capacity after an hour idle', async () => {
+    let now = 0;
+    const { channel, received, states, session } = await appHost(true, { clock: () => now });
+    consumeBurst(channel);
+    now = 3_600_000;
+    for (let i = 0; i < burst; i++) channel.receive(incomingApp(burst + 2 + i));
+    expect(received).toHaveLength(2 * burst);
+    expect(session.state).toBe('connected');
+    channel.receive(incomingApp(2 * burst + 2));
+    expect(received).toHaveLength(2 * burst);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it('identical receiver timestamps never refill, regardless of peer sentAt', async () => {
+    const { channel, received, states } = await appHost(true, { clock: () => 1000 });
+    consumeBurst(channel);
+    channel.receive(incomingApp(burst + 2).replace('"sentAt":0', '"sentAt":9007199254740991'));
+    expect(received).toHaveLength(burst);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it('a backwards clock grants no refill and does not throw', async () => {
+    let now = 1000;
+    const { channel, received, states } = await appHost(true, { clock: () => now });
+    consumeBurst(channel);
+    now = 0;
+    expect(() => {
+      channel.receive(incomingApp(burst + 2));
+    }).not.toThrow();
+    expect(received).toHaveLength(burst);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it('clock catch-up does not count a previously observed interval twice', async () => {
+    let now = 1000;
+    const { channel, received, states, session } = await appHost(true, { clock: () => now });
+    for (let i = 0; i < burst - 1; i++) channel.receive(incomingApp(i + 2));
+    now = 0;
+    channel.receive(incomingApp(burst + 1));
+    expect(session.state).toBe('connected');
+    now = 1000;
+    channel.receive(incomingApp(burst + 2));
+    expect(received).toHaveLength(burst);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  const pair = {
+    localSelectionId: 'A'.repeat(22),
+    remoteSelectionId: 'B'.repeat(21) + 'A',
+  };
+  it.each([
+    [
+      'MEDIA_INFO',
+      {
+        selectionId: pair.localSelectionId,
+        fingerprintVersion: 1,
+        fingerprint: 'A'.repeat(43),
+        byteLength: 1,
+      },
+    ],
+    ['MEDIA_MATCH', { ...pair, fingerprint: 'A'.repeat(43) }],
+    ['MEDIA_MISMATCH', { ...pair, reason: 'IDENTITY_MISMATCH' }],
+    ['READY', { ...pair, fingerprint: 'A'.repeat(43) }],
+    ['NOT_READY', appBody.payload],
+  ])('counts valid %s against the same application bucket', async (type, payload) => {
+    const { channel, received, states } = await appHost();
+    consumeBurst(channel);
+    channel.receive(incomingApp(burst + 2, {}, type, payload));
+    expect(received).toHaveLength(burst);
+    expect(states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+
+  it.each([
+    ['binary', new ArrayBuffer(1)],
+    ['unknown', incomingApp(burst + 2, {}, 'PLAY')],
+    ['malformed JSON', '{'],
+    ['invalid payload', incomingApp(burst + 2, {}, 'MEDIA_INFO', {})],
+    ['oversized', 'x'.repeat(1025)],
+    ['version', incomingApp(burst + 2).replace('"protocolVersion":1', '"protocolVersion":2')],
+    ['session', incomingApp(burst + 2, { sessionId: OTHER_SESSION_ID })],
+    ['negotiation', incomingApp(burst + 2, { negotiationId: OTHER_NEGOTIATION })],
+    ['sender', incomingApp(burst + 2, { senderId: STRANGER_ID })],
+    ['recipient', incomingApp(burst + 2, { recipientId: STRANGER_ID })],
+    ['duplicate sequence', incomingApp(burst + 1)],
+    ['lower sequence', incomingApp(1)],
+    ['repeated handshake', ready(burst + 2)],
+  ])('keeps %s as peer_protocol even with no application tokens left', async (_name, data) => {
+    const { channel, received, states } = await appHost();
+    consumeBurst(channel);
+    channel.receive(data);
+    expect(received).toHaveLength(burst);
+    expect(states.at(-1)?.failure).toBe('peer_protocol');
+  });
+
+  it('a fresh PeerSession and negotiation starts with a full allowance after failure', async () => {
+    const old = await appHost();
+    consumeBurst(old.channel);
+    old.channel.receive(incomingApp(burst + 2));
+    expect(old.session.state).toBe('failed');
+    const fresh = await appHost(true, { negotiationId: OTHER_NEGOTIATION });
+    expect(fresh.connection()).not.toBe(old.connection());
+    expect(fresh.channel).not.toBe(old.channel);
+    consumeBurst(fresh.channel, { negotiationId: OTHER_NEGOTIATION });
+    expect(fresh.received).toHaveLength(burst);
+    expect(fresh.session.state).toBe('connected');
+    fresh.channel.receive(incomingApp(burst + 2, { negotiationId: OTHER_NEGOTIATION }));
+    expect(fresh.received).toHaveLength(burst);
+    expect(fresh.states.at(-1)?.failure).toBe('application_rate_limit');
   });
 });

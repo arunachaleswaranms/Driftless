@@ -1,4 +1,7 @@
 import {
+  type ApplicationBody,
+  type MediaFingerprint,
+  type MediaSelectionId,
   PEER_CONTROL_CHANNEL_LABEL,
   type InviteSecret,
   type NegotiationId,
@@ -21,6 +24,8 @@ import {
 import type { IceServersResult } from './iceServers.ts';
 import { RoomController, type RoomState } from './roomController.ts';
 import type { SignalingUrlResult } from './signalingUrl.ts';
+import { PEER_APPLICATION_RATE_BURST } from './peerSession.ts';
+import { HOST_RECOVERY_DELAY_MS } from './reconnectSchedule.ts';
 
 const ROOM_ID = `${'R'.repeat(21)}Q` as RoomId;
 const OTHER_ROOM_ID = `${'Z'.repeat(21)}Q` as RoomId;
@@ -110,8 +115,8 @@ async function connectHost(harness: Harness, guestId: ParticipantId = GUEST_ID) 
   const pc = harness.connection();
   await pc.settle('createOffer');
   await pc.settle('setLocalDescription');
-  const offer = harness.socket().sentOfType('RTC_OFFER').at(-1);
-  if (offer === undefined) throw new Error('no offer');
+  const offer = harness.socket().sent.at(-1);
+  if (offer?.type !== 'RTC_OFFER' && offer?.type !== 'RTC_RECOVER') throw new Error('no offer');
   const { negotiationId } = offer.payload;
   harness.socket().deliver({ type: 'RTC_ANSWER', payload: { negotiationId, sdp: 'v=0\r\n' } });
   await flush();
@@ -153,6 +158,124 @@ function inRoom(state: RoomState) {
   if (state.phase !== 'in-room') throw new Error(`expected in-room, got ${state.phase}`);
   return state;
 }
+
+describe('peer application flooding and Local Sync recovery', () => {
+  it('uses normal fresh-peer recovery, clears remote readiness, and reannounces retained identity', async () => {
+    const h = await hostInRoom();
+    await guestJoins(h);
+    const old = await connectHost(h);
+    const sync = h.controller.localSync;
+    const localSelectionId = 'A'.repeat(22) as MediaSelectionId;
+    const remoteSelectionId = ('B'.repeat(21) + 'A') as MediaSelectionId;
+    const fingerprint = 'A'.repeat(43) as MediaFingerprint;
+    sync.dispatch({ type: 'select', selectionId: localSelectionId, byteLength: 1 });
+    sync.dispatch({ type: 'playback', selectionId: localSelectionId, status: 'ready' });
+    sync.dispatch({ type: 'fingerprint', selectionId: localSelectionId, fingerprint });
+    const info: ApplicationBody = {
+      type: 'MEDIA_INFO',
+      payload: {
+        selectionId: remoteSelectionId,
+        fingerprintVersion: 1,
+        fingerprint,
+        byteLength: 1,
+      },
+    };
+    const match: ApplicationBody = {
+      type: 'MEDIA_MATCH',
+      payload: {
+        localSelectionId: remoteSelectionId,
+        remoteSelectionId: localSelectionId,
+        fingerprint,
+      },
+    };
+    const readyBody: ApplicationBody = { type: 'READY', payload: match.payload };
+    const deliver = (peer: typeof old, body: ApplicationBody, sequence: number) => {
+      peer.channel.receive(
+        JSON.stringify({
+          protocolVersion: 1,
+          type: body.type,
+          sequence,
+          sentAt: 0,
+          payload: {
+            ...body.payload,
+            sessionId: SESSION_ID,
+            negotiationId: peer.negotiationId,
+            senderId: GUEST_ID,
+            recipientId: HOST_ID,
+          },
+        }),
+      );
+    };
+    const receive = vi.spyOn(sync, 'receive');
+    deliver(old, info, 2);
+    deliver(old, match, 3);
+    sync.dispatch({ type: 'ready' });
+    deliver(old, readyBody, 4);
+    const local = sync.getState().local;
+    expect(sync.getState()).toMatchObject({
+      connected: true,
+      peerMatched: true,
+      localReady: true,
+      remoteReady: true,
+    });
+    for (let i = 3; i < PEER_APPLICATION_RATE_BURST; i++) deliver(old, readyBody, i + 2);
+    expect(sync.getState().localReady).toBe(true);
+    expect(sync.getState().remoteReady).toBe(true);
+    expect(receive).toHaveBeenCalledTimes(PEER_APPLICATION_RATE_BURST);
+    const sent = old.channel.sent.length;
+    deliver(old, readyBody, PEER_APPLICATION_RATE_BURST + 2);
+    expect(receive).toHaveBeenCalledTimes(PEER_APPLICATION_RATE_BURST);
+    expect(old.channel.sent).toHaveLength(sent);
+    expect(old.channel.closed).toBe(true);
+    expect(old.pc.closed).toBe(true);
+    expect(inRoom(h.controller.getState()).peer).toMatchObject({
+      connection: 'recovering',
+      failure: 'application_rate_limit',
+    });
+    expect(sync.getState()).toEqual({
+      connected: false,
+      local,
+      remote: null,
+      peerMatched: false,
+      localReady: false,
+      remoteReady: false,
+    });
+    expect(h.connections).toHaveLength(1);
+    expect(h.timers.pendingDelays).toEqual([HOST_RECOVERY_DELAY_MS]);
+    await h.timers.advance(HOST_RECOVERY_DELAY_MS);
+    const fresh = await connectHost(h);
+    expect(h.connections).toHaveLength(2);
+    expect(fresh.negotiationId).not.toBe(old.negotiationId);
+    expect(h.socket().sentOfType('RTC_RECOVER')[0]?.payload.previousNegotiationId).toBe(
+      old.negotiationId,
+    );
+    expect(fresh.channel.sent.map((m) => m.type)).toEqual([
+      'PEER_HELLO',
+      'PEER_READY',
+      'MEDIA_INFO',
+    ]);
+    expect(fresh.channel.sent[2]?.payload).toMatchObject({
+      selectionId: localSelectionId,
+      fingerprint,
+      byteLength: 1,
+      negotiationId: fresh.negotiationId,
+    });
+    expect(sync.getState().local).toBe(local);
+    deliver(fresh, info, 2);
+    deliver(fresh, match, 3);
+    expect(sync.getState()).toMatchObject({
+      connected: true,
+      peerMatched: true,
+      localReady: false,
+      remoteReady: false,
+    });
+    sync.dispatch({ type: 'ready' });
+    deliver(fresh, readyBody, 4);
+    expect(sync.getState()).toMatchObject({ localReady: true, remoteReady: true });
+    h.controller.leaveRoom();
+    receive.mockRestore();
+  });
+});
 
 describe('room entry', () => {
   it('opens no socket until the user acts', () => {

@@ -91,6 +91,8 @@ export type PeerFailure =
   | 'unexpected_channel'
   /** The peer sent an invalid, unexpected, or mismatched peer message. */
   | 'peer_protocol'
+  /** Valid application traffic exceeded this session's receiver-local rate bound. */
+  | 'application_rate_limit'
   /** The peer sent more candidates than the bounds allow. */
   | 'candidate_limit'
   /** A negotiation message could not be handed to signaling. */
@@ -111,6 +113,10 @@ export interface PeerObservation {
  */
 export const MAX_QUEUED_REMOTE_CANDIDATES = MAX_ICE_CANDIDATES_PER_NEGOTIATION;
 export const MAX_QUEUED_REMOTE_CANDIDATE_BYTES = 16_384;
+
+/** Provisional inbound abuse protection, not a product throughput guarantee. */
+export const PEER_APPLICATION_RATE_BURST = 32;
+export const PEER_APPLICATION_RATE_PER_SECOND = 8;
 
 export interface PeerSessionOptions {
   readonly onApplicationMessage?: (body: ApplicationBody) => void;
@@ -134,7 +140,7 @@ export interface PeerSessionOptions {
   readonly createPeerConnection: CreatePeerConnection;
   /** Hands one negotiation message to signaling; false if it could not be sent. */
   readonly signal: (body: NegotiationBody) => boolean;
-  /** Wall clock for the diagnostic `sentAt` field of peer messages. */
+  /** Local millisecond clock for diagnostic `sentAt` and inbound application admission. */
   readonly clock: () => number;
   /** Called on every state change except `closed`, which only the owner causes. */
   readonly onStateChange: (state: PeerSessionState, failure?: PeerFailure) => void;
@@ -184,10 +190,13 @@ export class PeerSession {
   #helloReceived = false;
   #readyReceived = false;
   #applicationCallback: ((body: ApplicationBody) => void) | undefined;
+  #applicationTokens = PEER_APPLICATION_RATE_BURST;
+  #applicationLastRefill: number;
 
   constructor(options: PeerSessionOptions) {
     this.#options = options;
     this.#applicationCallback = options.onApplicationMessage;
+    this.#applicationLastRefill = options.clock();
   }
 
   /** Only this boundary writes application JSON to the channel. */
@@ -611,6 +620,10 @@ export class PeerSession {
         this.#fail('peer_protocol');
         return;
       }
+      if (!this.#admitApplicationMessage()) {
+        this.#fail('application_rate_limit');
+        return;
+      }
       // The context is checked above; upward consumers receive only domain fields.
       // Explicit projection keeps the application API context-free.
       switch (message.type) {
@@ -674,6 +687,22 @@ export class PeerSession {
       this.#readyReceived = true;
     }
     if (this.#live && this.#helloReceived && this.#readyReceived) this.#setState('connected');
+  }
+
+  /** Constant-space lazy refill, using only receiver time; handshake traffic is excluded. */
+  #admitApplicationMessage(): boolean {
+    // Keep a high-water timestamp: a backwards clock grants no refill, including
+    // when it catches up. Identical timestamps likewise grant nothing.
+    const now = Math.max(this.#applicationLastRefill, this.#options.clock());
+    const elapsed = now - this.#applicationLastRefill;
+    this.#applicationTokens = Math.min(
+      PEER_APPLICATION_RATE_BURST,
+      this.#applicationTokens + (elapsed * PEER_APPLICATION_RATE_PER_SECOND) / 1000,
+    );
+    this.#applicationLastRefill = now;
+    if (this.#applicationTokens < 1) return false;
+    this.#applicationTokens -= 1;
+    return true;
   }
 
   #setState(state: 'connecting' | 'connected'): void {
