@@ -2,9 +2,73 @@
 
 ## Status
 
-**NOT CLOSED — no physical Android device was available, so no two-real-device, different-network session was established or recovered (G2–G5 not evaluated; G1 verified from one device only), and no publicly reachable TURN endpoint exists (T3/T4 blocked).**
+**NOT CLOSED — the physical Android device was inventoried on 2026-10-04, but cellular / Wi-Fi-off operation and a two-real-device, different-network establishment and recovery have not been observed. G1–G5 remain GAP. No publicly reachable TURN endpoint has been supplied or verified for this attempt; T3/T4 remain GAP.**
 
-Phase 2 remains **IN PROGRESS**. The Phase 2 exit gate has **not passed**. This record documents what was evaluated at the qualification revision on 2026-10-02, what could not be, and why.
+Phase 2 software implementation is **COMPLETE / REVIEW PASS**, with the implementation milestone **READY TO MERGE**. Physical/network qualification is **DEFERRED / NOT CLOSED**. The literal Phase 2 physical exit gate is **NOT PASSED**. The latest attempt is recorded below; the 2026-10-02 evaluation is retained as historical evidence. Phase 3 — Local Sync Mode is **NEXT / NOT STARTED**.
+
+Implementation completion permits the Phase 2 milestone to be merged after independent PR review. Physical Android, real-network recovery, and public TURN qualification remain deferred project-level qualification debt. Phase 3 implementation may begin after the implementation milestone is merged, but later product/release closure must revisit this debt and must not infer the deferred Phase 2 gates as passed.
+
+## Latest attempt — 2026-10-04
+
+`QUALIFICATION_SHA` = `3a5922200ab0a77a1dd55d9d911a79a492971874` (`docs: record Phase 2 qualification`), on `phase/2-internet-p2p-foundation`. After fetch, branch selection, and fast-forward-only pull, local and remote HEAD matched this exact SHA and the worktree was clean. No runtime source or repository configuration changed during this attempt.
+
+### Device and network inventory
+
+| Device | Safe facts obtained | Network evidence |
+| --- | --- | --- |
+| A | Development Mac, model identifier `Mac17,2`; macOS 26.6.2 (25G83); Google Chrome **154.0.8037.97** | Default route uses the Wi-Fi interface. Public smoke exercised Mac Wi-Fi; fixed-broadband service category was not independently established. |
+| B | Operator identifies the physical phone as OnePlus Nord 5; ADB reports manufacturer **OnePlus**, model **CPH2707**, Android **16**, SDK **36**; active Google Chrome **154.0.8037.92** (version code 803709204) | ADB transport was **wireless**, state **device**. USB transport was not observed. Cellular operation, Wi-Fi OFF, and absence of tethering have **not been confirmed**. |
+
+The Chrome package also lists a preinstalled system copy, 143.0.7499.192; it is not the active updated application. An Android emulator was present and excluded from qualification evidence. No ADB serial, complete build fingerprint, address, or credential is recorded. The phone's market-name property was empty; the product name above is operator-provided, with the actual model code recorded separately.
+
+### Regression at the latest qualification SHA
+
+macOS 26.6.2, Node.js 26.3.0, npm 11.16.0, from root `npm ci`:
+
+| Check | Result |
+| --- | --- |
+| `npm ci` | Completed; 234 packages installed. npm reported a pending install-script policy warning for `fsevents@2.3.3`; no policy was changed. |
+| `npm run check` | PASS: typecheck, lint, format, unit tests, builds, and both built-package smoke tests. |
+| Protocol Vitest | **234 passed**, 0 failed, 0 skipped. |
+| Signaling Vitest | **206 passed**, 0 failed, 0 skipped. |
+| Web Vitest | **330 passed**, 0 failed, 0 skipped. |
+| Phase 0 Node tests (`node --test spikes/phase0/spike-*/src/*.test.mjs`) | **120 passed**, 0 failed, 0 skipped, 0 cancelled. Supplemental regression; no physical gate evidence. |
+| Playwright Chromium **153.0.8010.12**, retries 0 | **50 passed**, 0 failed, 0 skipped (46.4 s). |
+| Installed-Chrome opt-in, retries 0 | **100 passed**, 0 failed, 0 skipped (1.2 min): 50 Chromium tests plus 50 Google Chrome **154.0.8037.97** tests. |
+| `npm audit` | 0 vulnerabilities. |
+| `npm audit --omit=dev` | 0 vulnerabilities. |
+
+The initial sandboxed check failed 44 signaling integration tests because loopback listeners were refused with `listen EPERM`; protocol 234 and the other signaling 162 tests passed. The complete check then passed with loopback access allowed. Initial sandboxed audit DNS access failed; both audits completed successfully with network access allowed. These were execution-environment failures, not waived product tests. No intermittent Phase 1 test failed in either completed browser run.
+
+### Exact-build public smoke from Device A
+
+The candidate was rebuilt with `DRIFTLESS_BUILD_REVISION=3a5922200ab0a77a1dd55d9d911a79a492971874` after the regressions. Deployment category: **development Mac behind an account-free Cloudflare quick tunnel**, `cloudflared` 2026.9.3; Vite preview served `apps/web/dist` and forwarded signaling and health to the loopback service. Scratch infrastructure remained outside Git. The service ran in production mode with exactly the tunnel's HTTPS origin allowed, runtime Google's public STUN configured, and **no TURN**. This is not production hosting. The random hostname is omitted.
+
+Installed desktop Chrome verified HTTPS 200, secure context true, the deployment guidance's security headers, `/healthz` 200 with its minimal body, and two WSS connections at `/v1/signaling` without query strings. Two Mac browser contexts created/joined a room and each showed **Peer data channel is connected.** Both diagnostics displayed the exact full candidate SHA, signaling connected, peer connected, ICE connected, channel open, policy All, negotiation 1 of 4, and TURN Not configured. Same-host selected pairs were classified Direct (not relayed), with host / host or host / prflx candidates over UDP. These pairs are **not cross-network G4 evidence**. There were 0 console errors/warnings, 0 page errors, and 0 insecure requests during the HTTPS smoke. Rooms were left after each smoke session.
+
+**HTTP deviation:** a raw HTTP request returned 200 with no redirect. Chrome's HTTP navigation upgraded to HTTPS, even in a fresh browser; therefore this attempt did **not** independently exercise the current build's insecure-context room refusal at the public hostname. The earlier revision's refusal result below is historical only. The development tunnel still differs from the deployment guidance's HTTP redirect requirement.
+
+### Physical and TURN outcome
+
+A visible installed-Chrome Mac host room was prepared with the exact SHA and remained waiting for a guest. Operator confirmation of phone cellular / Wi-Fi-off topology, exact-build diagnostics, and join was requested; none was obtained during this recorded attempt. No phone session, two-real-device handshake, selected candidate pair, or genuine cellular disruption/recovery was observed. No heartbeat or retry value was changed; the known timing limitation remains **not evaluated on a real cross-network interruption**. The host room was left and the host browser, tunnel, preview server, and signaling service were stopped afterwards. No listener remained on the qualification or browser-test ports (8787, 4180, 8790, 4173).
+
+The existing record reports no public TURN host. Available public-host/service details were requested for this attempt, but none were supplied or verified. No host was provisioned, no paid account was created, and no forced-relay deployment or real relay session was attempted. **TURN closure blocked — no publicly reachable TURN infrastructure available to this attempt.** This is an infrastructure gap, not an observed relay failure.
+
+| Criterion | Latest result | Evidence / remaining action |
+| --- | --- | --- |
+| G1 | **GAP** | Mac HTTPS/WSS passed; phone cellular public reachability unobserved. |
+| G2 | **GAP** | No authenticated Mac / physical Android join on distinct networks observed. |
+| G3 | **GAP** | Same-host handshake only; real-device channel unobserved. |
+| G4 | **GAP** | Same-host direct diagnostics only; selected path on both real cross-network peers required. |
+| G5 | **GAP** | Genuine Android network interruption and authenticated recovery unobserved; current post-recovery diagnostics required. |
+| T1 | **PASS — software** | Complete protocol/signaling/web regression reconfirmed authenticated short-lived issuance and room-expiry bounds; no public TURN service exercised. |
+| T2 | **PASS — software** | Code inspection and complete regression reconfirmed STUN-only build inputs, runtime in-memory TURN credentials, and no long-lived browser TURN secret. |
+| T3 | **GAP** | Public TURN endpoint and forced-relay real cross-network channel required. |
+| T4 | **GAP** | TURN_RELAY diagnostics on both real relay peers required. |
+
+`DEFERRED-PHYSICAL-002` remains **OPEN**. `001` and `003`–`007` remain **OPEN**. No compatibility status changed. The qualification attempt itself made no closure commit, push, milestone PR, merge, or Phase 3 implementation change. Remaining qualification action: operate the physical phone on cellular with Wi-Fi off against the exact build, collect both devices' establishment and recovery evidence, and provide compatible publicly reachable TURN infrastructure for T3/T4. These gaps are deferred release-level gates; they do not prevent the completed software milestone from being merged after independent PR review.
+
+## Historical evaluation — 2026-10-02
 
 ## Scope
 
@@ -133,7 +197,7 @@ No browser test contacts a public STUN, TURN, or other service.
 - The third-party STUN service was configured but not exercised across networks.
 - No compatibility status changes. No `DEFERRED-PHYSICAL` debt is closed.
 
-## Gate matrix
+## Historical gate matrix — 2026-10-02
 
 | Criterion | Requirement                                                                | Result  | Evidence                                                                       |
 | --------- | -------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------ |
@@ -143,7 +207,7 @@ No browser test contacts a public STUN, TURN, or other service.
 | G4        | Diagnostics prove `DIRECT` or `TURN_RELAY` on a real cross-network session | **GAP** | Same-machine host/host only.                                                   |
 | G5        | Genuine real-network disruption, then recovery per Phase 2 semantics       | **GAP** | Not possible without Device B.                                                 |
 
-## TURN matrix
+## Historical TURN matrix — 2026-10-02
 
 | Criterion | Requirement                                   | Result   | Evidence                                                                                                                                                                                                                                                                          |
 | --------- | --------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -154,11 +218,19 @@ No browser test contacts a public STUN, TURN, or other service.
 
 ## Blocking findings
 
+Current blockers as of 2026-10-04 remain blockers to physical/network qualification and final product/release qualification. Administrative closure of the software implementation milestone does not reduce their severity or satisfy them.
+
+1. Physical Android was identified, but cellular / Wi-Fi-off cross-network operation was not executed.
+2. Real-device RTCDataChannel establishment was not observed.
+3. Genuine real-network recovery was not exercised; the heartbeat/retry timing limitation remains unqualified.
+4. The selected path from a real cross-network connection was not observed on either real peer.
+5. No publicly reachable TURN endpoint was available for T3/T4; both remain **GAP / DEFERRED**. Local pion/turn remains supplemental software evidence only.
+
 | ID  | Requirement                                         | Gap                                                          | Required next action                                                                                                                                                                                                                                  |
 | --- | --------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1  | Two real devices on different networks (G1–G5)      | The physical OnePlus Nord 5 was not available on 2026-10-02. | With the phone available on cellular data (Wi-Fi off) and Device A on Wi-Fi, redeploy the exact revision, read Android and Chrome versions on the phone, and run the establishment and recovery procedure below.                                      |
+| B1  | Two real devices on different networks (G1–G5)      | Physical OnePlus Nord 5 identified on 2026-10-04, but cellular / Wi-Fi-off session, real-device channel, and selected path unobserved. | With the phone on cellular data (Wi-Fi off) and Device A on Wi-Fi, redeploy one exact committed revision, confirm both builds and device versions, and run the establishment and recovery procedure below. |
 | B2  | TURN forced relay on real networks (T3, T4)         | No publicly reachable host for a TURN server.                | Provide a host with a public IP (and TLS certificate for `turns:`), deploy coturn with `use-auth-secret` per [DEPLOYMENT.md](DEPLOYMENT.md), configure the same secret on the service, and run a relay-only qualification build on a separate origin. |
-| B3  | Recovery evidence and the heartbeat limitation (G5) | Not evaluable without B1.                                    | Disrupt Device B's network only (mobile data off and on, then a network switch), record signaling and peer behavior, the post-recovery path, and whether resume was stranded before the service's liveness detection.                                 |
+| B3  | Recovery evidence and the heartbeat limitation (G5) | Real-device interruption and recovery not exercised; same-host automation does not qualify the timing limitation. | Disrupt Device B's network only (mobile data off and on, then a network switch), record signaling and peer behavior, the post-recovery path, and whether resume was stranded before the service's liveness detection. |
 
 ## Procedure for the next qualification
 
@@ -174,6 +246,6 @@ No browser test contacts a public STUN, TURN, or other service.
 
 `DEFERRED-PHYSICAL-002` (two real peers on genuinely separate Internet networks, including a physical Android participant, with the selected direct or relay path recorded) is **not satisfied** and remains **OPEN**. `DEFERRED-PHYSICAL-001` and `003`–`007` remain **OPEN**; none was evaluated.
 
-## Conclusion
+## Current conclusion — 2026-10-04
 
-`NOT CLOSED — no physical Android device was available, so no two-real-device, different-network session was established or recovered (G2–G5 not evaluated; G1 verified from one device only), and no publicly reachable TURN endpoint exists (T3/T4 blocked).`
+**Physical/network qualification: DEFERRED / NOT CLOSED.** The physical phone's model, Android, and active Chrome version were obtained. Automated regressions and the Mac exact-build public smoke passed. Actual cellular / Wi-Fi-off establishment, selected path on both real devices, and genuine network recovery remain unobserved (G1–G5 GAP); public forced-relay evidence remains unavailable (T3/T4 GAP / DEFERRED; T1/T2 software PASS). Phase 2 software implementation is **COMPLETE / READY TO MERGE**; its literal physical exit gate is **NOT PASSED**. Phase 3 is **NEXT / NOT STARTED**, and may begin only after the implementation milestone merge. Deferred qualification remains mandatory before final product/release closure.

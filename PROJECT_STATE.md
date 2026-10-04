@@ -28,22 +28,33 @@ Phase 0 — Architecture & Feasibility: **CLOSED / PASS** (software feasibility;
 
 Phase 1 — Application Foundation: **CLOSED / PASS**. Phase 1 exit gate: **PASS** (see [Phase 1 qualification](docs/PHASE1_QUALIFICATION.md)).
 
-Phase 2 — Internet P2P Foundation: **IN PROGRESS**.
+Phase 2 — Internet P2P Foundation: **IMPLEMENTATION COMPLETE**.
+
+- Implementation status: **COMPLETE**.
+- Merge status: **READY**.
+- Physical/network qualification: **DEFERRED / NOT CLOSED**.
+- Literal physical exit gate: **NOT PASSED**.
 
 | Part     | Scope                              | Status                           |
 | -------- | ---------------------------------- | -------------------------------- |
 | Phase 2A | Protocol & signaling foundation    | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2B | Room join & WebRTC negotiation     | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2C | Connection lifecycle & reconnect   | **IMPLEMENTED / REVIEW PASS**    |
-| Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED — QUALIFICATION NOT CLOSED** |
+| Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED / REVIEW PASS** |
 
-Phase 2 exit gate: **NOT PASSED**. Qualification of `aeb7f9630d2b3ffa8a12b1ca5a94012b081da859` on 2026-10-02 is **NOT CLOSED**: no physical Android device was available, so no two-real-device, different-network session was established or recovered (G1 verified from one device only; G2–G5 GAP), and no publicly reachable TURN endpoint exists (T3/T4 GAP). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D browser evidence is two browser contexts on one development machine.
+The latest physical qualification attempt at `3a5922200ab0a77a1dd55d9d911a79a492971874` on 2026-10-04 identified the physical OnePlus Nord 5 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but did not execute a cellular / Wi-Fi-off cross-network session. Real-device data-channel establishment, selected-path evidence on both peers, and genuine network recovery remain unobserved (G1–G5 GAP). No publicly reachable TURN endpoint was available (T3/T4 GAP; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D automated browser evidence remains two browser contexts on one development machine.
+
+Phase 3 — Local Sync Mode: **NEXT — NOT STARTED**.
+
+### Implementation and qualification policy
+
+Phase 2 implementation is complete and may be merged. Physical Android, real-network recovery, and public TURN qualification remain deferred project-level qualification debt. Phase 3 implementation may proceed after the Phase 2 implementation milestone is merged, but later product/release closure must not infer those deferred Phase 2 gates as passed. Deferred Phase 2 physical/network qualification remains an open release-level gate and must be revisited before final product qualification.
 
 ## Current Branch
 
 `phase/2-internet-p2p-foundation`
 
-Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 was merged through PR #3 at `4559bf4f0692f3b491819229d3596a81c0d319be`. Phase 2 work proceeds on `phase/2-internet-p2p-foundation`, created from `main` at `4559bf4`.
+Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 was merged through PR #3 at `4559bf4f0692f3b491819229d3596a81c0d319be`. The completed Phase 2 implementation is ready for milestone review and merge from `phase/2-internet-p2p-foundation`, created from `main` at `4559bf4`.
 
 ## Repository Status
 
@@ -260,9 +271,9 @@ This is development evidence and not a compatibility claim. Playwright's Chromiu
 
 ## Phase 2 — Internet P2P Foundation
 
-**Phase status:** IN PROGRESS. **Phase 2 exit gate:** NOT PASSED — "Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay." Phase 2A does not evaluate it.
+**Implementation status:** COMPLETE. **Merge status:** READY. **Physical/network qualification:** DEFERRED / NOT CLOSED. **Literal Phase 2 physical exit gate:** NOT PASSED — "Two real devices on different networks establish and recover an authenticated WebRTC data-channel session. Evidence records whether the selected path is direct P2P or TURN relay." The implementation milestone closes software delivery only; the original physical gate remains mandatory before final product/release qualification.
 
-### Phase 2A — Protocol & Signaling Foundation (IMPLEMENTED / REVIEWED)
+### Phase 2A — Protocol & Signaling Foundation (IMPLEMENTED / REVIEW PASS)
 
 Implemented on `phase/2-internet-p2p-foundation` at `810af89` and passed independent GitHub review. The review recorded two non-blocking notes, both resolved in Phase 2B: NB-01, the shared parser's preliminary size check used string length rather than UTF-8 bytes; and NB-02, the timing flakiness of a local-player lifecycle test under host load, described below. The description below is the Phase 2A record; Phase 2B changed the message bound and the rate limit.
 
@@ -347,7 +358,7 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B
 - **Peer recovery.** A failed peer session is replaced, never repaired: no `restartIce()`. The guest sends `RTC_RECOVERY_REQUEST { negotiationId }`; the host sends `RTC_RECOVER { previousNegotiationId, negotiationId, sdp }` with a fresh `RTCPeerConnection`, negotiation ID, `driftless-control` channel, and handshake. The service accepts a recovery only from the host, naming the exact active negotiation, with an ID never used by that guest membership, and replaces the negotiation atomically; the old negotiation's answers and ICE are refused. One guest request is accepted per negotiation. A guest membership uses at most `MAX_NEGOTIATIONS_PER_MEMBERSHIP` = 4 negotiations (first plus three recoveries, provisional); then recovery stops in a failed state and the user can leave. The host recovers unprompted one second after its own session fails unless the guest's request or departure arrives first (`HOST_RECOVERY_DELAY_MS`, provisional): browser testing showed that a guest's intentional leave closes the data channel and can reach the host before the service's notice, which otherwise started a pointless recovery negotiation.
 - **Handshake timing (Phase 2B behavior changed).** The host now sends `PEER_HELLO` first, when its channel opens; the guest sends its `PEER_HELLO` and `PEER_READY` only in reply. Repeated Phase 2C browser runs found a rare same-host Chromium failure in the initial Phase 2B handshake: the guest's greeting, sent as soon as its announced channel was open, was never delivered to the host's channel, while its later `PEER_READY` was, so both sides waited at "Connecting…" with transport and channels up. With the old timing it occurred in 3 of 140 serial runs of the recovery test (each run has an initial and a recovery handshake); after the fix, in 0 of 160. The message set and validation are unchanged.
 - **Implementation hardening.** Pre-commit review of the implementation found and fixed: an abandoned resume attempt closed with 1000, which ended a membership the service had just resumed (now 4000, resumable); a host offer that failed before leaving the browser still became the host's idea of the active negotiation, so its next recovery offer named a negotiation the service never saw and was silently refused, leaving both sides waiting (the active ID is now rolled back; the attempt still counts against the bound); and a client protocol-error close (1002) was held for the grace period (now terminal). Each has a regression test.
-- **Known limitation.** A silently dead network path is noticed by the service only when a ping goes unanswered (up to two 15-second intervals), and resume is refused until then, so the browser's roughly 16-second retry schedule can give up first, for example after a network switch; the browser has no liveness check of its own. Choosing these values needs real-network evidence and belongs to Phase 2D.
+- **Known limitation.** A silently dead network path is noticed by the service only when a ping goes unanswered (up to two 15-second intervals), and resume is refused until then, so the browser's roughly 16-second retry schedule can give up first, for example after a network switch; the browser has no liveness check of its own. Choosing these values needs real-network evidence and remains part of deferred Phase 2 physical/network qualification.
 - **Leaving while reconnecting.** Leave room while signaling is reconnecting is an authoritative, bounded terminal leave rather than a local one. The peer connection closes at once and the UI shows "Leaving the room…". The reconnect schedule's purpose changes from resume to leave (an attempt in flight continues under the new purpose): on `SESSION_RESUMED` the browser sends `ROOM_LEAVE` immediately, with no reconciliation or negotiation, then discards the credentials on `ROOM_LEFT`. The service therefore frees a guest's slot, or closes a host's room and invalidates its invite, at once. The leave schedule is finite (immediately, 250 ms, 500 ms, 1 s, 2 s; each attempt bounded by the 5-second attempt timeout, which also bounds the wait for `ROOM_LEFT`; provisional); `SESSION_UNAVAILABLE` completes the leave. If the service cannot be reached throughout, the browser leaves locally and discards the credentials, and the membership — a held guest slot, or a host's room and invite — stays valid on the service until the reconnect grace period or room lifetime ends. The first Phase 2C implementation left locally only in this case, which let a host's room and invite outlive the host's "You left the room." No protocol or service change was needed.
 - **Interface.** The state model keeps membership, own signaling, the peer's signaling presence, and the peer transport independent. The polite status line states, for example, "Peer data channel connected. Signaling is reconnecting…", "The other participant is reconnecting…", "Peer connection lost. Recovering…", "Connection restored.", and "The room session could not be recovered."; it never says fully connected while signaling is unavailable and announces no retries. **Leave room** remains usable while reconnecting. No secret, challenge, proof, retry count, timer, or raw error is shown.
 - **Logging.** New fixed events `participant_disconnected`, `resume_challenge_issued`, `participant_resumed`, `resume_rejected`, `reconnect_timeout`, negotiation steps `recover` and `recovery_request`, and the transport detail `liveness_timeout`; no secret, key, proof, challenge, or identifier is logged.
@@ -368,9 +379,9 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2B
 - Mutation checks confirmed that the browser reconnect tests fail when a working data channel is dropped on signaling loss, the negotiation bound is ignored, any recovery offer is accepted, a mismatched session is kept, the schedule never ends, or a resume sends an extra message; one surviving mutation exposed a gap (a recovery request lost while the host was away was never repeated), which was fixed and given a test.
 - `npm audit` and `npm audit --omit=dev`: 0 vulnerabilities.
 
-### Phase 2D — Diagnostics / Real-Network Closure (IMPLEMENTED — QUALIFICATION NOT CLOSED)
+### Phase 2D — Diagnostics / Real-Network Closure (IMPLEMENTED / REVIEW PASS)
 
-Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C commit `df21cad`: the software candidate at `f46616c`, and the fix for a defect its installed-Chrome run found at `aeb7f96`, the qualification revision. It awaits independent review. The real-device, real-network evaluation and the Phase 2 gate decision are recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md): **NOT CLOSED**.
+Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C commit `df21cad`: the software candidate at `f46616c`, and the fix for a defect its installed-Chrome run found at `aeb7f96`. Phase 2D software review passed; the complete Phase 2 milestone still requires independent PR review before merge. The separate real-device, real-network evaluation is recorded in [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md): **DEFERRED / NOT CLOSED**.
 
 - **Connection diagnostics.** `apps/web/src/features/room/connectionStats.ts` classifies the selected ICE path from `RTCPeerConnection.getStats()`: `transport.selectedCandidatePairId` → the candidate pair (`succeeded`, or `in-progress` with connectivity-check responses already received, which is how Chrome 154 reports the working pair during a periodic re-check) → its local and remote candidates' `candidateType`. `TURN_RELAY` is a relay candidate on either side; `DIRECT` is a known pair with neither relayed (host, srflx, prflx — not necessarily one network); everything less certain, including no or conflicting selected pairs, a missing or unfamiliar candidate, a pair that has not succeeded, and failed statistics, is `UNKNOWN` with a fixed reason. A single pair marked `selected: true` is used only when no transport names a pair. Only candidate types and transport/relay protocols are read into the result; no address, port, candidate string, URL, SDP, ICE username fragment, fingerprint, or identifier.
 - **Diagnostics lifecycle.** The room controller reads statistics once when a peer connection becomes connected (including every recovered one) and on **Refresh diagnostics**; there is no polling and no timer. A replaced or closed connection's snapshot is discarded at once and a late read of it is dropped, so diagnostics always describe the current connection. Diagnostics are observational: a failure leaves the path `UNKNOWN`; nothing renegotiates, restarts ICE, changes policy, or recovers because of them. They have their own subscription, so room-state subscribers see exactly the Phase 2C notifications. Nothing is sent anywhere, persisted, or logged.
@@ -392,11 +403,13 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C
 
 ## Open Deferred Qualification
 
+- Phase 2 physical Android cross-network establishment and recovery, selected-path evidence on both real peers, and public TURN forced-relay qualification remain **DEFERRED / NOT CLOSED**. T1/T2 are **PASS — software**; T3/T4 remain **GAP / DEFERRED** because no publicly reachable TURN service was available. The literal physical exit gate is **NOT PASSED**.
 - Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests, Phase 2B's and 2C's same-host browser tests, and Phase 2D's same-host tests and one-device public smoke test do not satisfy `DEFERRED-PHYSICAL-002`.
 
 ## Not Started
 
-- Later phases: synchronization, media transfer, and Progressive Watch. Physical and real-network qualification remains deferred.
+- Phase 3 — Local Sync Mode: **NEXT — NOT STARTED**. Implementation may begin after the Phase 2 implementation milestone is merged; deferred physical/network qualification remains an open release-level gate.
+- Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
 
@@ -413,7 +426,7 @@ Automation and emulator evidence may improve confidence but never satisfy a phys
 ## Physical Qualification Debt
 
 - `DEFERRED-PHYSICAL-001 — Spike 0.1 Android Chrome local media qualification`: validate file selection, playback, pause/resume, seeks, lifecycle cleanup, errors, and representative large-file resource behavior on physical Android Chrome. Android architecture risk remains unqualified; final Android support cannot be claimed.
-- `DEFERRED-PHYSICAL-002 — Spike 0.2 Android Chrome and external-network WebRTC qualification`: validate two real peers on genuinely separate Internet networks, including at least one physical Android participant where applicable, and record selected direct or relay path. Current same-host desktop evidence is not a real-network result.
+- `DEFERRED-PHYSICAL-002 — Spike 0.2 Android Chrome and external-network WebRTC qualification` — **OPEN**: validate two real peers on genuinely separate Internet networks, including at least one physical Android participant where applicable, and record selected direct or relay path. Physical OnePlus Nord 5 identified on 2026-10-04 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but cellular / Wi-Fi-off cross-network establishment, selected path, and recovery remain unqualified. Current same-host desktop evidence is not a real-network result.
 - `DEFERRED-PHYSICAL-003 — Spike 0.3 binary transfer over real external network / Android`: repeat bounded synthetic binary transfer between real peers on genuinely separate Internet networks, including at least one physical Android Chrome participant. Record the selected direct or relay path, the negotiated `maxMessageSize`, integrity, backpressure behavior, association warm-up, receiver/sender memory and CPU, and throughput under real loss and latency. Current evidence comes from headless same-host desktop Chrome and is not a real-network, TURN, or mobile result.
 - `DEFERRED-PHYSICAL-004 — Spike 0.4 Android Chrome OPFS/storage qualification`: on physical Android Chrome, repeat bounded OPFS writes with representative sizes, range and full verification, resume, reload persistence, deletion, and headroom refusal. Also cover:
   - the worker sync-access-handle path;
@@ -451,7 +464,7 @@ The project intentionally accumulates these physical Android gates for the later
 
 ## Current Blockers
 
-The Phase 2 exit gate is blocked by two infrastructure gaps, not by a known software defect: no physical Android device was available for the two-device, different-network session and its recovery (B1), and no publicly reachable TURN server exists for the forced-relay criteria (B2); see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings).
+The literal Phase 2 physical exit gate remains **NOT PASSED**. The physical Android device was identified, but its cellular / Wi-Fi-off cross-network session was not executed; real-device RTCDataChannel establishment, genuine network recovery (including the known heartbeat/retry timing limitation), and selected-path evidence on both real peers remain unobserved. No publicly reachable TURN service was available for T3/T4. These are deferred qualification blockers, not implementation-merge blockers; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). They must be resolved before final product/release qualification.
 
 No architecture blocker has been observed. Spike 0.1 has no exact desktop memory measurements and retains physical Android debt. Spike 0.2 proves controlled same-host browser connectivity only; different-NAT, carrier-network, physical Android, and TURN behavior remain unqualified. The selected host/host pair must not be generalized to Internet reachability.
 
@@ -512,7 +525,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent GitHub review of the pushed Phase 2D commits and the NOT CLOSED qualification record. To close the Phase 2 gate afterwards: the physical OnePlus Nord 5 on cellular data with the Mac on Wi-Fi, against a public HTTPS/WSS deployment of one committed revision (blocker B1), and a publicly reachable TURN server for the forced-relay criteria (blocker B2); see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). Do not begin Phase 3.
+Independent review of the Phase 2 implementation milestone PR against `main`. Merge only after review PASS. Phase 3 implementation may begin from merged `main` after that milestone merge; Local Sync is **NEXT / NOT STARTED**. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -535,4 +548,4 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-10-01
+2026-10-04
