@@ -95,7 +95,9 @@ function stubClipboard(writeText: (text: string) => Promise<void>): void {
 describe('RoomPanel', () => {
   it('offers labelled create and join controls and connects nothing on mount', () => {
     const { region, sockets } = setup();
-    expect(within(region).getByRole('status').textContent).toBe('Not in a room.');
+    expect(within(region).getByRole('status', { name: 'Room connection status' }).textContent).toBe(
+      'Not in a room.',
+    );
     expect(within(region).getByRole('button', { name: 'Create room' })).toBeDefined();
     expect(within(region).getByLabelText('Room ID')).toBeDefined();
     const secret = within(region).getByLabelText('Invite secret');
@@ -128,7 +130,7 @@ describe('RoomPanel', () => {
 
   it('shows the host invite masked, reveals it on request, and states the role', async () => {
     const { region } = await createdRoom();
-    expect(within(region).getByRole('status').textContent).toBe(
+    expect(within(region).getByRole('status', { name: 'Room connection status' }).textContent).toBe(
       'Room created. Waiting for a guest to join.',
     );
     const invite = within(region).getByRole('group', { name: 'Invite' });
@@ -175,7 +177,9 @@ describe('RoomPanel', () => {
     fireEvent.change(within(region).getByLabelText('Room ID'), { target: { value: ROOM_ID } });
     fireEvent.change(within(region).getByLabelText('Invite secret'), { target: { value: SECRET } });
     fireEvent.click(within(region).getByRole('button', { name: 'Join room' }));
-    expect(within(region).getByRole('status').textContent).toBe('Joining the room…');
+    expect(within(region).getByRole('status', { name: 'Room connection status' }).textContent).toBe(
+      'Joining the room…',
+    );
     await act(async () => {
       socket().open();
       await flush();
@@ -205,7 +209,7 @@ describe('RoomPanel', () => {
         payload: { participant: { participantId: GUEST_ID, role: 'guest' } },
       });
     });
-    expect(within(region).getByRole('status').textContent).toBe(
+    expect(within(region).getByRole('status', { name: 'Room connection status' }).textContent).toBe(
       'A guest joined. Setting up the peer connection…',
     );
     expect(region.textContent).toContain('Setting up');
@@ -215,14 +219,14 @@ describe('RoomPanel', () => {
         await timers.advance(1000);
       });
       if (index < 3) {
-        expect(within(region).getByRole('status').textContent).toBe(
-          'Peer connection lost. Recovering…',
-        );
+        expect(
+          within(region).getByRole('status', { name: 'Room connection status' }).textContent,
+        ).toBe('Peer connection lost. Recovering…');
         expect(region.textContent).toContain('Recovering');
         expect(within(region).queryByRole('alert')).toBeNull();
       }
     }
-    expect(within(region).getByRole('status').textContent).toBe(
+    expect(within(region).getByRole('status', { name: 'Room connection status' }).textContent).toBe(
       'The peer connection to the guest could not be recovered.',
     );
     expect(within(region).getByRole('alert').textContent).toContain(
@@ -234,7 +238,7 @@ describe('RoomPanel', () => {
 
   it('shows signaling reconnect without retry details and keeps Leave usable', async () => {
     const { region, socket, timers, sockets } = await createdRoom();
-    const status = within(region).getByRole('status');
+    const status = within(region).getByRole('status', { name: 'Room connection status' });
     act(() => {
       socket().drop();
     });
@@ -293,7 +297,7 @@ describe('RoomPanel', () => {
     act(() => {
       socket().deliver({ type: 'ROOM_LEFT', payload: {} });
     });
-    expect(within(region).getByRole('status').textContent).toBe(
+    expect(within(region).getByRole('status', { name: 'Room connection status' }).textContent).toBe(
       'You left the room. You are not in a room.',
     );
     expect(view.container.innerHTML).not.toContain(SECRET);

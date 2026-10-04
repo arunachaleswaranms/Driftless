@@ -1,0 +1,44 @@
+{
+  "name": "@driftless/sync-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure Local Sync media identity and readiness domain.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -b",
+    "lint": "eslint --max-warnings=0 .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke:dist": "node --expose-gc scripts/smoke-dist.mjs",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build && npm run smoke:dist"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.3",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "@driftless/protocol": "0.0.0"
+  }
+}

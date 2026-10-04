@@ -1,6 +1,8 @@
 import { fitsUtf8Bytes } from './encoding.js';
 import { isErrorCode, MAX_ERROR_MESSAGE_LENGTH } from './errors.js';
 import {
+  isMediaSelectionId,
+  isMediaFingerprint,
   isInviteSecret,
   isNegotiationId,
   isParticipantId,
@@ -12,6 +14,9 @@ import {
   type NegotiationId,
 } from './identifiers.js';
 import {
+  MAX_MEDIA_FINGERPRINT_BYTES,
+  MEDIA_FINGERPRINT_VERSION,
+  NOT_READY_REASONS,
   MAX_PEER_MESSAGE_BYTES,
   MAX_SIGNALING_MESSAGE_BYTES,
   PARTICIPANT_LEFT_REASONS,
@@ -347,6 +352,66 @@ function decodePeerHandshake(value: unknown): PeerHandshakePayload | undefined {
 const PEER_DECODERS: DecoderTable<PeerMessage> = {
   PEER_HELLO: decodePeerHandshake,
   PEER_READY: decodePeerHandshake,
+  MEDIA_INFO: (value) => {
+    const p = applicationObject(value, [
+      'selectionId',
+      'fingerprintVersion',
+      'fingerprint',
+      'byteLength',
+    ]);
+    if (
+      !p ||
+      !isMediaSelectionId(p.selectionId) ||
+      p.fingerprintVersion !== MEDIA_FINGERPRINT_VERSION ||
+      !isMediaFingerprint(p.fingerprint) ||
+      !isWireInteger(p.byteLength) ||
+      p.byteLength === 0 ||
+      p.byteLength > MAX_MEDIA_FINGERPRINT_BYTES
+    )
+      return undefined;
+    const context = peerContext(p);
+    return (
+      context && {
+        ...context,
+        selectionId: p.selectionId,
+        fingerprintVersion: MEDIA_FINGERPRINT_VERSION,
+        fingerprint: p.fingerprint,
+        byteLength: p.byteLength,
+      }
+    );
+  },
+  MEDIA_MATCH: decodeMediaPair,
+  READY: decodeMediaPair,
+  MEDIA_MISMATCH: (value) => {
+    const p = applicationObject(value, ['localSelectionId', 'remoteSelectionId', 'reason']);
+    if (
+      !p ||
+      !isMediaSelectionId(p.localSelectionId) ||
+      !isMediaSelectionId(p.remoteSelectionId) ||
+      p.reason !== 'IDENTITY_MISMATCH'
+    )
+      return undefined;
+    const context = peerContext(p);
+    return (
+      context && {
+        ...context,
+        localSelectionId: p.localSelectionId,
+        remoteSelectionId: p.remoteSelectionId,
+        reason: 'IDENTITY_MISMATCH',
+      }
+    );
+  },
+  NOT_READY: (value) => {
+    const p = applicationObject(value, ['localSelectionId', 'reason']);
+    if (
+      !p ||
+      (p.localSelectionId !== null && !isMediaSelectionId(p.localSelectionId)) ||
+      !isOneOf(p.reason, NOT_READY_REASONS)
+    )
+      return undefined;
+    const context = peerContext(p);
+    return context && { ...context, localSelectionId: p.localSelectionId, reason: p.reason };
+  },
 };
 
 const CLIENT_DECODERS: DecoderTable<ClientMessage> = {
@@ -563,3 +628,34 @@ const SERVER_DECODERS: DecoderTable<ServerMessage> = {
     return { code, message, recoverable };
   },
 };
+
+function applicationObject(value: unknown, fields: readonly string[]): JsonObject | undefined {
+  return exactObject(value, ['sessionId', 'negotiationId', 'senderId', 'recipientId', ...fields]);
+}
+function peerContext(p: JsonObject): PeerHandshakePayload | undefined {
+  return decodePeerHandshake({
+    sessionId: p.sessionId,
+    negotiationId: p.negotiationId,
+    senderId: p.senderId,
+    recipientId: p.recipientId,
+  });
+}
+function decodeMediaPair(value: unknown) {
+  const p = applicationObject(value, ['localSelectionId', 'remoteSelectionId', 'fingerprint']);
+  if (
+    !p ||
+    !isMediaSelectionId(p.localSelectionId) ||
+    !isMediaSelectionId(p.remoteSelectionId) ||
+    !isMediaFingerprint(p.fingerprint)
+  )
+    return undefined;
+  const context = peerContext(p);
+  return (
+    context && {
+      ...context,
+      localSelectionId: p.localSelectionId,
+      remoteSelectionId: p.remoteSelectionId,
+      fingerprint: p.fingerprint,
+    }
+  );
+}

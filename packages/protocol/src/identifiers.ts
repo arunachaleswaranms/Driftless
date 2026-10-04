@@ -146,3 +146,18 @@ export function isResumeChallenge(value: unknown): value is ResumeChallenge {
 export function isResumeProof(value: unknown): value is ResumeProof {
   return typeof value === 'string' && RESUME_PROOF_PATTERN.test(value);
 }
+
+/** One locally generated media selection: 128 random bits, not a credential. */
+export type MediaSelectionId = Brand<string, 'MediaSelectionId'>;
+/** Session-scoped SHA-256 identity evidence; never a stable content identifier. */
+export type MediaFingerprint = Brand<string, 'MediaFingerprint'>;
+export const MEDIA_SELECTION_ID_BYTES = 16;
+export const MEDIA_SELECTION_ID_LENGTH = 22;
+export const MEDIA_FINGERPRINT_BYTES = 32;
+export const MEDIA_FINGERPRINT_LENGTH = 43;
+export function isMediaSelectionId(value: unknown): value is MediaSelectionId {
+  return typeof value === 'string' && ROOM_ID_PATTERN.test(value);
+}
+export function isMediaFingerprint(value: unknown): value is MediaFingerprint {
+  return typeof value === 'string' && INVITE_SECRET_PATTERN.test(value);
+}

@@ -5,6 +5,17 @@ import assert from 'node:assert/strict';
 import * as protocol from '@driftless/protocol';
 
 const EXPECTED_EXPORTS = [
+  'MEDIA_SELECTION_ID_BYTES',
+  'MEDIA_SELECTION_ID_LENGTH',
+  'MEDIA_FINGERPRINT_BYTES',
+  'MEDIA_FINGERPRINT_LENGTH',
+  'MEDIA_FINGERPRINT_VERSION',
+  'MEDIA_FINGERPRINT_CHUNK_BYTES',
+  'MAX_MEDIA_FINGERPRINT_CHUNKS',
+  'MAX_MEDIA_FINGERPRINT_BYTES',
+  'NOT_READY_REASONS',
+  'isMediaSelectionId',
+  'isMediaFingerprint',
   'CLIENT_MESSAGE_TYPES',
   'ERROR_CODES',
   'INVITE_SECRET_BYTES',

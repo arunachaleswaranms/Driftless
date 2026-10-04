@@ -1,4 +1,5 @@
 import {
+  type ApplicationBody,
   MAX_ICE_CANDIDATES_PER_NEGOTIATION,
   PEER_CONTROL_CHANNEL_LABEL,
   type NegotiationId,
@@ -34,6 +35,7 @@ function setup(
   role: 'host' | 'guest',
   options: {
     signal?: (body: NegotiationBody) => boolean;
+    onApplicationMessage?: (body: ApplicationBody) => void;
     previousNegotiationId?: NegotiationId;
     configuration?: RTCConfiguration | (() => RTCConfiguration);
   } = {},
@@ -43,6 +45,7 @@ function setup(
   const states: { state: PeerSessionState; failure: PeerFailure | undefined }[] = [];
   const session = new PeerSession({
     role,
+    ...(options.onApplicationMessage ? { onApplicationMessage: options.onApplicationMessage } : {}),
     sessionId: SESSION_ID,
     negotiationId: NEGOTIATION,
     ...(options.previousNegotiationId === undefined
@@ -759,5 +762,119 @@ describe('runtime configuration and diagnostics (Phase 2D)', () => {
     await connection().resolveStats(report);
     await expect(late).resolves.toBeUndefined();
     await expect(session.getStats()).resolves.toBeUndefined();
+  });
+});
+
+const appBody: ApplicationBody = {
+  type: 'NOT_READY',
+  payload: { localSelectionId: null, reason: 'NO_MEDIA' },
+};
+function incomingApp(
+  sequence = 2,
+  context: object = {},
+  type = 'NOT_READY',
+  payload: object = appBody.payload,
+) {
+  return JSON.stringify({
+    protocolVersion: 1,
+    type,
+    sequence,
+    sentAt: 0,
+    payload: {
+      ...payload,
+      sessionId: SESSION_ID,
+      negotiationId: NEGOTIATION,
+      senderId: GUEST_ID,
+      recipientId: HOST_ID,
+      ...context,
+    },
+  });
+}
+async function appHost(connected = true) {
+  const received: ApplicationBody[] = [];
+  const h = setup('host', { onApplicationMessage: (body) => received.push(body) });
+  void h.session.start();
+  await flush();
+  await h.connection().settle('createOffer');
+  await h.connection().settle('setLocalDescription');
+  const channel = h.connection().channels[0];
+  if (!channel) throw new Error('no channel');
+  channel.open();
+  if (connected) {
+    channel.receive(hello(0));
+    channel.receive(ready(1));
+  }
+  return { ...h, channel, received };
+}
+describe('peer application boundary', () => {
+  it('rejects application send and receive before the bidirectional handshake', async () => {
+    const { session, channel, received, states } = await appHost(false);
+    expect(session.sendApplicationMessage(appBody)).toBe(false);
+    expect(channel.sent.map((m) => m.type)).toEqual(['PEER_HELLO']);
+    channel.receive(incomingApp(0));
+    expect(received).toEqual([]);
+    expect(states.at(-1)).toEqual({ state: 'failed', failure: 'peer_protocol' });
+  });
+  it('one sequence spans handshake and applications; caller context cannot forge identities', async () => {
+    const { session, channel, received } = await appHost();
+    expect(
+      session.sendApplicationMessage({
+        ...appBody,
+        payload: { ...appBody.payload, recipientId: STRANGER_ID },
+      } as ApplicationBody),
+    ).toBe(true);
+    expect(channel.sent.map((m) => m.sequence)).toEqual([0, 1, 2]);
+    expect(channel.sent.at(-1)?.payload).toEqual({
+      ...appBody.payload,
+      sessionId: SESSION_ID,
+      negotiationId: NEGOTIATION,
+      senderId: HOST_ID,
+      recipientId: GUEST_ID,
+    });
+    channel.receive(incomingApp());
+    expect(received).toEqual([appBody]);
+    channel.receive(incomingApp(3));
+    expect(received).toHaveLength(2);
+  });
+  it.each([
+    ['session', { sessionId: OTHER_SESSION_ID }],
+    ['negotiation', { negotiationId: OTHER_NEGOTIATION }],
+    ['sender', { senderId: STRANGER_ID }],
+    ['recipient', { recipientId: STRANGER_ID }],
+  ])('fails closed on wrong application %s', async (_name, context) => {
+    const { channel, states, received } = await appHost();
+    channel.receive(incomingApp(2, context));
+    expect(states.at(-1)).toEqual({ state: 'failed', failure: 'peer_protocol' });
+    expect(received).toEqual([]);
+  });
+  it.each([1, 2])('rejects lower/duplicate application sequence %s', async (sequence) => {
+    const { channel, states, received } = await appHost();
+    channel.receive(incomingApp(2));
+    channel.receive(incomingApp(sequence));
+    expect(received).toHaveLength(1);
+    expect(states.at(-1)?.failure).toBe('peer_protocol');
+  });
+  it.each([
+    new ArrayBuffer(1),
+    incomingApp(2, {}, 'PLAY'),
+    incomingApp(2, {}, 'MEDIA_INFO', {}),
+    'x'.repeat(1025),
+  ])('refuses binary/unknown/malformed/oversized data after handshake', async (data) => {
+    const { channel, states, received } = await appHost();
+    channel.receive(data);
+    expect(received).toEqual([]);
+    expect(states.at(-1)?.failure).toBe('peer_protocol');
+  });
+  it('teardown detaches application callback and stale captured handlers do nothing', async () => {
+    const { session, channel, received } = await appHost();
+    const handler = channel.onmessage;
+    session.close();
+    expect(channel.onmessage).toBeNull();
+    handler?.call(
+      channel as unknown as RTCDataChannel,
+      new MessageEvent('message', { data: incomingApp() }),
+    );
+    expect(received).toEqual([]);
+    expect(session.sendApplicationMessage(appBody)).toBe(false);
   });
 });

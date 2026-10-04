@@ -40,6 +40,9 @@ export interface RtcProbe {
   statusLog: string[];
   /** getStats() calls the application made, per peer connection, by index. */
   statsCalls: number[];
+  controlSends: { kind: string; text: string; bytes: number }[];
+  slices: { start: number; end: number; size: number }[];
+  wholeFileReads: number;
 }
 
 declare global {
@@ -61,6 +64,9 @@ export function installRtcProbe() {
     mediaCalls: [],
     cspViolations: [],
     statsCalls: [],
+    controlSends: [],
+    slices: [],
+    wholeFileReads: 0,
   };
   window.rtcProbe = probe;
   document.addEventListener('securitypolicyviolation', (event) => {
@@ -153,9 +159,24 @@ export function installRtcProbe() {
 
   const send = Reflect.get(RTCDataChannel.prototype, 'send') as (data: unknown) => void;
   Reflect.set(RTCDataChannel.prototype, 'send', function (this: RTCDataChannel, data: unknown) {
+    probe.controlSends.push({
+      kind: typeof data,
+      text: typeof data === 'string' ? data : '',
+      bytes: typeof data === 'string' ? new TextEncoder().encode(data).byteLength : -1,
+    });
     probe.sent.push(summarize(data));
     Reflect.apply(send, this, [data]);
   });
+  const slice = Reflect.get(File.prototype, 'slice');
+  File.prototype.slice = function (this: File, start = 0, end = this.size, contentType = '') {
+    probe.slices.push({ start, end, size: this.size });
+    return slice.call(this, start, end, contentType);
+  };
+  const readFile = Reflect.get(File.prototype, 'arrayBuffer');
+  File.prototype.arrayBuffer = function () {
+    probe.wholeFileReads++;
+    return readFile.call(this);
+  };
   for (const name of ['getUserMedia', 'getDisplayMedia'] as const) {
     const original = Reflect.get(MediaDevices.prototype, name) as (...args: unknown[]) => unknown;
     Reflect.set(MediaDevices.prototype, name, function (this: MediaDevices, ...args: unknown[]) {
@@ -228,7 +249,7 @@ export function room(page: Page): Locator {
 }
 
 export function status(page: Page): Locator {
-  return room(page).getByRole('status');
+  return room(page).locator('.room-status');
 }
 
 export function invite(page: Page): Locator {

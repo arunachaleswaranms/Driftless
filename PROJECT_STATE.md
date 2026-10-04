@@ -28,10 +28,10 @@ Phase 0 — Architecture & Feasibility: **CLOSED / PASS** (software feasibility;
 
 Phase 1 — Application Foundation: **CLOSED / PASS**. Phase 1 exit gate: **PASS** (see [Phase 1 qualification](docs/PHASE1_QUALIFICATION.md)).
 
-Phase 2 — Internet P2P Foundation: **IMPLEMENTATION COMPLETE**.
+Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 
 - Implementation status: **COMPLETE**.
-- Merge status: **READY**.
+- Merge status: **MERGED** at `2dd7dea8798bcfc742c8902e853cef69c053eecd` (PR #4).
 - Physical/network qualification: **DEFERRED / NOT CLOSED**.
 - Literal physical exit gate: **NOT PASSED**.
 
@@ -44,17 +44,17 @@ Phase 2 — Internet P2P Foundation: **IMPLEMENTATION COMPLETE**.
 
 The latest physical qualification attempt at `3a5922200ab0a77a1dd55d9d911a79a492971874` on 2026-10-04 identified the physical OnePlus Nord 5 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but did not execute a cellular / Wi-Fi-off cross-network session. Real-device data-channel establishment, selected-path evidence on both peers, and genuine network recovery remain unobserved (G1–G5 GAP). No publicly reachable TURN endpoint was available (T3/T4 GAP; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D automated browser evidence remains two browser contexts on one development machine.
 
-Phase 3 — Local Sync Mode: **NEXT — NOT STARTED**.
+Phase 3 — Local Sync Mode: **IN PROGRESS**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED**. Phase 3B — Host-Authoritative Playback Controls: **NEXT — NOT STARTED**. Phase 3C — Heartbeat, Drift Detection & Correction: **NOT STARTED**. Phase 3D — Qualification & Closure: **NOT STARTED**. Phase 3 exit gate: **NOT PASSED**.
 
 ### Implementation and qualification policy
 
-Phase 2 implementation is complete and may be merged. Physical Android, real-network recovery, and public TURN qualification remain deferred project-level qualification debt. Phase 3 implementation may proceed after the Phase 2 implementation milestone is merged, but later product/release closure must not infer those deferred Phase 2 gates as passed. Deferred Phase 2 physical/network qualification remains an open release-level gate and must be revisited before final product qualification.
+Phase 2 implementation is merged at `2dd7dea8798bcfc742c8902e853cef69c053eecd`. Physical Android, real-network recovery, and public TURN qualification remain deferred project-level qualification debt. Phase 3 implementation may proceed after the Phase 2 implementation milestone is merged, but later product/release closure must not infer those deferred Phase 2 gates as passed. Deferred Phase 2 physical/network qualification remains an open release-level gate and must be revisited before final product qualification.
 
 ## Current Branch
 
-`phase/2-internet-p2p-foundation`
+`phase/3-local-sync`
 
-Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 was merged through PR #3 at `4559bf4f0692f3b491819229d3596a81c0d319be`. The completed Phase 2 implementation is ready for milestone review and merge from `phase/2-internet-p2p-foundation`, created from `main` at `4559bf4`.
+Phase 0 was merged through PR #1 at `17eea6a`. Phase 1 was merged through PR #3 at `4559bf4f0692f3b491819229d3596a81c0d319be`. Phase 2 merged through PR #4 at `2dd7dea8798bcfc742c8902e853cef69c053eecd`. Phase 3 work uses `phase/3-local-sync`, based on that exact merged `main`.
 
 ## Repository Status
 
@@ -69,7 +69,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. Phase 2D added connection diagnostics, the runtime ICE configuration, and the TURN credential boundary (no TURN server is part of the repository). No synchronization engine, transfer engine, production cache, production transfer protocol, synchronization implementation, or Progressive Watch implementation has been initialized. `packages/sync-engine/` and `packages/transfer-engine/` remain empty.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. Phase 2D added connection diagnostics, the runtime ICE configuration, and the TURN credential boundary (no TURN server is part of the repository). Phase 3A initializes `packages/sync-engine/` for bounded media identity and pure readiness state. Playback synchronization, transfer engine, production cache, production transfer protocol, and Progressive Watch remain unimplemented; `packages/transfer-engine/` remains empty.
 
 ## Accepted Architecture
 
@@ -401,6 +401,14 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C
 
 **Phase 2D public deployment smoke test (2026-10-02).** The exact `aeb7f96` build behind an account-free Cloudflare quick tunnel from the development Mac (a development preview server as origin, the signaling service in production mode with the tunnel's exact `https` origin, Google's public STUN configured at run time, no TURN) passed HTTPS, response headers, `/healthz`, WSS origin and query policy, a same-machine room create and join in Google Chrome 154 with the exact build shown in diagnostics, and a clean service log. The tunnel also served plain HTTP, where the application refused to open rooms. The service's protocol pings traversed the tunnel and terminated a non-answering client at 23.9 s. Smoke evidence only; see the qualification record.
 
+## Phase 3A — Media Identity & Readiness Foundation (IMPLEMENTED)
+
+`@driftless/sync-engine` now owns injected SHA-256 fingerprint orchestration and deterministic local/remote media, match, and readiness transitions. Browser integration shares the existing local File/player selection, requires successfully loaded metadata, and uses only the peer control channel. The Phase 1 player itself still performs no application-level whole-file read; Phase 3A intentionally reads every file byte sequentially in bounded 4 MiB slices for identity. No entire-file buffer or upload is created.
+
+The wire identity is bound to the current SessionId. Every new selected file receives a cryptographically random 128-bit MediaSelectionId. Only version 1, session-scoped fingerprint, byte length, selection IDs, and fixed protocol state cross `driftless-control`. Explicit Ready is tied to the current confirmed matching pair. Local replacement, clear, errors, remote changes, and peer replacement invalidate dependent readiness. Stale selection evidence is ignored. Fresh channels regenerate current MEDIA_INFO, re-establish match, and require both users to Ready again; signaling reconnect with a surviving channel preserves setup state.
+
+All identity/readiness state stays in page memory. Phase 3A adds no playback controls, heartbeat, clock/drift logic, media transfer, persistence, or Progressive Watch. Automated evidence and exact commands are recorded in [PHASE3A_IMPLEMENTATION.md](docs/PHASE3A_IMPLEMENTATION.md). Phase 3 exit gate remains **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**, and `DEFERRED-PHYSICAL-001` through `007` remain OPEN.
+
 ## Open Deferred Qualification
 
 - Phase 2 physical Android cross-network establishment and recovery, selected-path evidence on both real peers, and public TURN forced-relay qualification remain **DEFERRED / NOT CLOSED**. T1/T2 are **PASS — software**; T3/T4 remain **GAP / DEFERRED** because no publicly reachable TURN service was available. The literal physical exit gate is **NOT PASSED**.
@@ -408,7 +416,7 @@ Implemented on `phase/2-internet-p2p-foundation` on top of the reviewed Phase 2C
 
 ## Not Started
 
-- Phase 3 — Local Sync Mode: **NEXT — NOT STARTED**. Implementation may begin after the Phase 2 implementation milestone is merged; deferred physical/network qualification remains an open release-level gate.
+- Phase 3B — Host-Authoritative Playback Controls: **NEXT — NOT STARTED**. Phase 3C and Phase 3D remain **NOT STARTED**; deferred physical/network qualification remains an open release-level gate.
 - Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
@@ -518,14 +526,14 @@ Spike 0.7 integrated those components in controlled Chrome and found no architec
 - Is Progressive Watch feasible on Safari macOS and Safari/iOS?
 - How does Firefox behave with the proposed progressive playback pipeline?
 - What cache persistence and eviction strategy best balances resume behavior and privacy?
-- What exact media fingerprint format provides useful matching without excessive cost?
+- What physical-device cost and resource behavior does the provisional Phase 3A full-file identity algorithm have?
 - What topology is appropriate for a third participant?
 
 These questions must be resolved by evidence, not by assumptions or undocumented defaults.
 
 ## Next Exact Step
 
-Independent review of the Phase 2 implementation milestone PR against `main`. Merge only after review PASS. Phase 3 implementation may begin from merged `main` after that milestone merge; Local Sync is **NEXT / NOT STARTED**. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
+Independent GitHub review of the exact pushed Phase 3A commit. Do not begin Phase 3B before review PASS. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 

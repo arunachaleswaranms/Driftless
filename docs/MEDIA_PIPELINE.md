@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the intended media-flow boundaries for Driftless. No production pipeline has been implemented or validated. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5, 0.6, and 0.7 are recorded separately below. They do not change the planned behavior below.
+This document defines the intended media-flow boundaries for Driftless. Phase 1 local playback and Phase 3A Local Sync media identity/readiness are implemented; playback synchronization and the production Progressive Watch pipeline remain future work. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5, 0.6, and 0.7 are recorded separately below. They do not change the planned behavior below.
 
 ## Mode A - Local Sync
 
@@ -14,16 +14,17 @@ Host local file  --> host HTML5 video ----+
 Guest local file --> guest HTML5 video ---+    (state and controls only)
 ```
 
-Planned flow:
+Implemented through Phase 3A:
 
-1. Each client inspects local metadata without exposing the local path.
-2. Clients derive and exchange an agreed media fingerprint or identity evidence.
-3. A match makes the participants eligible to report readiness; a mismatch blocks synchronized start.
-4. The host issues authoritative play, pause, and seek changes.
-5. Guests report observations through synchronization heartbeats.
-6. The synchronization engine selects bounded correction behavior based on measured drift.
+1. Select a local file using the existing player/input; wait for successful browser metadata loading.
+2. Generate a fresh random selection ID and hash **every byte** sequentially with one 4 MiB slice/read/digest active at a time. Refuse empty files and files above 4096 chunks (16 GiB, provisional).
+3. Derive a session-scoped fingerprint using the canonical algorithm in [PROTOCOL.md](PROTOCOL.md#implemented-through-phase-3a-local-sync-setup). Exchange only bounded identity evidence on the sync plane: no media bytes, filename, MIME, path, object URL, private root, or chunk digests.
+4. Compare fingerprints and byte lengths, confirm the current media pair, and require an explicit Ready choice from each user. Both-ready starts no playback.
+5. Cancel obsolete identity work and invalidate readiness on replacement, clear, errors, remote changes, or fresh peer recovery. Reannounce current truth after a fresh handshake; both users must Ready again. Signaling-only reconnect preserves a healthy channel's setup state.
 
-The exact fingerprint and drift algorithms remain open. Local Sync must work independently of transfer-engine, MSE, segmentation, and cache support.
+Phase 1 playback itself binds File → object URL → native video and performs no application-level whole-file read. Phase 3A identity intentionally adds a bounded sequential full-file read; it never materializes or uploads the entire file. Progress stays local, errors are fixed categories, and no identity/readiness state is persisted.
+
+Future 3B: host-authoritative play/pause/seek. Future 3C: heartbeat, drift detection/correction. Future 3D: physical/network qualification with thresholds documented before evaluation. Drift algorithms remain open. Local Sync must work independently of transfer-engine, MSE, segmentation, and cache support.
 
 ## Mode B - Progressive Watch
 

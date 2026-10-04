@@ -383,8 +383,8 @@ export function remoteCandidate(index: number): IceCandidate {
 
 /** A peer message as the other browser would send it. */
 export function peerMessage(
-  type: PeerMessage['type'],
-  payload: PeerMessage['payload'],
+  type: 'PEER_HELLO' | 'PEER_READY',
+  payload: import('@driftless/protocol').PeerHandshakePayload,
   sequence: number,
 ): string {
   return serializeMessage({

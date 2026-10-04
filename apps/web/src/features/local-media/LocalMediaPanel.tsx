@@ -19,8 +19,17 @@ const STATUS_TEXT = {
   error: '',
 } as const;
 
-export function LocalMediaPanel() {
-  const [{ selection }, dispatch] = useReducer(localMediaReducer, initialLocalMediaState);
+export function LocalMediaPanel({
+  media,
+}: {
+  media?: {
+    state: import('./localMediaState.ts').LocalMediaState;
+    dispatch: (action: import('./localMediaState.ts').LocalMediaAction) => void;
+  };
+} = {}) {
+  const [fallbackState, fallbackDispatch] = useReducer(localMediaReducer, initialLocalMediaState);
+  const { selection } = media?.state ?? fallbackState;
+  const dispatch = media?.dispatch ?? fallbackDispatch;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {

@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines design requirements. Except for the controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a), [Implemented in Phase 2B](#implemented-in-phase-2b), [Implemented in Phase 2C](#implemented-in-phase-2c), and [Implemented in Phase 2D](#implemented-in-phase-2d), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
+This document defines design requirements. Except for the controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a), [Implemented in Phase 2B](#implemented-in-phase-2b), [Implemented in Phase 2C](#implemented-in-phase-2c), [Implemented in Phase 2D](#implemented-in-phase-2d), and [Implemented in Phase 3A](#implemented-in-phase-3a), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
 
 ## Implemented in Phase 2A
 
@@ -78,6 +78,17 @@ Phase 2D adds short-lived TURN credential issuance, the runtime ICE configuratio
 - **Address-free diagnostics.** Connection diagnostics read `RTCPeerConnection.getStats()` in the browser and keep only connection, ICE, and channel states, the selected pair's candidate types (`host`, `srflx`, `prflx`, `relay`), transport and relay protocols, the negotiation count, whether TURN was offered, and the ICE policy. No address, port, candidate string, session description, ICE username fragment, DTLS fingerprint, TURN credential, or room, session, or participant identifier is read into them, displayed, or exported, and nothing is printed to the console.
 - **Diagnostics stay local and observational.** Diagnostics are never sent to the service, the peer, or any other destination; there is no telemetry and no stored history. Reading statistics never restarts ICE, creates or closes a connection, changes the ICE policy, or starts recovery, and a failure to read them only yields an `UNKNOWN` path. Statistics are read when a connection becomes connected and on an explicit refresh; there is no polling.
 - **Deployment boundary.** [DEPLOYMENT.md](DEPLOYMENT.md) specifies HTTPS and WSS through TLS termination, an exact `https` origin list, a loopback-bound service, secrets from files or a secret store, response security headers including `frame-ancestors 'none'`, and a TURN configuration that refuses relaying into private, loopback, link-local, and carrier-grade NAT ranges. These are deployment requirements; this repository does not enforce them on a host.
+
+## Implemented in Phase 3A
+
+- Session-scoped SHA-256 wire fingerprints bind every-byte identity evidence to the room SessionId; the same media has no stable fingerprint across unrelated rooms. Private roots/chunk digests stay inside the local calculation.
+- No filename, path, MIME, duration, object URL, filesystem metadata/handle, or media bytes cross the peer channel. The signaling service and room store are unchanged and know nothing about media selection.
+- Sequential 4 MiB reads with one source chunk active; a preflight bound of 4096 chunks / 16 GiB before allocation. Only at most 128 KiB of digest manifest plus fixed header is retained; empty/oversize/read/hash errors use fixed categories.
+- Fresh 128-bit selection IDs, current-pair match confirmation, browser metadata success, and explicit intent bind readiness. Replacement/clear/errors/remote changes/fresh peer replacement invalidate it. Generation-owned cancellation makes obsolete callbacks powerless; structurally valid stale pair evidence is ignored.
+- PeerSession rejects application traffic before handshake completion and binds it to session, negotiation and participants, with one increasing handshake/application sequence and the unchanged 1024-byte UTF-8 bound. Binary, unknown, malformed, duplicate/lower-sequence or wrong-context traffic fails closed. Teardown drops application callbacks.
+- No fingerprint/root, selection ID, Ready choice, or remote identity is persisted in Web Storage, IndexedDB, OPFS or Cache Storage. Reload resets setup. No upload, media transfer, logging of identity, or playback-authority implementation is introduced.
+
+An authorized malicious peer can lie about its selected media or whether it plays it. This is cooperative identity evidence, **not remote attestation or DRM**. Session scoping prevents a stable cross-room fingerprint; it does not prevent an authorized peer from testing guessed files against the current room identity. No independent security audit or physical/network gate is claimed.
 
 ## Threat Model Scope
 

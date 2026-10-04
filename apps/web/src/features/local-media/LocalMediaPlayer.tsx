@@ -11,9 +11,9 @@ interface LocalMediaPlayerProps {
 }
 
 /**
- * A native video element playing one local file. The file is never read by
- * the application: it is bound through an object URL, and the browser's media
- * stack reads and decodes it on demand.
+ * A native video element playing one local file through an object URL. This
+ * player performs no application-level file read; the browser media stack
+ * decodes on demand. Local Sync separately reads bounded identity chunks.
  *
  * Mount one instance per selection (keyed by selection id). The instance owns
  * its object URL from creation to revocation, so a replacement or clear always

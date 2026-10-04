@@ -1,4 +1,6 @@
 import {
+  type ApplicationBody,
+  type ApplicationMessage,
   MAX_ICE_CANDIDATES_PER_NEGOTIATION,
   PEER_CONTROL_CHANNEL_LABEL,
   PROTOCOL_VERSION,
@@ -111,6 +113,7 @@ export const MAX_QUEUED_REMOTE_CANDIDATES = MAX_ICE_CANDIDATES_PER_NEGOTIATION;
 export const MAX_QUEUED_REMOTE_CANDIDATE_BYTES = 16_384;
 
 export interface PeerSessionOptions {
+  readonly onApplicationMessage?: (body: ApplicationBody) => void;
   readonly role: ParticipantRole;
   /** The room session both participants belong to; bound into the handshake. */
   readonly sessionId: SessionId;
@@ -180,9 +183,39 @@ export class PeerSession {
   #helloSent = false;
   #helloReceived = false;
   #readyReceived = false;
+  #applicationCallback: ((body: ApplicationBody) => void) | undefined;
 
   constructor(options: PeerSessionOptions) {
     this.#options = options;
+    this.#applicationCallback = options.onApplicationMessage;
+  }
+
+  /** Only this boundary writes application JSON to the channel. */
+  sendApplicationMessage(body: ApplicationBody): boolean {
+    if (this.#state !== 'connected' || this.#channel?.readyState !== 'open') return false;
+    const message = {
+      protocolVersion: PROTOCOL_VERSION,
+      type: body.type,
+      sequence: this.#nextPeerSequence,
+      sentAt: this.#options.clock(),
+      payload: {
+        ...body.payload,
+        sessionId: this.#options.sessionId,
+        negotiationId: this.#options.negotiationId,
+        senderId: this.#options.localParticipantId,
+        recipientId: this.#options.remoteParticipantId,
+      },
+    } as ApplicationMessage;
+    const text = serializeMessage(message);
+    if (!parsePeerMessage(text).ok) return false;
+    this.#nextPeerSequence += 1;
+    try {
+      this.#channel.send(text);
+      return true;
+    } catch {
+      this.#fail('channel_closed');
+      return false;
+    }
   }
 
   get state(): PeerSessionState {
@@ -524,7 +557,7 @@ export class PeerSession {
     this.#sendPeer('PEER_HELLO');
   }
 
-  #sendPeer(type: PeerMessage['type']): void {
+  #sendPeer(type: 'PEER_HELLO' | 'PEER_READY'): void {
     const message: PeerMessage = {
       protocolVersion: PROTOCOL_VERSION,
       type,
@@ -573,6 +606,58 @@ export class PeerSession {
     }
     this.#lastPeerSequence = message.sequence;
 
+    if (message.type !== 'PEER_HELLO' && message.type !== 'PEER_READY') {
+      if (this.#state !== 'connected') {
+        this.#fail('peer_protocol');
+        return;
+      }
+      // The context is checked above; upward consumers receive only domain fields.
+      // Explicit projection keeps the application API context-free.
+      switch (message.type) {
+        case 'MEDIA_INFO':
+          this.#applicationCallback?.({
+            type: message.type,
+            payload: {
+              selectionId: message.payload.selectionId,
+              fingerprintVersion: message.payload.fingerprintVersion,
+              fingerprint: message.payload.fingerprint,
+              byteLength: message.payload.byteLength,
+            },
+          });
+          break;
+        case 'MEDIA_MATCH':
+        case 'READY':
+          this.#applicationCallback?.({
+            type: message.type,
+            payload: {
+              localSelectionId: message.payload.localSelectionId,
+              remoteSelectionId: message.payload.remoteSelectionId,
+              fingerprint: message.payload.fingerprint,
+            },
+          });
+          break;
+        case 'MEDIA_MISMATCH':
+          this.#applicationCallback?.({
+            type: message.type,
+            payload: {
+              localSelectionId: message.payload.localSelectionId,
+              remoteSelectionId: message.payload.remoteSelectionId,
+              reason: message.payload.reason,
+            },
+          });
+          break;
+        case 'NOT_READY':
+          this.#applicationCallback?.({
+            type: message.type,
+            payload: {
+              localSelectionId: message.payload.localSelectionId,
+              reason: message.payload.reason,
+            },
+          });
+          break;
+      }
+      return;
+    }
     if (message.type === 'PEER_HELLO') {
       if (this.#helloReceived) {
         this.#fail('peer_protocol');
@@ -606,6 +691,7 @@ export class PeerSession {
 
   /** Closes the channel and connection, detaches every handler, and drops queues. */
   #teardown(): void {
+    this.#applicationCallback = undefined;
     const channel = this.#channel;
     const connection = this.#connection;
     this.#channel = undefined;

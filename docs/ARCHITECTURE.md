@@ -78,8 +78,21 @@ These responsibilities remain the accepted target architecture. Current implemen
 - In production the client expects the signaling path on its own origin, so a deployment routes `/v1/signaling` to the service behind TLS. The development and preview servers forward the path to a loopback service. The expected deployment topology — TLS reverse proxy, loopback-bound service, coturn — is in [DEPLOYMENT.md](DEPLOYMENT.md); whether one existed for qualification is recorded in [PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md).
 - In Phase 2D the service also issues each admitted member its ICE configuration: configured STUN servers, and TURN servers with a short-lived credential it derives from a secret shared with the TURN server ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)). It is not a TURN server and relays no media.
 - `packages/protocol/` gained, in Phase 2C, the session ID, resume secret, challenge, and proof formats, the canonical 76-byte resume proof input (no hashing; each endpoint uses platform crypto), the resume, presence, and recovery messages, and a pure base64url codec.
-- `packages/sync-engine/` and `packages/transfer-engine/` are empty; synchronization and media transfer, including the production Progressive Watch components, are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
+- `packages/sync-engine/` is initialized in Phase 3A for pure media identity/readiness logic. Playback synchronization is future work. `packages/transfer-engine/` remains empty; media transfer and production Progressive Watch are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
 - The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root lockfile.
+
+## Implemented Phase 3A responsibility split
+
+```text
+App-owned local File + local player metadata
+    → LocalSyncController: File.slice(...).arrayBuffer(), Web Crypto, cancellation
+    → sync-engine: canonical identity construction, pure readiness reducer/effects
+    → PeerSession: shared parser, context binding, sequence, text control channel
+```
+
+`App` lifts the existing media reducer; one input and one File object serve the existing player and Local Sync. The native player's captured object URL is still released on replacement/clear and stale media events remain selection-bound. The player performs no application-level file read; the identity adapter intentionally performs a bounded sequential full-file read.
+
+The engine has no React, DOM, network transport, or persistence. SHA-256 is injected; browser cryptography stays in the adapter. `PeerSession.sendApplicationMessage` supplies session/negotiation/participant context and rejects sends before handshake completion. Application callbacks are validated below React and detached at teardown. `RoomController` binds setup only to the current peer, preserves it on signaling-only recovery, and clears peer evidence/readiness on fresh transport replacement. No transfer engine is involved and no playback authority is implemented.
 
 ## Web Client Components
 
@@ -192,4 +205,4 @@ The choice has costs: connectivity variability, TURN exposure, browser constrain
 
 ## Unresolved Design Areas
 
-Phase 0 supplied controlled desktop evidence for fragmentation, bounded data-channel transfer, MSE, OPFS, and parts of multi-GB resource behavior; see the [Phase 0 results](../spikes/phase0/). Physical Android, real-network/TURN behavior, broad browser compatibility, fingerprinting, reconnect behavior on real networks, and production parameter choices still need evidence. These choices are intentionally not frozen here.
+Phase 0 supplied controlled desktop evidence for fragmentation, bounded data-channel transfer, MSE, OPFS, and parts of multi-GB resource behavior; see the [Phase 0 results](../spikes/phase0/). Physical Android, real-network/TURN behavior, broad browser compatibility, physical-device fingerprinting cost, reconnect behavior on real networks, and production parameter choices still need evidence. These choices are intentionally not frozen here.

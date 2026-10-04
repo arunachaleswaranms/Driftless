@@ -286,8 +286,16 @@ describe('isSessionDescription', () => {
 });
 
 describe('peer messages', () => {
-  it('define only the connection handshake', () => {
-    expect([...PEER_MESSAGE_TYPES]).toStrictEqual(['PEER_HELLO', 'PEER_READY']);
+  it('define the handshake and Local Sync setup', () => {
+    expect([...PEER_MESSAGE_TYPES]).toStrictEqual([
+      'PEER_HELLO',
+      'PEER_READY',
+      'MEDIA_INFO',
+      'MEDIA_MATCH',
+      'MEDIA_MISMATCH',
+      'READY',
+      'NOT_READY',
+    ]);
   });
 
   it.each(Object.entries(VALID_PEER_PAYLOADS))('parses %s', (type, payload) => {
@@ -318,7 +326,7 @@ describe('peer messages', () => {
   );
 
   it('keeps peer, client, and server message sets apart', () => {
-    for (const type of PEER_MESSAGE_TYPES) {
+    for (const type of ['PEER_HELLO', 'PEER_READY'] as const) {
       const text = envelope(type, VALID_PEER_PAYLOADS[type]);
       expect(parseClientMessage(text)).toMatchObject({ ok: false, reason: 'unknown_type' });
       expect(parseServerMessage(text)).toMatchObject({ ok: false, reason: 'unknown_type' });

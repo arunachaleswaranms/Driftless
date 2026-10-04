@@ -105,7 +105,10 @@ test('connects a host and a guest over a real data channel and proves traffic bo
     expect(text).toContain('synchronized playback is not available');
     expect(text).not.toMatch(SDP_OR_ICE);
     expect(text).not.toMatch(/\b\d{1,3}(\.\d{1,3}){3}\b/);
-    expect(text).not.toMatch(/synchronized playback is ready|Local Sync|Progressive Watch/i);
+    expect(text).not.toMatch(/synchronized playback is ready|Progressive Watch/i);
+    await expect(
+      room(peer.page).getByRole('button', { name: "I'm ready", exact: true }),
+    ).toBeDisabled();
   }
   await expect(room(host.page).locator('dt', { hasText: 'Your role' }).locator('+ dd')).toHaveText(
     'Host',

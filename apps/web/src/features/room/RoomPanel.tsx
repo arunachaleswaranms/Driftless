@@ -1,3 +1,4 @@
+import { LocalSyncPanel } from '../local-sync/LocalSyncPanel.tsx';
 import { useEffect, useRef, useState, useSyncExternalStore, type SubmitEvent } from 'react';
 import { ConnectionDiagnosticsView } from './ConnectionDiagnosticsView.tsx';
 import { createBrowserRoomController } from './browserRoomController.ts';
@@ -73,12 +74,12 @@ export function RoomPanel({ controller: provided }: RoomPanelProps) {
         </h2>
         <p className="panel-status">
           Connect this browser directly to one other person&apos;s browser in a private two-person
-          room. The signaling service only helps the two browsers find each other. Nothing is shared
-          or played together yet.
+          room. The signaling service only helps the two browsers find each other. Local Sync
+          exchanges private identity evidence and explicit readiness. Playback is not synchronized.
         </p>
       </div>
 
-      <p className="room-status" role="status">
+      <p className="room-status" role="status" aria-label="Room connection status">
         {statusText(state)}
       </p>
       {error !== null || peerFailure !== null ? (
@@ -100,7 +101,10 @@ export function RoomPanel({ controller: provided }: RoomPanelProps) {
         }}
       />
       {state.phase === 'in-room' ? (
-        <ConnectionDiagnosticsView controller={controller} state={state} />
+        <>
+          <LocalSyncPanel controller={controller.localSync} />
+          <ConnectionDiagnosticsView controller={controller} state={state} />
+        </>
       ) : null}
     </section>
   );
@@ -167,8 +171,8 @@ function RoomBody({ state, onCreate, onJoin, onLeave }: RoomBodyProps) {
           </dl>
           {state.peer?.connection === 'connected' ? (
             <p className="room-note">
-              The two browsers have a working WebRTC data channel between them. This build does not
-              use it for anything yet: synchronized playback is not available.
+              The two browsers have a working WebRTC data channel between them. Local Sync can
+              compare local media and readiness; synchronized playback is not available.
             </p>
           ) : null}
           <div className="room-actions">

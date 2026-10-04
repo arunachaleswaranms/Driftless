@@ -8,7 +8,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "tsc -b ../../packages/protocol/tsconfig.build.json && vite",
+    "dev": "tsc -b ../../packages/protocol/tsconfig.build.json ../../packages/sync-engine/tsconfig.build.json && vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
@@ -26,7 +26,8 @@
   "dependencies": {
     "@driftless/protocol": "0.0.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@driftless/sync-engine": "0.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

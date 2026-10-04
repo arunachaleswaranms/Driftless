@@ -1,5 +1,7 @@
 import type { ErrorCode } from './errors.js';
 import type {
+  MediaSelectionId,
+  MediaFingerprint,
   InviteSecret,
   NegotiationId,
   ParticipantId,
@@ -416,10 +418,69 @@ export interface PeerHandshakePayload {
 
 export type PeerHelloMessage = Envelope<'PEER_HELLO', PeerHandshakePayload>;
 export type PeerReadyMessage = Envelope<'PEER_READY', PeerHandshakePayload>;
-export type PeerMessage = PeerHelloMessage | PeerReadyMessage;
+export const MEDIA_FINGERPRINT_VERSION = 1;
+export const MEDIA_FINGERPRINT_CHUNK_BYTES = 4 * 1024 * 1024;
+export const MAX_MEDIA_FINGERPRINT_CHUNKS = 4096;
+export const MAX_MEDIA_FINGERPRINT_BYTES =
+  MEDIA_FINGERPRINT_CHUNK_BYTES * MAX_MEDIA_FINGERPRINT_CHUNKS;
+export const NOT_READY_REASONS = [
+  'USER',
+  'NO_MEDIA',
+  'MEDIA_CHANGED',
+  'PEER_MEDIA_CHANGED',
+  'MEDIA_MISMATCH',
+  'LOCAL_MEDIA_ERROR',
+] as const;
+export type NotReadyReason = (typeof NOT_READY_REASONS)[number];
+export interface MediaIdentity {
+  readonly selectionId: MediaSelectionId;
+  readonly fingerprintVersion: typeof MEDIA_FINGERPRINT_VERSION;
+  readonly fingerprint: MediaFingerprint;
+  readonly byteLength: number;
+}
+export interface MediaPair {
+  readonly localSelectionId: MediaSelectionId;
+  readonly remoteSelectionId: MediaSelectionId;
+  readonly fingerprint: MediaFingerprint;
+}
+export type MediaInfoMessage = Envelope<'MEDIA_INFO', PeerHandshakePayload & MediaIdentity>;
+export type MediaMatchMessage = Envelope<'MEDIA_MATCH', PeerHandshakePayload & MediaPair>;
+export type MediaMismatchMessage = Envelope<
+  'MEDIA_MISMATCH',
+  PeerHandshakePayload & {
+    readonly localSelectionId: MediaSelectionId;
+    readonly remoteSelectionId: MediaSelectionId;
+    readonly reason: 'IDENTITY_MISMATCH';
+  }
+>;
+export type ReadyMessage = Envelope<'READY', PeerHandshakePayload & MediaPair>;
+export type NotReadyMessage = Envelope<
+  'NOT_READY',
+  PeerHandshakePayload & {
+    readonly localSelectionId: MediaSelectionId | null;
+    readonly reason: NotReadyReason;
+  }
+>;
+export type ApplicationMessage =
+  MediaInfoMessage | MediaMatchMessage | MediaMismatchMessage | ReadyMessage | NotReadyMessage;
+/** Context-free body; the transport supplies the authenticated peer context. */
+export type ApplicationBody = ApplicationMessage extends infer Message
+  ? Message extends ApplicationMessage
+    ? {
+        readonly type: Message['type'];
+        readonly payload: Omit<Message['payload'], keyof PeerHandshakePayload>;
+      }
+    : never
+  : never;
+export type PeerMessage = PeerHelloMessage | PeerReadyMessage | ApplicationMessage;
 export type PeerMessageType = PeerMessage['type'];
 
 export const PEER_MESSAGE_TYPES = [
   'PEER_HELLO',
   'PEER_READY',
+  'MEDIA_INFO',
+  'MEDIA_MATCH',
+  'MEDIA_MISMATCH',
+  'READY',
+  'NOT_READY',
 ] as const satisfies readonly PeerMessage['type'][];

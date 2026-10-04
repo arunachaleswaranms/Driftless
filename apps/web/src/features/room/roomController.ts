@@ -1,3 +1,4 @@
+import { LocalSyncController } from '../local-sync/localSyncController.ts';
 import {
   MAX_NEGOTIATIONS_PER_MEMBERSHIP,
   isInviteSecret,
@@ -240,6 +241,7 @@ const LEFT_NOTICES: Readonly<Record<ParticipantLeftReason, HostRoomNotice>> = {
  * room, guest, negotiation, or connection never changes the current session.
  */
 export class RoomController {
+  readonly localSync = new LocalSyncController();
   readonly #options: RoomControllerOptions;
   readonly #timers: Timers;
   readonly #listeners = new Set<() => void>();
@@ -439,6 +441,7 @@ export class RoomController {
 
   /** Releases every resource and timer and returns to idle. The controller stays usable. */
   shutdown(): void {
+    this.localSync.shutdown();
     this.#closePeer();
     this.#cancelReconnect();
     this.#closeSignaling();
@@ -1075,6 +1078,9 @@ export class RoomController {
       // membership; nothing is queued for later.
       signal: (body) =>
         this.#peer === peer && this.#signalingReady && this.#signaling?.send(body) === true,
+      onApplicationMessage: (body) => {
+        if (this.#peer === peer) this.localSync.receive(body);
+      },
       onStateChange: (peerState, failure) => {
         if (this.#peer === peer) this.#peerStateChanged(peerState, failure);
       },
@@ -1223,6 +1229,7 @@ export class RoomController {
     const state = this.#state;
     if (state.phase !== 'in-room' || state.peer === null || peerState === 'closed') return;
     if (peerState === 'failed') {
+      this.localSync.setChannel(undefined);
       // The failed session is discarded, never resurrected. A fresh one
       // replaces it once both sides can signal.
       const offering = this.#offering;
@@ -1255,7 +1262,14 @@ export class RoomController {
       }
       return;
     }
-    if (peerState === 'connected') this.#recovering = false;
+    if (peerState === 'connected') {
+      this.#recovering = false;
+      const peer = this.#peer;
+      if (peer)
+        this.localSync.setChannel(
+          (body) => this.#peer === peer && peer.sendApplicationMessage(body),
+        );
+    }
     const connection: PeerConnectionView =
       peerState !== 'connected' && this.#recovering ? 'recovering' : peerState;
     this.#setInRoom({ ...state, peer: { ...state.peer, connection } });
@@ -1287,6 +1301,7 @@ export class RoomController {
   }
 
   #beginMembership(membership: Membership): void {
+    this.localSync.setRoom(membership.sessionId);
     this.#membership = membership;
     this.#resetNegotiation();
     this.#disrupted = false;
@@ -1302,6 +1317,7 @@ export class RoomController {
   }
 
   #forgetMembership(): void {
+    this.localSync.setRoom(null);
     this.#membership = undefined;
     this.#resetNegotiation();
     this.#disrupted = false;
@@ -1329,6 +1345,7 @@ export class RoomController {
   }
 
   #closePeer(): void {
+    this.localSync.setChannel(undefined);
     const peer = this.#peer;
     this.#peer = undefined;
     peer?.close();

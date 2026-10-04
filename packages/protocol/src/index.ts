@@ -131,3 +131,31 @@ export {
   toIceCandidate,
   type IceCandidate,
 } from './webrtc.js';
+
+export {
+  MEDIA_SELECTION_ID_BYTES,
+  MEDIA_SELECTION_ID_LENGTH,
+  MEDIA_FINGERPRINT_BYTES,
+  MEDIA_FINGERPRINT_LENGTH,
+  isMediaSelectionId,
+  isMediaFingerprint,
+  type MediaSelectionId,
+  type MediaFingerprint,
+} from './identifiers.js';
+export {
+  MEDIA_FINGERPRINT_VERSION,
+  MEDIA_FINGERPRINT_CHUNK_BYTES,
+  MAX_MEDIA_FINGERPRINT_CHUNKS,
+  MAX_MEDIA_FINGERPRINT_BYTES,
+  NOT_READY_REASONS,
+  type NotReadyReason,
+  type MediaIdentity,
+  type MediaPair,
+  type ApplicationBody,
+  type ApplicationMessage,
+  type MediaInfoMessage,
+  type MediaMatchMessage,
+  type MediaMismatchMessage,
+  type ReadyMessage,
+  type NotReadyMessage,
+} from './messages.js';

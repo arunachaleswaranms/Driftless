@@ -2,15 +2,15 @@
 
 Driftless is an experimental, private, peer-to-peer application for synchronized video watching across different locations. It is web-first, initially optimized for two participants, and intended to support at most three participants after the two-person experience is stable.
 
-> **Phase 2 implementation is complete and ready to merge.** Phases 2A–2D are implemented and have passed software review.
+> **Phase 2 implementation is MERGED / COMPLETE** at `2dd7dea8798bcfc742c8902e853cef69c053eecd` (PR #4). Phases 2A–2D are implemented and have passed software review.
 >
 > Physical Android / different-network / real-recovery / public-TURN qualification is **DEFERRED / NOT CLOSED**. The literal Phase 2 physical exit gate is **NOT PASSED**; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
 >
-> **Phase 3 — Local Sync Mode: NEXT / NOT STARTED**, after the Phase 2 implementation milestone is merged.
+> **Phase 3 — Local Sync Mode: IN PROGRESS**. Phase 3A implements media identity and readiness; 3B–3D are not started. Phase 3 exit gate: **NOT PASSED**.
 
 Phase 2 provides private two-person rooms, signaling, WebRTC negotiation and a data-channel handshake, authenticated signaling resume, bounded fresh-peer recovery, safe connection diagnostics, runtime ICE configuration, and short-lived TURN credential issuance. Its automated browser evidence uses two contexts on one development machine; it does not qualify Internet connectivity or public TURN operation.
 
-Phase 0 software feasibility and Phase 1 application foundation are closed. The web client provides an application shell, PWA foundation, local video playback, and a local report of observable browser APIs. Synchronization and media transfer remain unimplemented. Compatibility statuses are unchanged.
+Phase 0 software feasibility and Phase 1 application foundation are closed. The web client provides an application shell, PWA foundation, local video playback, and a local report of observable browser APIs. Playback synchronization and media transfer remain unimplemented. Compatibility statuses are unchanged.
 
 Physical Android, real-network recovery, and public TURN remain project-level qualification debt. Phase 3 implementation may proceed after the Phase 2 implementation merge, but final product/release closure must revisit that debt and must not infer the deferred gates as passed.
 
@@ -27,11 +27,11 @@ Physical Android, real-network recovery, and public TURN remain project-level qu
 
 ### Mode A - Local Sync
 
-Each participant selects the same local video file. Driftless exchanges control and state data only: play, pause, seek, playback timestamps, synchronization heartbeats, drift correction, readiness, chat, and reactions. No media file is transferred. Initial synchronization is host-authoritative.
+Each participant selects a local copy of the same video. Phase 3A exchanges media identity and readiness only; no media file is transferred. The planned complete mode adds host-authoritative playback controls, timestamps, heartbeats and drift correction. Chat and reactions remain later work.
 
-**Planned:** media matching, room readiness, synchronized controls, drift correction, chat, and reactions.
+**Implemented through Phase 3A:** independent local selection, bounded full-file identity, session-scoped identity exchange, match/mismatch, and explicit readiness. Both-ready does not start playback.
 
-**Implemented:** none.
+**Future:** host playback controls, heartbeat and drift management, chat, and reactions.
 
 ### Mode B - Progressive Watch
 
@@ -68,14 +68,14 @@ Progressive Watch is a runtime-detected capability. A browser or device that can
 
 ## Development status
 
-The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. No synchronization engine, binary transfer engine, or Progressive Watch implementation has been initialized.
+The project version is `0.0.0-planning`. Phase 0 software feasibility closed after final independent review and the merge of [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) into `main`. Isolated Spikes 0.1–0.7 and their evidence remain under `spikes/phase0/`. Physical Android and real external-network qualification remain open as `DEFERRED-PHYSICAL-001` through `007`. The sync-engine package is initialized for Phase 3A identity and readiness only. Binary transfer and Progressive Watch remain uninitialized.
 
 Phase 1 — Application Foundation is **CLOSED / PASS**. Its exit gate passed at revision `4bf6e31`; see the [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md).
 
-Phase 2 — Internet P2P Foundation is **IMPLEMENTATION COMPLETE / READY TO MERGE**; Phases 2A–2D are implemented and review pass. Physical/network qualification is **DEFERRED / NOT CLOSED**, and the literal physical exit gate is **NOT PASSED**. The physical OnePlus Nord 5 was identified, but cellular / Wi-Fi-off establishment, real recovery, and selected-path evidence were not obtained; no public TURN service was available. Phase 3 — Local Sync Mode is **NEXT / NOT STARTED**, after the Phase 2 implementation merge.
+Phase 2 — Internet P2P Foundation is **MERGED / COMPLETE**; Phases 2A–2D are implemented and review pass. Physical/network qualification is **DEFERRED / NOT CLOSED**, and the literal physical exit gate is **NOT PASSED**. The physical OnePlus Nord 5 was identified, but cellular / Wi-Fi-off establishment, real recovery, and selected-path evidence were not obtained; no public TURN service was available. Phase 3 — Local Sync Mode is **IN PROGRESS**, on `phase/3-local-sync`. 3A implements identity/readiness; 3B is next and not started. The overall Phase 3 gate is not passed.
 
 - **Phase 1A — implemented:** the React/TypeScript/Vite web client in [`apps/web/`](apps/web/), with an application shell, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser tests.
-- **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. The file is never uploaded or read by the application.
+- **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. Phase 1 playback itself uses no application-level whole-file read or upload. Phase 3A identity intentionally reads the file sequentially in bounded chunks, never materializing or uploading the entire file.
 - **Phase 1C — implemented:** capability detection. The capabilities area reports, on the page only, whether the API surfaces used by the current foundation and planned for later phases are present. These are runtime observations: API presence is not browser or product support, and it establishes no mode, including Progressive Watch. Product compatibility remains governed by the [compatibility policy](docs/COMPATIBILITY.md).
 - **Phase 1D — complete:** qualification and closure. It added a synthetic MP4/H.264/AAC local-playback fixture, full-lifecycle and PWA qualification tests, and an opt-in run in the installed Google Chrome. The exit gate passed in Playwright Chromium 153 and Google Chrome 154. These are development browsers, not supported browsers.
 
@@ -86,13 +86,19 @@ Phase 2 — Internet P2P Foundation is **IMPLEMENTATION COMPLETE / READY TO MERG
 
 Automated Chromium results are development evidence, not browser support claims. Node and loopback signaling tests, and same-host two-context WebRTC tests, are not device, NAT-traversal, TURN, or real-network evidence. Physical-device and real-network qualification remains deferred.
 
+## Phase 3A Local Sync setup
+
+Choose a local video in each connected browser. Identity checking reads every local byte through one 4 MiB slice at a time. Matching files may have different filenames. After metadata loads and both peers confirm a match, each user chooses **I'm ready**; **Not ready** withdraws that choice. Replacing/clearing a file or a playback error invalidates readiness. Fresh peer recovery reannounces media and requires new Ready choices; signaling-only reconnect preserves a healthy channel's readiness. No media is transferred and native video controls stay local. Identity evidence is kept only in memory and never shown in the normal UI. The provisional identity bound is 4096 chunks / 16 GiB; this is not a final product maximum.
+
+See [sync-engine](packages/sync-engine/README.md) and [3A evidence](docs/PHASE3A_IMPLEMENTATION.md). No physical or synchronization gate is evaluated in 3A.
+
 ## Development
 
 The repository is an npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. With Node.js 22.12 or later:
 
 ```sh
 npm ci                            # install every workspace from the root lockfile
-npm run check                     # protocol, signaling, and web: typecheck, lint, format, unit tests, build, smoke tests
+npm run check                     # protocol, sync-engine, signaling, and web: typecheck, lint, format, unit tests, build, smoke tests
 npm run test                      # unit tests of every workspace
 npx playwright install chromium   # once per machine
 npm run test:e2e                  # web Playwright regression (Chromium)
@@ -107,7 +113,7 @@ Package details: [web client](apps/web/README.md), [protocol](packages/protocol/
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [Protocol (Phase 2A–2D subset implemented; the rest conceptual)](docs/PROTOCOL.md)
+- [Protocol (implemented through Phase 3A; future families conceptual)](docs/PROTOCOL.md)
 - [Deployment boundary](docs/DEPLOYMENT.md)
 - [Media pipeline](docs/MEDIA_PIPELINE.md)
 - [Roadmap and phase gates](docs/ROADMAP.md)

@@ -13,7 +13,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "skipLibCheck": true,
-
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
@@ -24,5 +23,12 @@
     "erasableSyntaxOnly": true
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/protocol/tsconfig.build.json" }]
+  "references": [
+    {
+      "path": "../../packages/protocol/tsconfig.build.json"
+    },
+    {
+      "path": "../../packages/sync-engine/tsconfig.build.json"
+    }
+  ]
 }

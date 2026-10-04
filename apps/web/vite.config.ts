@@ -98,6 +98,9 @@ export default defineConfig({
     // build. Builds and the development server use the built package through
     // its exports map, which `tsc -b` produces first.
     alias: {
+      '@driftless/sync-engine': fileURLToPath(
+        new URL('../../packages/sync-engine/src/index.ts', import.meta.url),
+      ),
       '@driftless/protocol': fileURLToPath(
         new URL('../../packages/protocol/src/index.ts', import.meta.url),
       ),

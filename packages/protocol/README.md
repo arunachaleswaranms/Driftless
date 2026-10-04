@@ -1,25 +1,31 @@
 # @driftless/protocol
 
-The shared, transport-neutral Driftless protocol contract: the versioned message envelope, the signaling room messages (Phase 2A), the WebRTC negotiation messages and the data-channel connection handshake (Phase 2B), session resume, signaling presence, and peer recovery (Phase 2C), the ICE server configuration messages (Phase 2D), identifier and credential formats, size bounds, the error vocabulary, and strict parsing.
+The shared, transport-neutral Driftless protocol contract: the versioned message envelope, the signaling room messages (Phase 2A), the WebRTC negotiation messages and the data-channel connection handshake (Phase 2B), session resume, signaling presence, and peer recovery (Phase 2C), the ICE server configuration messages (Phase 2D), Local Sync identity/readiness messages (Phase 3A), identifier and credential formats, size bounds, the error vocabulary, and strict parsing.
 
 It has no runtime dependencies and uses no Node-only or browser-only API, so the same validation runs in the signaling service and in the web client. The protocol is specified in [docs/PROTOCOL.md](../../docs/PROTOCOL.md); this README describes the package.
 
 ## Scope
 
-Phases 2A–2D freeze only what they implement:
+Phases 2A–3A freeze only what they implement:
 
 - the common envelope, `protocolVersion: 1`;
 - client → server: `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`, `SESSION_RESUME_BEGIN`, `SESSION_RESUME_PROVE`, `RTC_CONFIG_REQUEST`;
 - server → client: `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ROOM_PARTICIPANT_CONNECTION`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUMED`, `RTC_CONFIG`, `ERROR`;
 - the ICE server entry `{ urls, username, credential }` of `RTC_CONFIG` (`src/rtcConfig.ts`): `stun:`/`stuns:`/`turn:`/`turns:` URLs only, credentials exactly on TURN entries, and the bounds `MAX_RTC_ICE_SERVERS` (4), `MAX_RTC_ICE_SERVER_URLS` (4), `MAX_ICE_SERVER_URL_BYTES` (300), `MAX_ICE_SERVER_USERNAME_BYTES` (128), `MAX_ICE_SERVER_CREDENTIAL_BYTES` (128), and `MAX_RTC_CONFIG_TTL_MS` (one day). The package carries derived TURN credentials; it knows nothing of how they are derived, and no secret is part of it;
 - both directions, relayed by the service: `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, `ICE_COMPLETE`, `RTC_RECOVERY_REQUEST`, `RTC_RECOVER`;
-- peer → peer on the data channel: `PEER_HELLO`, `PEER_READY` (bound to the room session ID), and the control channel label `driftless-control`;
+- peer → peer on `driftless-control`: `PEER_HELLO`, `PEER_READY`, `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, and `NOT_READY`, bound to session, negotiation, sender, and recipient;
 - room ID, invite secret, participant ID, negotiation ID, session ID, resume secret, resume challenge, and resume proof formats;
 - the canonical resume proof input, `resumeProofInput` (76 bytes; see `src/resume.ts`). The package computes no hash: endpoints use their own platform cryptography over exactly these bytes;
 - the bounds `MAX_SIGNALING_MESSAGE_BYTES` (32,768), `MAX_SDP_BYTES` (16,384), `MAX_ICE_CANDIDATE_BYTES` (1024), `MAX_SDP_MID_BYTES` (64), `MAX_SDP_MLINE_INDEX` (63), `MAX_USERNAME_FRAGMENT_BYTES` (256), `MAX_ICE_CANDIDATES_PER_NEGOTIATION` (32), `MAX_NEGOTIATIONS_PER_MEMBERSHIP` (4), and `MAX_PEER_MESSAGE_BYTES` (1024). They are provisional implementation and security bounds, not WebRTC limits;
 - the error codes `INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `INVALID_STATE`, `ROOM_UNAVAILABLE`, `ROOM_FULL`, `RATE_LIMITED`, `SERVER_ERROR`, `SESSION_UNAVAILABLE`.
 
-Local Sync, playback, synchronization, social, transfer, connection diagnostics (which are browser-local and use no message), and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`.
+Playback synchronization, social, transfer, connection diagnostics (which are browser-local and use no message), and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`. Phase 3A setup is implemented as specified below.
+
+## Phase 3A peer setup
+
+`PeerMessage` now includes `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, and `NOT_READY` alongside the handshake. `ApplicationMessage` carries the full envelope/context; `ApplicationBody` omits context for PeerSession to inject. These types are excluded from signaling parsers.
+
+Exports add `MediaSelectionId` and `MediaFingerprint` branded types/guards and byte/character constants (16/22 and 32/43), `MEDIA_FINGERPRINT_VERSION` (1), `MEDIA_FINGERPRINT_CHUNK_BYTES` (4 MiB), `MAX_MEDIA_FINGERPRINT_CHUNKS` (4096), `MAX_MEDIA_FINGERPRINT_BYTES` (16 GiB), `NOT_READY_REASONS`, and the identity/pair/message types. No new runtime dependency; no hashing or transport in this package. The unchanged peer limit is 1024 UTF-8 bytes. Exact payloads, canonical encodings, context, ordering, readiness invalidation and fresh-peer semantics are normative in [PROTOCOL.md](../../docs/PROTOCOL.md#implemented-through-phase-3a-local-sync-setup).
 
 ## API
 
