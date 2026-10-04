@@ -23,5 +23,6 @@
     "noFallthroughCasesInSwitch": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [{ "path": "../../packages/protocol/tsconfig.build.json" }]
 }

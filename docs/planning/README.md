@@ -19,5 +19,9 @@
 | Product compatibility policy | [COMPATIBILITY.md](../COMPATIBILITY.md) |
 | Phase 0 empirical feasibility evidence | [Spike results](../../spikes/phase0/) |
 | Phase 1 exit-gate qualification evidence | [PHASE1_QUALIFICATION.md](../PHASE1_QUALIFICATION.md) |
+| Phase 2 physical/network qualification evidence and deferred gaps | [PHASE2_QUALIFICATION.md](../PHASE2_QUALIFICATION.md) |
+| Deployment boundary (HTTPS/WSS, TURN) | [DEPLOYMENT.md](../DEPLOYMENT.md) |
 
 The master plan remains the historical baseline. Accepted architecture decisions live in the ADRs; current execution state lives in `PROJECT_STATE.md`; detailed phase progression lives in `ROADMAP.md`; and observed Phase 0 results live with the spikes. A controlled spike result does not establish product compatibility or close deferred physical and network qualification.
+
+Phase 2 implementation is complete and ready to merge; its physical/network qualification is DEFERRED / NOT CLOSED and the literal physical exit gate is NOT PASSED. Phase 3 — Local Sync Mode is NEXT / NOT STARTED and may begin after the implementation milestone merge. The deferred Phase 2 gates remain mandatory before final product/release qualification and must not be inferred from later software milestones.

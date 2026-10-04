@@ -1,0 +1,22 @@
+{
+  "name": "driftless",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Driftless npm workspace: web client, shared protocol, and signaling service.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "check": "npm run check -w @driftless/protocol && npm run check -w @driftless/signaling && npm run check -w @driftless/web",
+    "test": "npm run test -w @driftless/protocol && npm run test -w @driftless/signaling && npm run test -w @driftless/web",
+    "test:e2e": "npm run test:e2e -w @driftless/web --",
+    "build": "npm run build -w @driftless/protocol && npm run build -w @driftless/signaling && npm run build -w @driftless/web",
+    "verify": "npm run check && npm run test:e2e"
+  }
+}

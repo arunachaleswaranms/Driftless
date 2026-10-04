@@ -192,13 +192,49 @@ function playback(video: Locator) {
   });
 }
 
+// How long a test waits for playback to advance. Real playback must still
+// pass every threshold below; this bounds only how long the wait may take.
+// Decoding and presenting frames competes for CPU with everything else on
+// the machine, and on a heavily loaded development machine (load averages
+// of 10-21 were recorded) playback started but had advanced only 0-0.15 s
+// within the 5 s default. The wait is event- and state-driven: it ends as
+// soon as the element reports the threshold, so this bound costs nothing
+// when the machine is idle and a stall still fails the test.
+const PLAYBACK_PROGRESS = { timeout: 30_000 } as const;
+
+// Room for a test that waits on playback once or twice at that bound.
+test.describe.configure({ timeout: 90_000 });
+
 // Starts playback with a trusted click and waits until the element has
-// played past the given time, decoding new frames on the way.
+// played past the given time, decoding new frames on the way. The browser's
+// own `playing` event must fire first: the click really started playback.
 async function playPast(video: Locator, seconds: number) {
   const before = await playback(video);
   expect(before.paused).toBe(true);
+  // The listener is registered before the click. The promise is wrapped in an
+  // object so that evaluateHandle returns at once instead of awaiting it.
+  const started = await video.evaluateHandle(
+    (element: HTMLVideoElement, timeout) => ({
+      playing: new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => {
+          resolve(false);
+        }, timeout);
+        element.addEventListener(
+          'playing',
+          () => {
+            clearTimeout(timer);
+            resolve(true);
+          },
+          { once: true },
+        );
+      }),
+    }),
+    PLAYBACK_PROGRESS.timeout,
+  );
   await video.click();
-  await expect.poll(() => currentTime(video)).toBeGreaterThan(seconds);
+  expect(await started.evaluate((wait) => wait.playing)).toBe(true);
+  await started.dispose();
+  await expect.poll(() => currentTime(video), PLAYBACK_PROGRESS).toBeGreaterThan(seconds);
   const after = await playback(video);
   expect(after).toMatchObject({ paused: false, ended: false });
   expect(after.frames).toBeGreaterThan(before.frames);
@@ -244,7 +280,7 @@ test('plays, pauses, and seeks a chosen local file', async ({ page }) => {
 
   // A trusted click on the video starts playback, and time advances.
   await video.click();
-  await expect.poll(() => currentTime(video)).toBeGreaterThan(1);
+  await expect.poll(() => currentTime(video), PLAYBACK_PROGRESS).toBeGreaterThan(1);
   expect((await mediaState(video)).paused).toBe(false);
 
   // A second click pauses it, and time stops.
@@ -258,7 +294,7 @@ test('plays, pauses, and seeks a chosen local file', async ({ page }) => {
   expect(await seek(video, 2)).toBeCloseTo(2, 1);
 
   await video.click();
-  await expect.poll(() => currentTime(video)).toBeGreaterThan(2.5);
+  await expect.poll(() => currentTime(video), PLAYBACK_PROGRESS).toBeGreaterThan(2.5);
   expect(await currentTime(video)).toBeLessThan(7);
 
   const final = await readProbe(page);
@@ -274,7 +310,7 @@ test('plays and pauses from the keyboard', async ({ page }) => {
 
   await video.focus();
   await page.keyboard.press('Space');
-  await expect.poll(() => currentTime(video)).toBeGreaterThan(0.5);
+  await expect.poll(() => currentTime(video), PLAYBACK_PROGRESS).toBeGreaterThan(0.5);
 
   await page.keyboard.press('Space');
   await expect.poll(async () => (await mediaState(video)).paused).toBe(true);
@@ -285,7 +321,7 @@ test('replaces the file and releases the previous one', async ({ page }) => {
   await expectDetails(page, VIDEO_A);
   const video = player(page);
   await video.click();
-  await expect.poll(() => currentTime(video)).toBeGreaterThan(0.5);
+  await expect.poll(() => currentTime(video), PLAYBACK_PROGRESS).toBeGreaterThan(0.5);
   const [firstUrl] = (await readProbe(page)).created;
 
   await expect(page.getByLabel('Replace video file')).toBeAttached();
@@ -309,7 +345,7 @@ test('clears the file, releases it, and allows choosing it again', async ({ page
   await chooser(page).setInputFiles(VIDEO_A.path);
   await expectDetails(page, VIDEO_A);
   await player(page).click();
-  await expect.poll(() => currentTime(player(page))).toBeGreaterThan(0.5);
+  await expect.poll(() => currentTime(player(page)), PLAYBACK_PROGRESS).toBeGreaterThan(0.5);
 
   await panel(page).getByRole('button', { name: 'Clear video' }).click();
 
@@ -394,6 +430,8 @@ for (const [first, second] of [
     page,
     baseURL,
   }) => {
+    // Five waits for real playback, each bounded by PLAYBACK_PROGRESS.
+    test.setTimeout(150_000);
     const requests: { method: string; url: string; hasBody: boolean }[] = [];
     const workerResponses: string[] = [];
     page.on('request', (request) => {
@@ -462,7 +500,7 @@ for (const [first, second] of [
 
     // Seek backward while playing, and playback continues from there.
     expect(await seek(video, 1.5)).toBeCloseTo(1.5, 1);
-    await expect.poll(() => currentTime(video)).toBeGreaterThan(2);
+    await expect.poll(() => currentTime(video), PLAYBACK_PROGRESS).toBeGreaterThan(2);
     const rewound = await playback(video);
     expect(rewound).toMatchObject({ paused: false, ended: false });
     expect(rewound.currentTime).toBeLessThan(forward);
@@ -585,7 +623,7 @@ test('keeps local media on the device', async ({ page, baseURL }) => {
   await chooser(page).setInputFiles(VIDEO_A.path);
   await expectDetails(page, VIDEO_A);
   await player(page).click();
-  await expect.poll(() => currentTime(player(page))).toBeGreaterThan(1);
+  await expect.poll(() => currentTime(player(page)), PLAYBACK_PROGRESS).toBeGreaterThan(1);
   await seek(player(page), 8);
   await chooser(page).setInputFiles(VIDEO_B.path);
   await expectDetails(page, VIDEO_B);

@@ -1,5 +1,6 @@
 import { CapabilityPanel } from '../features/capabilities/CapabilityPanel.tsx';
 import { LocalMediaPanel } from '../features/local-media/LocalMediaPanel.tsx';
+import { RoomPanel } from '../features/room/RoomPanel.tsx';
 
 const MAIN_CONTENT_ID = 'main-content';
 
@@ -20,6 +21,7 @@ export function App() {
       <main id={MAIN_CONTENT_ID} className="app-container app-main" tabIndex={-1}>
         <LocalMediaPanel />
         <CapabilityPanel />
+        <RoomPanel />
       </main>
     </>
   );

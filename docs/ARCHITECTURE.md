@@ -43,8 +43,43 @@ These responsibilities remain the accepted target architecture. Current implemen
 - `apps/web/` contains the Phase 1 production web foundation: the application shell, PWA foundation, and test tooling, plus the local media player — local file selection, browser-local object URL lifecycle, HTML5 video integration, reported media metadata, and playback, error, and reset behavior.
 - `apps/web/` also contains the runtime capability-reporting foundation (Phase 1C): a local report of which browser API surfaces the page observes, for the current foundation and for later-phase prerequisites. It reports observations only. It derives no browser support status and no mode eligibility; mode gating, including the Progressive Watch runtime checks of media, codecs, storage, and protocol, is not implemented.
 - Phase 1 — Application Foundation is closed with its exit gate passed; see [PHASE1_QUALIFICATION.md](PHASE1_QUALIFICATION.md). The qualification changed no architecture and no product code.
-- Room/session UI is not implemented.
-- `services/signaling/`, `packages/protocol/`, `packages/sync-engine/`, and `packages/transfer-engine/` are empty; signaling, synchronization, and media transfer, including the production Progressive Watch components, are not implemented.
+- `apps/web/src/features/room/` (Phase 2B) contains the room UI and the client side of signaling and WebRTC, layered so that React renders state and nothing else:
+
+  ```text
+  RoomPanel (React)  →  RoomController  →  SignalingClient  →  WebSocket (same origin, /v1/signaling)
+                                         →  PeerSession      →  RTCPeerConnection + one RTCDataChannel
+  ```
+
+  The controller owns one room session. Its state keeps three things independent: room membership (idle, opening, in room, leaving), this participant's signaling connection (connected or reconnecting), and the peer — the other participant's signaling presence and the peer transport (negotiating, connecting, connected, recovering, failed). A room can therefore be in room, with signaling reconnecting and the peer data channel still connected. The signaling client validates every server message with the shared parser; one client is one socket with its own sequence space. The peer session performs the host-offer/guest-answer negotiation with trickle ICE, holds early remote candidates in a bounded queue, validates the single control channel, and runs the connection handshake bound to the room session ID; it is never repaired, only replaced. Each layer takes its browser APIs, including timers and Web Crypto, as injected interfaces, so its races are unit-tested with deterministic fakes. Nothing connects until the user creates or joins a room, and nothing is persisted.
+
+  Phase 2C recovery lives in the controller, below React:
+
+  ```text
+  RoomController ── resume schedule (injected one-shot timers) ── SignalingClient (new socket per attempt)
+        │                     └─ resume proof (Web Crypto, resumeProof.ts)
+        └── PeerSession (replaced by a fresh one on failure)
+  ```
+
+  When signaling is lost, a connected peer session is kept and an unfinished negotiation is abandoned; a fresh socket authenticates by challenge and proof on a finite schedule, and the controller reconciles with the service's snapshot before sending anything else. When the peer transport fails, the session is discarded and a fresh negotiation, peer connection, and channel replace it — the guest asks, the host offers — up to four negotiations per guest membership. A page reload loses the in-memory resume secret and cannot resume.
+
+  Phase 2D adds, in the same controller, the runtime ICE configuration and the connection diagnostics:
+
+  ```text
+  RoomController ── RTC_CONFIG_REQUEST / RTC_CONFIG (after admission) ── rtcConfig.ts (lifetime check, in memory)
+        │                └─ each new PeerSession's configuration: build STUN + service STUN/TURN (+ relay policy in qualification builds)
+        └── diagnostics: PeerSession.observe() + getStats() ── connectionStats.ts (DIRECT / TURN_RELAY / UNKNOWN)
+                                                             └─ ConnectionDiagnosticsView (React, own subscription)
+  ```
+
+  Diagnostics are observational and browser-local: read on connect, after recovery, and on request, discarded with their peer connection, never sent anywhere, and never a cause of renegotiation.
+
+- `packages/protocol/` (Phase 2A, extended in Phase 2B) contains the shared, transport-neutral contract implemented so far: the versioned JSON envelope, the client ↔ signaling room messages, the WebRTC negotiation messages and negotiation ID, the peer connection handshake, identifier formats, bounds counted in UTF-8 bytes, the signaling error vocabulary, and strict parsing. Other message families remain conceptual; see [PROTOCOL.md](PROTOCOL.md).
+- `services/signaling/` (Phase 2A, extended in Phase 2B and 2C) contains an ephemeral signaling service: Node's HTTP server, a `ws` WebSocket endpoint at `/v1/signaling`, a health endpoint, and an in-memory store of two-person rooms with room creation, invite-secret join, leave, and expiry. Room state is kept separate from the transport (socket → protocol parser → connection controller → room store). In Phase 2B it relays offer, answer, and ICE messages between the two members of a room; the room store decides legality and the recipient from membership and keeps only counters and flags. In Phase 2C a participant is a stable membership — identity, role, and a derived resume key — and a connection is only its current binding: an ordinary transport loss holds the membership for a bounded grace period, a new connection takes it over only by answering a one-time challenge, policy closures and leaves end it at once, WebSocket pings detect dead connections, and recovery offers replace a failed negotiation within a bounded budget. It has no persistence, parses no SDP, and never handles media; a restart loses every room.
+- In production the client expects the signaling path on its own origin, so a deployment routes `/v1/signaling` to the service behind TLS. The development and preview servers forward the path to a loopback service. The expected deployment topology — TLS reverse proxy, loopback-bound service, coturn — is in [DEPLOYMENT.md](DEPLOYMENT.md); whether one existed for qualification is recorded in [PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md).
+- In Phase 2D the service also issues each admitted member its ICE configuration: configured STUN servers, and TURN servers with a short-lived credential it derives from a secret shared with the TURN server ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)). It is not a TURN server and relays no media.
+- `packages/protocol/` gained, in Phase 2C, the session ID, resume secret, challenge, and proof formats, the canonical 76-byte resume proof input (no hashing; each endpoint uses platform crypto), the resume, presence, and recovery messages, and a pure base64url codec.
+- `packages/sync-engine/` and `packages/transfer-engine/` are empty; synchronization and media transfer, including the production Progressive Watch components, are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
+- The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root lockfile.
 
 ## Web Client Components
 
@@ -124,7 +159,7 @@ Progressive Watch is enabled only when runtime checks establish the required bro
 
 The preferred path is a direct WebRTC connection because it avoids backend media custody and reduces service bandwidth. Direct connectivity cannot be guaranteed across NATs, firewalls, enterprise networks, or mobile carriers.
 
-TURN is the compatibility fallback. WebRTC remains encrypted in transit, but relay operators handle traffic and metadata at the network layer, and relayed media consumes service bandwidth. Driftless must detect and report the selected candidate path in privacy-conscious diagnostics. No provider or deployment model has been selected.
+TURN is the compatibility fallback. WebRTC remains encrypted in transit, but relay operators handle traffic and metadata at the network layer, and relayed media consumes service bandwidth. Driftless detects and reports the selected candidate path in browser-local diagnostics that expose candidate types but no addresses (Phase 2D). TURN credentials are short-lived and derived by the signaling service with the provider-neutral TURN REST scheme; the recommended deployment is self-hosted coturn ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)), and no commercial provider has been selected.
 
 ## Why Peer-to-Peer First
 
@@ -140,10 +175,10 @@ The choice has costs: connectivity variability, TURN exposure, browser constrain
 
 | Scenario | Expected architectural response |
 | --- | --- |
-| Signaling service unavailable | Existing peer sessions may continue where possible; new negotiation and reconnect are unavailable. Do not route media through signaling as a workaround. |
-| Direct connection fails | Attempt configured TURN fallback; report whether relay is used. |
+| Signaling service unavailable | Existing peer sessions may continue where possible; new negotiation and reconnect are unavailable. Do not route media through signaling as a workaround. (Phase 2C: a working data channel survives a signaling outage while the browser resumes on a bounded schedule; a service restart cannot be resumed, and the browser ends the room after its schedule.) |
+| Direct connection fails | Attempt configured TURN fallback; report whether relay is used. (Phase 2D: TURN servers from the service's configuration are offered to every peer connection with ICE policy `all`; diagnostics report the selected path.) |
 | TURN unavailable or unaffordable | Fail connection or Progressive Watch clearly; do not claim P2P succeeded. |
-| Peer disconnects temporarily | Preserve bounded resumable state, renegotiate as needed, and reconcile authority before resuming. |
+| Peer disconnects temporarily | Preserve bounded resumable state, renegotiate as needed, and reconcile authority before resuming. (Phase 2C: signaling membership is held for a bounded grace period and resumed by proof; a failed transport is replaced by a fresh negotiation; both reconcile with the service's snapshot.) |
 | Host disconnects permanently | Pause safely and follow a later-defined host-disconnect policy; do not invent authority. |
 | Local files do not match | Block synchronized start for Local Sync and present mismatch details that do not disclose paths. |
 | Unsupported media or codec | Reject Progressive Watch before transfer where possible and retain Local Sync as an independent option. |
@@ -157,5 +192,4 @@ The choice has costs: connectivity variability, TURN exposure, browser constrain
 
 ## Unresolved Design Areas
 
-Phase 0 supplied controlled desktop evidence for fragmentation, bounded data-channel transfer, MSE, OPFS, and parts of multi-GB resource behavior; see the [Phase 0 results](../spikes/phase0/). Physical Android, real-network/TURN behavior, broad browser compatibility, fingerprinting, reconnect semantics, and production parameter choices still need evidence. These choices are intentionally not frozen here.
-
+Phase 0 supplied controlled desktop evidence for fragmentation, bounded data-channel transfer, MSE, OPFS, and parts of multi-GB resource behavior; see the [Phase 0 results](../spikes/phase0/). Physical Android, real-network/TURN behavior, broad browser compatibility, fingerprinting, reconnect behavior on real networks, and production parameter choices still need evidence. These choices are intentionally not frozen here.
