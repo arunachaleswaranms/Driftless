@@ -1,3 +1,5 @@
+import { PlaybackSyncController, type PlaybackMedia } from './playbackSyncController.ts';
+import { isPlaybackBody } from '@driftless/sync-engine';
 import {
   encodeBase64Url,
   isMediaSelectionId,
@@ -30,8 +32,10 @@ const browserAdapters: LocalSyncAdapters = {
 };
 /** Owns one selected File reference, one cancellable reader, and a pure reducer. */
 export class LocalSyncController {
+  #video: PlaybackMedia | null = null;
   #state = initialLocalSyncState;
   readonly #listeners = new Set<() => void>();
+  readonly playback: PlaybackSyncController;
   #file: File | null = null;
   #playerId: number | null = null;
   #sessionId: SessionId | null = null;
@@ -42,6 +46,7 @@ export class LocalSyncController {
   #playback: LocalMediaSelection['status'] = 'loading';
   constructor(adapters: LocalSyncAdapters = browserAdapters) {
     this.adapters = adapters;
+    this.playback = new PlaybackSyncController(this, (body) => this.#send?.(body) === true);
   }
   getState = () => this.#state;
   subscribe = (listener: () => void) => {
@@ -62,10 +67,18 @@ export class LocalSyncController {
     }
     for (const listener of [...this.#listeners]) listener();
   }
+  attachVideo(video: PlaybackMedia | null, playerId: number): void {
+    if (playerId !== this.#playerId) return;
+    this.#video = video;
+    const id = this.#state.local?.selectionId;
+    if (id) this.playback.attach(video, id);
+  }
   /** Called synchronously with local-player actions, before React renders. */
   updateMedia(selection: LocalMediaSelection | null): void {
     this.#playback = selection?.status ?? 'loading';
     if (selection?.id !== this.#playerId && selection !== null) {
+      if (this.#state.local) this.playback.attach(null, this.#state.local.selectionId);
+      this.#video = null;
       this.#abort?.abort();
       this.#file = selection.file;
       this.#playerId = selection.id;
@@ -76,6 +89,8 @@ export class LocalSyncController {
       });
       this.#startFingerprint();
     } else if (selection === null && this.#file !== null) {
+      if (this.#state.local) this.playback.attach(null, this.#state.local.selectionId);
+      this.#video = null;
       this.#abort?.abort();
       this.#file = null;
       this.#playerId = null;
@@ -106,6 +121,8 @@ export class LocalSyncController {
           selectionId: this.#state.local.selectionId,
           status: this.#playback,
         });
+      if (this.#state.local && this.#video)
+        this.playback.attach(this.#video, this.#state.local.selectionId);
       this.#startFingerprint();
     }
   }
@@ -114,9 +131,12 @@ export class LocalSyncController {
     this.dispatch({ type: 'channel', connected: send !== undefined });
   }
   receive(body: ApplicationBody): void {
-    this.dispatch({ type: 'receive', body });
+    if (isPlaybackBody(body)) this.playback.receive(body);
+    else this.dispatch({ type: 'receive', body });
   }
   shutdown(): void {
+    if (this.#state.local) this.playback.attach(null, this.#state.local.selectionId);
+    this.#video = null;
     this.#abort?.abort();
     this.#send = undefined;
     this.#file = null;

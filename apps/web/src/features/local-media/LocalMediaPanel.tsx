@@ -1,4 +1,4 @@
-import { useReducer, useRef, type ChangeEvent } from 'react';
+import { useCallback, useReducer, useRef, type ChangeEvent } from 'react';
 import { LocalMediaPlayer } from './LocalMediaPlayer.tsx';
 import { initialLocalMediaState, localMediaReducer } from './localMediaState.ts';
 import { MediaDetails } from './MediaDetails.tsx';
@@ -21,7 +21,9 @@ const STATUS_TEXT = {
 
 export function LocalMediaPanel({
   media,
+  localSync,
 }: {
+  localSync?: import('../local-sync/localSyncController.ts').LocalSyncController;
   media?: {
     state: import('./localMediaState.ts').LocalMediaState;
     dispatch: (action: import('./localMediaState.ts').LocalMediaAction) => void;
@@ -30,6 +32,13 @@ export function LocalMediaPanel({
   const [fallbackState, fallbackDispatch] = useReducer(localMediaReducer, initialLocalMediaState);
   const { selection } = media?.state ?? fallbackState;
   const dispatch = media?.dispatch ?? fallbackDispatch;
+  const playerId = selection?.id;
+  const onVideoElement = useCallback(
+    (video: HTMLVideoElement | null) => {
+      if (playerId !== undefined) localSync?.attachVideo(video, playerId);
+    },
+    [localSync, playerId],
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -93,6 +102,7 @@ export function LocalMediaPanel({
           <LocalMediaPlayer
             key={selection.id}
             file={selection.file}
+            onVideoElement={onVideoElement}
             hidden={selection.status === 'error'}
             onMetadataLoaded={(metadata) => {
               dispatch({ type: 'metadataLoaded', selectionId: selection.id, metadata });

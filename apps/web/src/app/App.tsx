@@ -30,12 +30,13 @@ export function App() {
         <div className="app-container">
           <h1 className="app-title">Driftless</h1>
           <p className="app-build-status">
-            Early development build. Synchronized watching is not available yet.
+            Early development build. Local Sync follows host playback controls; continuous drift
+            correction is still in development.
           </p>
         </div>
       </header>
       <main id={MAIN_CONTENT_ID} className="app-container app-main" tabIndex={-1}>
-        <LocalMediaPanel media={{ state: media, dispatch }} />
+        <LocalMediaPanel localSync={controller.localSync} media={{ state: media, dispatch }} />
         <CapabilityPanel />
         <RoomPanel controller={controller} />
       </main>

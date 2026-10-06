@@ -27,6 +27,24 @@ const selectionId = encodedBytes(16);
 const fingerprint = encodedBytes(32);
 const pair = { localSelectionId: selectionId, remoteSelectionId: encodedBytes(16, 8), fingerprint };
 const bodies = {
+  PLAY: {
+    localSelectionId: selectionId,
+    remoteSelectionId: pair.remoteSelectionId,
+    revision: Number.MAX_SAFE_INTEGER,
+    positionMs: Number.MAX_SAFE_INTEGER,
+  },
+  PAUSE: {
+    localSelectionId: selectionId,
+    remoteSelectionId: pair.remoteSelectionId,
+    revision: 1,
+    positionMs: 0,
+  },
+  SEEK: {
+    localSelectionId: selectionId,
+    remoteSelectionId: pair.remoteSelectionId,
+    revision: 2,
+    positionMs: 1000,
+  },
   MEDIA_INFO: {
     selectionId,
     fingerprintVersion: 1,
@@ -139,6 +157,7 @@ describe('Local Sync protocol', () => {
     'PEER_MEDIA_CHANGED',
     'MEDIA_MISMATCH',
     'LOCAL_MEDIA_ERROR',
+    'PLAYBACK_UNAVAILABLE',
   ])('accepts Not Ready reason %s', (reason) => {
     for (const localSelectionId of [null, selectionId])
       expect(
@@ -161,5 +180,25 @@ describe('Local Sync protocol', () => {
       parsePeerMessage(envelope('READY', { ...context, ...pair }, { __proto__: null, extra: 1 }))
         .ok,
     ).toBe(false);
+  });
+});
+
+describe('playback numeric contracts', () => {
+  it.each(['PLAY', 'PAUSE', 'SEEK'] as const)(
+    '%s rejects malformed revision and position',
+    (type) => {
+      for (const field of ['revision', 'positionMs']) {
+        for (const value of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, '1', null, {}, Infinity, NaN])
+          expect(
+            parsePeerMessage(envelope(type, { ...context, ...bodies[type], [field]: value })).ok,
+          ).toBe(false);
+      }
+      expect(
+        parsePeerMessage(envelope(type, { ...context, ...bodies[type], revision: 0 })).ok,
+      ).toBe(false);
+    },
+  );
+  it('SYNC remains unknown', () => {
+    expect(parsePeerMessage(envelope('SYNC', { ...context, ...bodies.PLAY })).ok).toBe(false);
   });
 });

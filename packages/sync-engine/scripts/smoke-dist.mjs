@@ -4,6 +4,10 @@ import {
   initialLocalSyncState,
   reduceLocalSync,
   fingerprintMedia,
+  initialPlaybackState,
+  playbackReadiness,
+  hostPlayback,
+  guestPlayback,
 } from '@driftless/sync-engine';
 assert.equal(bothReady(initialLocalSyncState), false);
 assert.equal(reduceLocalSync(initialLocalSyncState, { type: 'ready' }).effects.length, 0);
@@ -39,3 +43,23 @@ assert.equal(
   true,
 );
 console.info('Source buffer release smoke passed (three chunk buffers collected).');
+
+assert.equal(initialPlaybackState.active, false);
+assert.equal(playbackReadiness(initialPlaybackState, initialLocalSyncState), initialPlaybackState);
+const waiting = {
+  ...initialPlaybackState,
+  pair: { localSelectionId: 'A'.repeat(22), remoteSelectionId: 'B'.repeat(21) + 'A' },
+};
+const baseline = hostPlayback(waiting, 'host', 'PAUSE', 2000);
+assert.equal(baseline.command.payload.revision, 1);
+assert.equal(
+  guestPlayback(waiting, {
+    ...baseline.command,
+    payload: {
+      ...baseline.command.payload,
+      localSelectionId: waiting.pair.remoteSelectionId,
+      remoteSelectionId: waiting.pair.localSelectionId,
+    },
+  }).active,
+  true,
+);

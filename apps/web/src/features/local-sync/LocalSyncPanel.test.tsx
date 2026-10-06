@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { FakePlaybackMedia, playbackHarness } from '../../test/playback.ts';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { MediaFingerprint, MediaSelectionId } from '@driftless/protocol';
 import { LocalSyncController } from './localSyncController.ts';
@@ -44,7 +45,7 @@ describe('Local Sync setup accessibility and readiness UI', () => {
       true,
     );
   });
-  it('requires metadata, renders explicit Ready/withdrawal and no raw identifiers', () => {
+  it('requires metadata, renders explicit Ready/withdrawal and no raw identifiers', async () => {
     const c = setup();
     act(() => {
       local(c);
@@ -56,7 +57,11 @@ describe('Local Sync setup accessibility and readiness UI', () => {
       c.dispatch({ type: 'playback', selectionId: localSelectionId, status: 'ready' });
     });
     expect(button.disabled).toBe(false);
+    c.playback.attach(new FakePlaybackMedia(), localSelectionId);
     fireEvent.click(button);
+    await waitFor(() => {
+      expect(c.getState().localReady).toBe(true);
+    });
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Not ready' })).toBeTruthy();
     expect(document.body.textContent).not.toContain(fingerprint);
     expect(document.body.textContent).not.toContain(localSelectionId);
@@ -104,4 +109,29 @@ describe('Local Sync setup accessibility and readiness UI', () => {
     expect(screen.queryByText('Both participants are ready.')).toBeNull();
     expect(screen.getByText('Local video could not load. Choose another file.')).toBeTruthy();
   });
+});
+
+it('Ready preparation rejection keeps Not Ready and shows sanitized alert', async () => {
+  const h = playbackHarness();
+  h.video.rejectPlay = true;
+  render(<LocalSyncPanel controller={h.c} />);
+  fireEvent.click(screen.getByRole('button', { name: "I'm ready" }));
+  await waitFor(() => {
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Could not prepare synchronized playback. Try Ready again.',
+    );
+  });
+  expect(h.sends.some((body) => body.type === 'READY')).toBe(false);
+  expect(h.c.getState().localReady).toBe(false);
+});
+it('host controls require baseline; guest sees text and has no authoritative controls', async () => {
+  const h = playbackHarness('guest');
+  render(<LocalSyncPanel controller={h.c} />);
+  await act(async () => {
+    await h.activate();
+  });
+  expect(screen.getByText('The host controls playback.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Seek' })).toBeNull();
 });

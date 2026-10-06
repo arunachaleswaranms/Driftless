@@ -75,7 +75,8 @@ export function RoomPanel({ controller: provided }: RoomPanelProps) {
         <p className="panel-status">
           Connect this browser directly to one other person&apos;s browser in a private two-person
           room. The signaling service only helps the two browsers find each other. Local Sync
-          exchanges private identity evidence and explicit readiness. Playback is not synchronized.
+          exchanges private identity evidence and explicit readiness, then follows host Play, Pause,
+          and Seek commands. Continuous drift correction is not implemented yet.
         </p>
       </div>
 

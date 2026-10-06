@@ -1301,6 +1301,7 @@ export class RoomController {
   }
 
   #beginMembership(membership: Membership): void {
+    this.localSync.playback.setRole(membership.role);
     this.localSync.setRoom(membership.sessionId);
     this.#membership = membership;
     this.#resetNegotiation();
@@ -1317,6 +1318,7 @@ export class RoomController {
   }
 
   #forgetMembership(): void {
+    this.localSync.playback.setRole(null);
     this.localSync.setRoom(null);
     this.#membership = undefined;
     this.#resetNegotiation();

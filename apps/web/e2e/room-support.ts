@@ -43,6 +43,7 @@ export interface RtcProbe {
   controlSends: { kind: string; text: string; bytes: number }[];
   slices: { start: number; end: number; size: number }[];
   wholeFileReads: number;
+  playbackCalls: { userActivation: boolean; position: number; volume: number; muted: boolean }[];
 }
 
 declare global {
@@ -67,6 +68,7 @@ export function installRtcProbe() {
     controlSends: [],
     slices: [],
     wholeFileReads: 0,
+    playbackCalls: [],
   };
   window.rtcProbe = probe;
   document.addEventListener('securitypolicyviolation', (event) => {
@@ -176,6 +178,16 @@ export function installRtcProbe() {
   File.prototype.arrayBuffer = function () {
     probe.wholeFileReads++;
     return readFile.call(this);
+  };
+  const play = Reflect.get(HTMLMediaElement.prototype, 'play');
+  HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+    probe.playbackCalls.push({
+      userActivation: navigator.userActivation.isActive,
+      position: this.currentTime,
+      volume: this.volume,
+      muted: this.muted,
+    });
+    return play.call(this);
   };
   for (const name of ['getUserMedia', 'getDisplayMedia'] as const) {
     const original = Reflect.get(MediaDevices.prototype, name) as (...args: unknown[]) => unknown;

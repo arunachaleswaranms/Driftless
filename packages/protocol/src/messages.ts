@@ -430,6 +430,7 @@ export const NOT_READY_REASONS = [
   'PEER_MEDIA_CHANGED',
   'MEDIA_MISMATCH',
   'LOCAL_MEDIA_ERROR',
+  'PLAYBACK_UNAVAILABLE',
 ] as const;
 export type NotReadyReason = (typeof NOT_READY_REASONS)[number];
 export interface MediaIdentity {
@@ -461,8 +462,27 @@ export type NotReadyMessage = Envelope<
     readonly reason: NotReadyReason;
   }
 >;
+export interface PlaybackPayload {
+  readonly localSelectionId: MediaSelectionId;
+  readonly remoteSelectionId: MediaSelectionId;
+  readonly revision: number;
+  readonly positionMs: number;
+}
+export type PlaybackMessage =
+  | Envelope<'PLAY', PeerHandshakePayload & PlaybackPayload>
+  | Envelope<'PAUSE', PeerHandshakePayload & PlaybackPayload>
+  | Envelope<'SEEK', PeerHandshakePayload & PlaybackPayload>;
+export type PlaybackBody = {
+  readonly type: PlaybackMessage['type'];
+  readonly payload: PlaybackPayload;
+};
 export type ApplicationMessage =
-  MediaInfoMessage | MediaMatchMessage | MediaMismatchMessage | ReadyMessage | NotReadyMessage;
+  | MediaInfoMessage
+  | MediaMatchMessage
+  | MediaMismatchMessage
+  | ReadyMessage
+  | NotReadyMessage
+  | PlaybackMessage;
 /** Context-free body; the transport supplies the authenticated peer context. */
 export type ApplicationBody = ApplicationMessage extends infer Message
   ? Message extends ApplicationMessage
@@ -483,4 +503,7 @@ export const PEER_MESSAGE_TYPES = [
   'MEDIA_MISMATCH',
   'READY',
   'NOT_READY',
+  'PLAY',
+  'PAUSE',
+  'SEEK',
 ] as const satisfies readonly PeerMessage['type'][];

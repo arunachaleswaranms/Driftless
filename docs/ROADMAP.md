@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: MERGED / COMPLETE** at `2dd7dea8798bcfc742c8902e853cef69c053eecd` — Phases 2A–2D implemented and review pass. **Physical/network qualification: DEFERRED / NOT CLOSED**; the literal Phase 2 physical exit gate is **NOT PASSED**. **Phase 3 — Local Sync Mode: IN PROGRESS**. Phase 3A is implemented; 3B–3D are not started; the Phase 3 exit gate is NOT PASSED.
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: MERGED / COMPLETE** at `2dd7dea8798bcfc742c8902e853cef69c053eecd` — Phases 2A–2D implemented and review pass. **Physical/network qualification: DEFERRED / NOT CLOSED**; the literal Phase 2 physical exit gate is **NOT PASSED**. **Phase 3 — Local Sync Mode: IN PROGRESS**. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED; 3C is NEXT / NOT STARTED; 3D is NOT STARTED; the Phase 3 exit gate is NOT PASSED.
 
 - Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
 - Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
@@ -92,12 +92,12 @@ Implementation sequencing introduced by Phase 3A (does not change the overall ex
 
 | Slice | Scope | Status |
 | --- | --- | --- |
-| 3A | Media Identity & Readiness Foundation | IMPLEMENTED |
-| 3B | Host-Authoritative Playback Controls | NEXT / NOT STARTED |
-| 3C | Heartbeat, Drift Detection & Correction | NOT STARTED |
+| 3A | Media Identity & Readiness Foundation | IMPLEMENTED / REVIEW PASS |
+| 3B | Host-Authoritative Playback Controls | IMPLEMENTED |
+| 3C | Heartbeat, Drift Detection & Correction | NEXT / NOT STARTED |
 | 3D | Qualification & Closure | NOT STARTED |
 
-3A implements bounded identity and explicit readiness only. Its automated same-host development browser evidence evaluates no physical or playback synchronization gate. Phase 3 exit gate: **NOT PASSED**.
+3A implements bounded identity and explicit readiness. 3B adds event-driven host Play/Pause/Seek and authoritative revisions, beginning with a paused baseline; independent 3B review is pending. Heartbeat and drift correction remain future 3C work. Its automated same-host development browser evidence evaluates no physical or playback synchronization gate. Phase 3 exit gate: **NOT PASSED**.
 
 - Authoritative clock.
 - Play.

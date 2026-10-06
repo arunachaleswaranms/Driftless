@@ -4,6 +4,7 @@ import { classifyMediaError, type LocalMediaErrorKind } from './mediaError.ts';
 
 interface LocalMediaPlayerProps {
   file: File;
+  onVideoElement?: (video: HTMLVideoElement | null) => void;
   hidden: boolean;
   onMetadataLoaded: (metadata: MediaMetadata) => void;
   onDurationChanged: (duration: number) => void;
@@ -22,6 +23,7 @@ interface LocalMediaPlayerProps {
  */
 export function LocalMediaPlayer({
   file,
+  onVideoElement,
   hidden,
   onMetadataLoaded,
   onDurationChanged,
@@ -47,6 +49,13 @@ export function LocalMediaPlayer({
       URL.revokeObjectURL(objectUrl);
     };
   }, [file]);
+
+  useEffect(() => {
+    onVideoElement?.(videoRef.current);
+    return () => {
+      onVideoElement?.(null);
+    };
+  }, [onVideoElement]);
 
   function handleLoadedMetadata(event: SyntheticEvent<HTMLVideoElement>) {
     const video = event.currentTarget;

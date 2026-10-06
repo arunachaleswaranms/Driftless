@@ -1,6 +1,6 @@
 # @driftless/sync-engine
 
-Phase 3A's platform-neutral Local Sync identity/readiness package. Its only runtime dependency is the internal `@driftless/protocol` workspace. No React, DOM, WebRTC, WebSocket, filesystem, persistence, or external runtime package. No playback authority, clock/drift logic, or media transfer.
+Platform-neutral Local Sync identity, readiness and playback-authority package through Phase 3B. Its only runtime dependency is the internal `@driftless/protocol` workspace. No React, DOM, WebRTC, WebSocket, filesystem, persistence, or external runtime package. Phase 3B adds pure playback authority; no clock/drift logic or media transfer.
 
 `src/fingerprint.ts` orchestrates bounded random-access source reads and injected SHA-256; `src/readiness.ts` owns deterministic state/effects; `src/index.ts` exports the public API. `test/` has pure state tests and independent fixed vectors; `scripts/generate-vectors.mjs` is a separate Node crypto oracle, and `scripts/smoke-dist.mjs` checks built exports and garbage collection of source buffers.
 
@@ -20,3 +20,7 @@ npm run check -w @driftless/sync-engine
 ```
 
 The check covers typecheck, strict lint, formatting, unit tests, build, and built-package import/GC smoke. Build output `dist/` is ignored and must not be committed. [Phase 3A evidence](../../docs/PHASE3A_IMPLEMENTATION.md) establishes only software and same-host development browser behavior, not the Phase 3 physical synchronization exit gate.
+
+## Phase 3B playback authority
+
+`playback.ts` models inactive, waiting-for-baseline and active authority with one current pair, logical revision, mode and referenced position. `playbackReadiness` requires bothReady; `hostPlayback` emits the revision-1 PAUSE baseline or a newer PLAY/PAUSE/SEEK; `guestPlayback` applies only the current reversed pair and fresh revision, beginning with PAUSE revision 1. SEEK preserves mode. Readiness/fresh-peer loss resets authority; the same healthy channel retains it. No clock, timer, heartbeat, history, acknowledgement or gap repair. Browser preparation, clamping and element events stay in the web adapter. See [3B evidence](../../docs/PHASE3B_IMPLEMENTATION.md).

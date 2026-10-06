@@ -6,7 +6,8 @@ This is the design specification for `protocolVersion: 1`.
 
 - **Implemented through Phase 2D:** the common JSON envelope; the client ↔ signaling-service room lifecycle messages (Phase 2A); the negotiation ID and the relayed WebRTC negotiation messages `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, and `ICE_COMPLETE`, and a two-message peer connection handshake on the data channel (Phase 2B); and the room session ID, the per-participant resume credential, challenge-response session resume (`SESSION_RESUME_BEGIN`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUME_PROVE`, `SESSION_RESUMED`), signaling presence (`ROOM_PARTICIPANT_CONNECTION`), the reconnect grace period, and fresh-negotiation peer recovery (`RTC_RECOVERY_REQUEST`, `RTC_RECOVER`) (Phase 2C); and the ICE server configuration request and answer, `RTC_CONFIG_REQUEST` and `RTC_CONFIG`, which carry short-lived TURN credentials to an authenticated room member (Phase 2D). All are strictly validated in [`packages/protocol/`](../packages/protocol/), specified exactly in [Implemented through Phase 2D](#implemented-through-phase-2d-signaling-rooms-negotiation-recovery-and-ice-configuration) below, and used by [`services/signaling/`](../services/signaling/) and the web client.
 - **Implemented in Phase 3A:** the peer-only MEDIA_INFO, MEDIA_MATCH, MEDIA_MISMATCH, READY and NOT_READY messages; media selection IDs, session-scoped fingerprint version 1, current-pair readiness and fresh-peer recovery semantics.
-- **Still conceptual:** host-authoritative playback, heartbeat/drift synchronization, social, transfer, Progressive Watch, and connection diagnostics (`CONNECTION_STATUS`) — and binary framing. Phase 2D connection diagnostics are browser-local and use no message: no diagnostic, statistic, candidate type, or path classification is ever sent to the service or the peer. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, playback heartbeat intervals, and drift thresholds, remain undecided. The Phase 2C reconnect and recovery values below are provisional implementation bounds, not tuned network settings.
+- **Implemented in Phase 3B:** peer-only PLAY, PAUSE and SEEK with current-pair binding, logical revisions and integer milliseconds; host-only authority at PeerSession.
+- **Still conceptual:** heartbeat/drift synchronization, social, transfer, Progressive Watch, and connection diagnostics (`CONNECTION_STATUS`) — and binary framing. Phase 2D connection diagnostics are browser-local and use no message: no diagnostic, statistic, candidate type, or path classification is ever sent to the service or the peer. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, playback heartbeat intervals, and drift thresholds, remain undecided. The Phase 2C reconnect and recovery values below are provisional implementation bounds, not tuned network settings.
 
 Implementing one subset does not freeze the rest of this conceptual protocol.
 
@@ -36,7 +37,7 @@ Conceptually, every control message contains:
 - `protocolVersion` identifies the contract version and is exactly `1` for this baseline.
 - `type` selects one known message schema.
 - `sequence` supports ordering, duplicate detection, and replay defense within a defined session scope.
-- `sentAt` supports diagnostics and synchronization calculations. It is not trusted as authorization or proof of freshness on its own.
+- `sentAt` is diagnostic only through Phase 3B; future clock observation belongs to Phase 3C. It is not trusted as authorization or proof of freshness on its own.
 - `payload` contains only fields allowed by the selected message type.
 
 Session, participant, correlation, and media identifiers are expected where needed, but their exact placement and representation are not yet frozen. Binary media data may use a compact frame separate from JSON control messages while retaining equivalent version, type, transfer, ordering, and integrity context.
@@ -290,7 +291,7 @@ Phase 3A adds exactly `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, an
 
 ### Receiver-local application traffic bound
 
-PeerSession enforces one finite inbound token bucket shared by all five application types, after parsing, current session/negotiation/participant validation, increasing sequence validation, and handshake completion, before application dispatch. Initial allowance and maximum capacity are **32 messages**; lazy refill is **8 messages/second**, based exclusively on the injected local receiver clock in milliseconds. Fractional tokens are retained, capacity is clamped, identical timestamps grant no refill, and backwards readings cannot lower the refill timestamp or double-count elapsed time when the clock catches up. Peer `sentAt` is diagnostic only and grants no allowance.
+PeerSession enforces one finite inbound token bucket shared by all eight application types (the five 3A setup types plus PLAY, PAUSE and SEEK), after parsing, current session/negotiation/participant validation, increasing sequence validation, and handshake completion, before application dispatch. Initial allowance and maximum capacity are **32 messages**; lazy refill is **8 messages/second**, based exclusively on the injected local receiver clock in milliseconds. Fractional tokens are retained, capacity is clamped, identical timestamps grant no refill, and backwards readings cannot lower the refill timestamp or double-count elapsed time when the clock catches up. Peer `sentAt` is diagnostic only and grants no allowance.
 
 `PEER_HELLO` and `PEER_READY` retain their strict handshake state machine and consume no application tokens. Malformed, unknown, binary, wrong-context, duplicate/lower-sequence, and premature application messages fail as `peer_protocol`, without consuming application tokens. A valid application message without one full token is not dispatched: the current PeerSession fails once with the fixed local reason `application_rate_limit`, closes its channel and connection, and detaches handlers. Existing fresh-peer recovery decides the next action; each fresh PeerSession starts with the full burst. Outbound sends are unchanged. This provisional abuse bound is transport enforcement, not a throughput guarantee or wire field: no counter, acknowledgement, rate-limit message, new timestamp, or version change is introduced.
 
@@ -335,15 +336,15 @@ Every payload includes exactly the existing context fields `{ sessionId, negotia
 | `READY` | `{ localSelectionId, remoteSelectionId, fingerprint }` |
 | `NOT_READY` | `{ localSelectionId: MediaSelectionId \| null, reason }` |
 
-The sender's `localSelectionId` names its selection; its `remoteSelectionId` names the receiver's selection. A match/Ready fingerprint must equal the current matched identity. `NOT_READY.reason` is exactly `USER`, `NO_MEDIA`, `MEDIA_CHANGED`, `PEER_MEDIA_CHANGED`, `MEDIA_MISMATCH`, or `LOCAL_MEDIA_ERROR`. No wire field carries filename, path, MIME, duration, dimensions, object URL, modification time, content root, chunk digests, filesystem handles, or media bytes.
+The sender's `localSelectionId` names its selection; its `remoteSelectionId` names the receiver's selection. A match/Ready fingerprint must equal the current matched identity. `NOT_READY.reason` is exactly `USER`, `NO_MEDIA`, `MEDIA_CHANGED`, `PEER_MEDIA_CHANGED`, `MEDIA_MISMATCH`, `LOCAL_MEDIA_ERROR`, or `PLAYBACK_UNAVAILABLE`. No wire field carries filename, path, MIME, duration, dimensions, object URL, modification time, content root, chunk digests, filesystem handles, or media bytes.
 
 ### Ordering, readiness, and stale selection policy
 
 `PeerSession` injects authenticated context through `sendApplicationMessage(body)` and validates it before `onApplicationMessage(body)`. Sends are allowed only while connected. Applications received before the bidirectional HELLO/READY handshake completes fail the peer session with `peer_protocol`; they are never passed to React. Handshake and setup share one strictly increasing sequence per channel/direction. Wrong session, negotiation, sender, recipient, duplicate/lower sequence, binary, unknown, oversized, or malformed traffic fails closed. Teardown detaches callbacks and old peer callbacks are powerless.
 
-A file matches only when byte lengths and current session-scoped fingerprints agree. Each participant emits MEDIA_MATCH/MISMATCH for that pair. Ready requires current local identity, successful local-player metadata, no local error, current remote identity, matching evidence and peer confirmation of that pair; it always requires explicit user intent. `Both participants are ready` requires local Ready and remote Ready for that same current pair. No playback action follows.
+A file matches only when byte lengths and current session-scoped fingerprints agree. Each participant emits MEDIA_MATCH/MISMATCH for that pair. Ready requires current local identity, successful local-player metadata, no local error, current remote identity, matching evidence and peer confirmation of that pair; it always requires explicit user intent. `Both participants are ready` requires local Ready and remote Ready for that same current pair. Phase 3A alone applies no playback action; Phase 3B now establishes the paused baseline below.
 
-Replacement sends NOT_READY before new MEDIA_INFO, cancels obsolete hashing, selects a fresh ID, loads metadata normally and announces only a current completed identity. Clear sends NOT_READY and no empty MEDIA_INFO. Local read/hash/playback failure blocks readiness. Remote selection change clears pair confirmation and both readiness flags; another explicit click is required after matching again. USER withdrawal leaves matching evidence and the other user's choice intact. NO_MEDIA, MEDIA_CHANGED, and LOCAL_MEDIA_ERROR remove the sender's previously known usable identity.
+Replacement sends NOT_READY before new MEDIA_INFO, cancels obsolete hashing, selects a fresh ID, loads metadata normally and announces only a current completed identity. Clear sends NOT_READY and no empty MEDIA_INFO. Local read/hash/playback failure blocks readiness. Remote selection change clears pair confirmation and both readiness flags; another explicit click is required after matching again. USER and PLAYBACK_UNAVAILABLE withdrawal leave matching evidence and the other user's choice intact. NO_MEDIA, MEDIA_CHANGED, and LOCAL_MEDIA_ERROR remove the sender's previously known usable identity.
 
 Structurally valid MATCH/READY/MISMATCH/NOT_READY referring to a superseded selection pair are **ignored**, not transport violations; they cannot mutate current state. Same-selection MEDIA_INFO repeats are ignored (including conflicting repeats); a changed identity must use a fresh selection ID. The engine stores only current selections, never unbounded historical IDs or fingerprints.
 
@@ -353,9 +354,37 @@ A fresh recovered PeerSession has a fresh negotiation, channel, handshake, and s
 
 Selection replacement/clear, room leave/change, and shutdown abort old hashing. Every completion/progress callback is generation-owned. Cancellation is not a visible error; real failures use only FILE_TOO_LARGE, READ_FAILED, or HASH_FAILED. Progress is local only (coarse 10% UI updates; no per-chunk live announcements). No identity, private root, selection ID, remote evidence, or readiness is persisted; reload begins setup again.
 
+## Implemented through Phase 3B: Host-Authoritative Playback
+
+PLAY, PAUSE and SEEK are application JSON on the single ordered/reliable `driftless-control` channel, never signaling. Each uses the existing exact versioned envelope and exactly this payload:
+
+```text
+{
+  sessionId, negotiationId, senderId, recipientId,
+  localSelectionId, remoteSelectionId,
+  revision, positionMs
+}
+```
+
+PeerSession injects the four authenticated context fields; application callers and upward callbacks only handle `{ localSelectionId, remoteSelectionId, revision, positionMs }`. Selection IDs are canonical 16-byte/22-character MediaSelectionIds. Sender-local/receiver-local orientation is unchanged from 3A: at the guest, localSelectionId must equal current remote selection and remoteSelectionId current local selection.
+
+Revision is a positive safe integer (1–9,007,199,254,740,991). PositionMs is a nonnegative safe integer (0–9,007,199,254,740,991), generated with Math.round(currentTime * 1000), never raw floating seconds. Every field is mandatory, extra/prototype fields fail, and the unchanged MAX_PEER_MESSAGE_BYTES is 1024 UTF-8 bytes. No filename/path, MIME, duration, object URL, digest, media byte, browser error or clock observation is included.
+
+Only a host PeerSession may send these types; guest outbound attempts return false with no wire send. Guest inbound host commands are context/sequence checked, rate admitted, then projected. A host receiving a valid guest playback command fails the current peer as peer_protocol before application dispatch. All eight implemented application types share burst 32/refill 8/s; no separate playback allowance. Peer envelope sequence orders transport traffic independently from playback revision.
+
+Activation requires bothReady for the current matching pair. The host pauses first, preserves current position and establishes PAUSE revision 1. The guest waits for that exact initial PAUSE, then pauses/seeks and marks authority active. Becoming Ready never starts synchronized playback. Host Play/Pause/committed Seek each increment revision once; SEEK preserves authoritative mode. End-of-media may emit a single newer PAUSE. Internal preparation/baseline/application events do not generate duplicate commands; guest events never echo.
+
+Guest PLAY seeks then plays; PAUSE pauses then seeks; SEEK seeks without changing authoritative playing/paused mode. Position is divided by 1000 and clamped to max(0, finite local duration) before assignment. DOM failures and play rejection are handled without raw browser errors. Ready first prepares playback during the explicit gesture (play, pause, restore saved position). Failure sends no READY. Later play failure withdraws local readiness as PLAYBACK_UNAVAILABLE, preserving matching identity, and pauses safely.
+
+Revision <= last applied revision is ignored. Wrong media pair, no active Ready pair, or an inapplicable baseline is ignored without restoring readiness or failing a valid readiness-loss race. Greater active revisions can apply without gap repair: the existing channel is ordered/reliable and sequence checked. No ACK, retransmission, scheduler, history or replay queue.
+
+Readiness loss (withdrawal, replacement/clear/mismatch/error or peer failure) immediately deactivates authority, pauses locally, and discards revision. No authoritative PAUSE is sent after invalidation. Re-ready creates a new paused revision-1 baseline, requiring explicit host Play. Fresh peers reset both Ready choices and exchange current media again, then require the same baseline. Signaling-only recovery keeps a healthy channel's readiness, revision and playback without duplicate commands or preparation. All playback/Ready/preparation state remains memory-only; reload begins setup again.
+
+Phase 3B is event-driven command synchronization only, at 1× playback rate. No sentAt compensation, heartbeat, periodic messages, clock/RTT/delay estimation, drift observation/correction or sync loop. SYNC remains conceptual Phase 3C.
+
 ## Message Families
 
-The families below separate implemented Local Sync setup from future playback, social, transfer, and diagnostics contracts.
+The families below distinguish implemented Local Sync setup/playback from conceptual synchronization, social, transfer, and diagnostics contracts.
 
 ### Room and Session
 
@@ -381,6 +410,8 @@ The room layer enforces the participant limit. Readiness is scoped to a media se
 Local filesystem paths and filenames are never exchanged. The exact Phase 3A identity scheme is normative above; metadata/compatibility exchange beyond it remains future work.
 
 ### Playback
+
+PLAY/PAUSE/SEEK are implemented through 3B as specified above. SYNC is conceptual Phase 3C and is rejected by the current parser.
 
 | Type | Purpose |
 | --- | --- |
@@ -459,4 +490,4 @@ Peers exchange capabilities before mode activation. A peer that cannot safely in
 
 Phase 2A settled, for signaling only: hand-written strict validation in `packages/protocol` rather than a schema library, the room ID, invite secret, and participant ID encodings, and the signaling error codes. Phase 2B settled the negotiation message shapes and the negotiation ID, the provisional negotiation bounds, and the control channel's label and settings and its connection handshake. Phase 2C settled the session ID, the resume secret, challenge, and proof formats, the resume flow and its sequence reset, signaling presence, the connection-ending classification, and the recovery messages and negotiation bound; its timing values remain provisional. Phase 2D settled the ICE server configuration messages, their bounds, and the TURN credential derivation.
 
-Phase 3A settles media selection IDs, fingerprint version/format and bounded identity chunking, the five setup messages, and readiness invalidation/recovery. The following remain open: playback/social peer messages, binary framing, further channels, transfer identifiers and transport chunk size, acknowledgement strategy, future peer error vocabulary, timing intervals, and correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.
+Phase 3A settles media selection IDs, fingerprint version/format and bounded identity chunking, the five setup messages, and readiness invalidation/recovery. Phase 3B settles PLAY/PAUSE/SEEK payloads, logical revisions, paused activation, host roles, integer milliseconds and playback-unavailability withdrawal. The following remain open: SYNC/heartbeat/clock/drift and social peer messages, binary framing, further channels, transfer identifiers and transport chunk size, acknowledgement strategy, future peer error vocabulary, timing intervals, and correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.

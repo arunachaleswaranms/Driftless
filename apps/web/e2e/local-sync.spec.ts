@@ -83,9 +83,16 @@ async function privacy(peer: Peer, names: string[]) {
   expect(peer.requests.filter((r) => !['GET', 'HEAD'].includes(r.method))).toEqual([]);
   for (const frame of peer.frames) {
     const type = (JSON.parse(frame.text) as { type: string }).type;
-    expect(['MEDIA_INFO', 'MEDIA_MATCH', 'MEDIA_MISMATCH', 'READY', 'NOT_READY']).not.toContain(
-      type,
-    );
+    expect([
+      'MEDIA_INFO',
+      'MEDIA_MATCH',
+      'MEDIA_MISMATCH',
+      'READY',
+      'NOT_READY',
+      'PLAY',
+      'PAUSE',
+      'SEEK',
+    ]).not.toContain(type);
     for (const name of names) expect(frame.text.includes(name)).toBe(false);
     expect(frame.text.includes(mp4.toString('base64'))).toBe(false);
   }
@@ -115,7 +122,7 @@ async function readyPair(
   await bothReady(pair.host, pair.guest);
   return pair;
 }
-test('Local Sync same media matches under different names, explicit ready, no transfer or playback', async ({
+test('Local Sync same media matches under different names, explicit ready, no transfer and paused baseline', async ({
   browser,
   baseURL,
   pageProblems,

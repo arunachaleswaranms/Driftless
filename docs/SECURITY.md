@@ -91,6 +91,18 @@ Phase 2D adds short-lived TURN credential issuance, the runtime ICE configuratio
 
 An authorized malicious peer can lie about its selected media or whether it plays it. This is cooperative identity evidence, **not remote attestation or DRM**. Session scoping prevents a stable cross-room fingerprint; it does not prevent an authorized peer from testing guessed files against the current room identity. No independent security audit or physical/network gate is claimed.
 
+## Implemented in Phase 3B
+
+- Host-only PLAY/PAUSE/SEEK authority is checked at PeerSession in both directions. Guest outbound attempts return false without a send; host receipt of a guest command fails closed as peer_protocol before application dispatch.
+- Commands bind the authenticated session/negotiation/participants and current sender-local/receiver-local media selections. Inactive or stale pairs do not apply or restore readiness. Monotonic logical revisions reject stale domain authority; transport sequence remains independent.
+- Revision is a positive safe integer; positionMs is a nonnegative safe integer. The browser converts milliseconds and clamps to a finite nonnegative local duration before assigning currentTime. DOM assignment failure and play rejection withdraw readiness safely with fixed sanitized messages; matching identity is preserved for PLAYBACK_UNAVAILABLE.
+- All eight application types share the unchanged 1024-byte UTF-8 message bound and per-session token bucket (burst 32, refill 8/s). No separate playback allowance, outbound scheduler, or unbounded history.
+- Ready prepares playback through explicit user activation, leaving the element paused at its saved position. Preparation failure sends no READY; volume/mute are not modified. Internal browser events do not create duplicate authority commands and guest events never echo commands.
+- No peer clock or sentAt is trusted for playback. No latency compensation, clock offset, or synchronization accuracy claim. Active playback uses 1× only.
+- No command/preparation/Ready/revision/position persistence, queue, acknowledgement, retry loop or replay. New peer channels require explicit Ready and PAUSE revision 1; healthy channels survive signaling reconnect without reset. No media bytes, filenames/paths, MIME, duration, browser error, object URL or digest metadata in playback messages.
+
+An authorized host can intentionally play, pause, or seek disruptively. Clamping bounds local application; it does not make a malicious host trustworthy. Matching identity is cooperative evidence, not attestation.
+
 ## Threat Model Scope
 
 The baseline covers the browser client, signaling service, room/invite flow, WebRTC negotiation and data channels, TURN use, browser-local cache, protocol parsing, media parsing, and operational logging. It considers network attackers, unauthenticated abuse, malicious or compromised peers, malformed media, supply-chain compromise, accidental leakage, and device resource exhaustion.

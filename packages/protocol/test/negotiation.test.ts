@@ -295,6 +295,9 @@ describe('peer messages', () => {
       'MEDIA_MISMATCH',
       'READY',
       'NOT_READY',
+      'PLAY',
+      'PAUSE',
+      'SEEK',
     ]);
   });
 
@@ -337,7 +340,7 @@ describe('peer messages', () => {
         reason: 'unknown_type',
       });
     }
-    for (const type of ['ROOM_JOIN', 'CHAT', 'PLAY', 'SYNC', 'TRANSFER_CHUNK']) {
+    for (const type of ['ROOM_JOIN', 'CHAT', 'SYNC', 'TRANSFER_CHUNK']) {
       expect(parsePeerMessage(envelope(type, {}))).toMatchObject({
         ok: false,
         reason: 'unknown_type',

@@ -2,7 +2,7 @@
 
 The production Driftless web client: React, TypeScript, and Vite, delivered as a Progressive Web App.
 
-It contains the Phase 1 foundation (the application shell, PWA installability metadata, service worker registration, a local video player, a browser capability report, and the automated test baseline) and, from Phase 2B, a room area that creates or joins a private two-person room through the [signaling service](../../services/signaling/) and opens a WebRTC data channel to the other participant. From Phase 2C the room recovers, within bounds, from a lost signaling connection and from a failed data channel. From Phase 2D it receives its ICE servers, including short-lived TURN credentials, from the signaling service after admission, and shows browser-local connection diagnostics, including whether the selected path is direct or a TURN relay. Phase 3A adds bounded local media identity and explicit readiness on the control data channel. Playback synchronization and media transfer remain unimplemented.
+It contains the Phase 1 foundation (the application shell, PWA installability metadata, service worker registration, a local video player, a browser capability report, and the automated test baseline) and, from Phase 2B, a room area that creates or joins a private two-person room through the [signaling service](../../services/signaling/) and opens a WebRTC data channel to the other participant. From Phase 2C the room recovers, within bounds, from a lost signaling connection and from a failed data channel. From Phase 2D it receives its ICE servers, including short-lived TURN credentials, from the signaling service after admission, and shows browser-local connection diagnostics, including whether the selected path is direct or a TURN relay. Phase 3A adds bounded local media identity and explicit readiness on the control data channel. Phase 3B adds host-authoritative Play, Pause, and committed Seek. Continuous drift correction and media transfer remain unimplemented.
 
 Phase 1 is closed: its exit gate passed at revision `4bf6e31` in Playwright Chromium 153 and Google Chrome 154. That is development-browser evidence, not a support claim; see [PHASE1_QUALIFICATION.md](../../docs/PHASE1_QUALIFICATION.md).
 
@@ -51,6 +51,7 @@ src/
   app/                     application shell and global styles
   features/local-media/    local video player: file choice, object URL lifecycle, metadata, errors
   features/capabilities/   browser capability report: observed API surfaces, no support claims
+  features/local-sync/     identity/readiness and browser playback-authority adapter
   features/room/           room UI, room controller, signaling client, WebRTC peer session, ICE configuration, connection diagnostics
   pwa/                     service worker registration
 public/
@@ -77,7 +78,7 @@ e2e/media/                 synthetic test videos and their provenance
 - **One object URL per selection.** `LocalMediaPanel` gives each chosen file a new selection id and mounts one `LocalMediaPlayer` keyed by it. The player creates the URL when it mounts and, when it unmounts on replacement, clear, or panel teardown, pauses the element, removes its source, reloads it, and only then revokes the URL. Media events carry their selection id, and the reducer in `localMediaState.ts` ignores events for any selection but the current one.
 - **Browser-reported details only.** The panel shows the file name, the browser-reported type, and the size, then the duration and dimensions once the element reports metadata. The reported type comes from the browser, usually from the file name, and is not treated as evidence that the file will play. The file's location on the device is not available to the page.
 - **Conservative errors.** A `MediaError` is mapped to a category by its standard code, and the page says that this browser could not play the selected media. It does not show the browser's internal error message or name a codec.
-- **No autoplay.** The element uses `controls`, `playsInline`, and `preload="metadata"`; playback starts only from the user.
+- **Explicit playback preparation.** Preview uses native controls, `playsInline`, and `preload="metadata"`. Local Sync Ready prepares programmatic playback through the user gesture; synchronized playback starts only from a host Play command.
 - **Content Security Policy.** Production builds allow `media-src 'self' blob:` so the element can load object URLs. Nothing else in the policy changed.
 
 The file chooser suggests video files, but whether a file plays is decided only by the browser. Browser test results with the synthetic fixtures are development evidence, not a compatibility claim.
@@ -139,14 +140,22 @@ Chromium reporting no installability errors is development evidence only. It is 
 
 ## Phase 3A Local Sync setup
 
-`App` owns the existing media reducer and forwards its current selection/status synchronously to `RoomController.localSync`. There is one chooser and one File object. The native player still owns deterministic object-URL creation/detachment/revocation, and its selection guards reject stale browser events. Native controls remain usable and local.
+`App` owns the existing media reducer and forwards its current selection/status synchronously to `RoomController.localSync`. There is one chooser and one File object. The native player still owns deterministic object-URL creation/detachment/revocation, and its selection guards reject stale browser events. Native preview controls remain usable while synchronized playback is inactive; active authority hides transport controls.
 
 `features/local-sync/localSyncController.ts` injects Web Crypto SHA-256 and 128-bit random selection generation into the pure `@driftless/sync-engine`. It reads one 4 MiB File slice at a time with coarse local progress, aborts on selection/room/controller changes, ignores obsolete completions, and exposes fixed errors. Identity state stays in memory. A file must finish identity and successfully load browser metadata before Ready is allowed; MIME/filename are not compatibility evidence.
 
-The setup panel renders match/mismatch, local/peer readiness, and an explicit keyboard-accessible **I'm ready** / **Not ready** button. Status regions announce meaningful setup transitions, while numeric progress is visual-only to avoid per-chunk announcements. It displays no identity/selection/session/participant values. Both-ready does not play, pause, or seek.
+The setup panel renders match/mismatch, local/peer readiness, and an explicit keyboard-accessible **I'm ready** / **Not ready** button. Status regions announce meaningful setup transitions, while numeric progress is visual-only to avoid per-chunk announcements. It displays no identity/selection/session/participant values. Both-ready establishes the Phase 3B paused host-position baseline; it does not start playing.
 
 PeerSession supplies context and sequences for the five setup messages through a focused send/receive boundary. It accepts no application traffic before the bidirectional handshake. RoomController clears old remote identity and both readiness choices on fresh peer replacement and reannounces current local identity after handshake; both users must Ready again. A signaling reconnect preserving the same healthy channel preserves setup and sends no duplicate announcement. No media-transfer plane or signaling production changes.
 
 See [protocol](../../docs/PROTOCOL.md#implemented-through-phase-3a-local-sync-setup), [sync-engine](../../packages/sync-engine/README.md), and [3A automated evidence](../../docs/PHASE3A_IMPLEMENTATION.md). Phase 3 physical/long-duration synchronization qualification is not evaluated.
 
 The browser controller drains an already-running Blob read/digest after cancellation before starting only the latest selection. Rapid replacements cannot accumulate parallel chunk reads or a queued history of File objects; obsolete completion remains powerless. A failed control send invalidates local setup state and queues no replay.
+
+## Phase 3B host playback controls
+
+`playbackSyncController.ts` attaches only the current element through the player callback; it owns no File bytes or object URL. It prepares playback on Ready, preserves position, and sends READY only on success. Fixed sanitized messages cover preparation and later play failures; PLAYBACK_UNAVAILABLE withdraws readiness while preserving matching identity.
+
+The pure sync-engine owns the current Ready pair, paused revision-1 baseline, logical revisions, playing/paused authority and stale rejection. PeerSession injects context and enforces host-only PLAY/PAUSE/SEEK, sharing the existing burst-32/refill-8/s application bucket. Host controls are Play, Pause, labelled Seek position, and a separate Seek commit button; the guest sees “The host controls playback.” Native transport controls are hidden while authority is present. Volume/mute remain local, with no dedicated UI during authority. Active playback uses 1×.
+
+Readiness loss pauses and resets authority; re-ready begins paused. Fresh peers require explicit Ready and a new baseline, with no command replay; healthy data channels preserve playback across signaling reconnect. Positions are safe integer milliseconds, duration-clamped locally, with no sentAt compensation. No heartbeat, continuous drift correction, media transfer, or persistence. See [3B automated evidence](../../docs/PHASE3B_IMPLEMENTATION.md); Phase 3 exit gate remains NOT PASSED.

@@ -1,9 +1,15 @@
-import { useSyncExternalStore } from 'react';
+import { formatPlaybackPosition } from './playbackSyncController.ts';
+import { useState, useSyncExternalStore } from 'react';
 import { bothReady, mediaMatch, readinessBlock } from '@driftless/sync-engine';
 import type { LocalSyncController } from './localSyncController.ts';
 
 export function LocalSyncPanel({ controller }: { controller: LocalSyncController }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getState);
+  const playback = useSyncExternalStore(
+    controller.playback.subscribe,
+    controller.playback.getState,
+  );
+  const [target, setTarget] = useState(0);
   let status = 'Choose a local video.';
   if (state.local?.failure)
     status =
@@ -33,14 +39,70 @@ export function LocalSyncPanel({ controller }: { controller: LocalSyncController
       <button
         type="button"
         className="button"
-        disabled={!state.localReady && readinessBlock(state) !== null}
+        disabled={playback.preparing || (!state.localReady && readinessBlock(state) !== null)}
         onClick={() => {
-          controller.dispatch({ type: state.localReady ? 'not-ready' : 'ready' });
+          if (state.localReady) controller.dispatch({ type: 'not-ready' });
+          else void controller.playback.ready();
         }}
       >
         {state.localReady ? 'Not ready' : "I'm ready"}
       </button>
-      <p>Setup only. Playback remains local; becoming ready does not start playback.</p>
+      {playback.error ? <p role="alert">{playback.error}</p> : null}
+      {playback.authority.active && playback.role === 'host' ? (
+        <div role="group" aria-label="Host playback controls">
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              void controller.playback.play();
+            }}
+          >
+            Play
+          </button>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              controller.playback.pause();
+            }}
+          >
+            Pause
+          </button>
+          <label>
+            Seek position
+            <input
+              type="range"
+              min="0"
+              max={playback.durationMs}
+              step="100"
+              value={Math.min(target, playback.durationMs)}
+              onChange={(event) => {
+                setTarget(Number(event.currentTarget.value));
+              }}
+            />
+          </label>
+          <span>{formatPlaybackPosition(Math.min(target, playback.durationMs))}</span>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              controller.playback.seek(Math.min(target, playback.durationMs));
+            }}
+          >
+            Seek
+          </button>
+        </div>
+      ) : playback.authority.pair && playback.role === 'guest' ? (
+        <p>
+          {playback.authority.active
+            ? 'The host controls playback.'
+            : 'Waiting for the host paused baseline.'}
+        </p>
+      ) : null}
+      <p>
+        Local Sync follows host Play, Pause, and Seek commands. Continuous drift correction is not
+        implemented yet.
+      </p>
     </section>
   );
 }

@@ -201,6 +201,8 @@ export class PeerSession {
 
   /** Only this boundary writes application JSON to the channel. */
   sendApplicationMessage(body: ApplicationBody): boolean {
+    if (this.#options.role !== 'host' && ['PLAY', 'PAUSE', 'SEEK'].includes(body.type))
+      return false;
     if (this.#state !== 'connected' || this.#channel?.readyState !== 'open') return false;
     const message = {
       protocolVersion: PROTOCOL_VERSION,
@@ -620,6 +622,10 @@ export class PeerSession {
         this.#fail('peer_protocol');
         return;
       }
+      if (this.#options.role === 'host' && ['PLAY', 'PAUSE', 'SEEK'].includes(message.type)) {
+        this.#fail('peer_protocol');
+        return;
+      }
       if (!this.#admitApplicationMessage()) {
         this.#fail('application_rate_limit');
         return;
@@ -627,6 +633,19 @@ export class PeerSession {
       // The context is checked above; upward consumers receive only domain fields.
       // Explicit projection keeps the application API context-free.
       switch (message.type) {
+        case 'PLAY':
+        case 'PAUSE':
+        case 'SEEK':
+          this.#applicationCallback?.({
+            type: message.type,
+            payload: {
+              localSelectionId: message.payload.localSelectionId,
+              remoteSelectionId: message.payload.remoteSelectionId,
+              revision: message.payload.revision,
+              positionMs: message.payload.positionMs,
+            },
+          });
+          break;
         case 'MEDIA_INFO':
           this.#applicationCallback?.({
             type: message.type,

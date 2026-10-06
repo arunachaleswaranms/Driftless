@@ -78,7 +78,7 @@ These responsibilities remain the accepted target architecture. Current implemen
 - In production the client expects the signaling path on its own origin, so a deployment routes `/v1/signaling` to the service behind TLS. The development and preview servers forward the path to a loopback service. The expected deployment topology — TLS reverse proxy, loopback-bound service, coturn — is in [DEPLOYMENT.md](DEPLOYMENT.md); whether one existed for qualification is recorded in [PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md).
 - In Phase 2D the service also issues each admitted member its ICE configuration: configured STUN servers, and TURN servers with a short-lived credential it derives from a secret shared with the TURN server ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)). It is not a TURN server and relays no media.
 - `packages/protocol/` gained, in Phase 2C, the session ID, resume secret, challenge, and proof formats, the canonical 76-byte resume proof input (no hashing; each endpoint uses platform crypto), the resume, presence, and recovery messages, and a pure base64url codec.
-- `packages/sync-engine/` is initialized in Phase 3A for pure media identity/readiness logic. Playback synchronization is future work. `packages/transfer-engine/` remains empty; media transfer and production Progressive Watch are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
+- `packages/sync-engine/` is initialized in Phase 3A for pure media identity/readiness logic. Phase 3B adds pure host-authoritative playback state and revisions; heartbeat/drift logic remains future Phase 3C work. `packages/transfer-engine/` remains empty; media transfer and production Progressive Watch are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
 - The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root lockfile.
 
 ## Implemented Phase 3A responsibility split
@@ -92,7 +92,27 @@ App-owned local File + local player metadata
 
 `App` lifts the existing media reducer; one input and one File object serve the existing player and Local Sync. The native player's captured object URL is still released on replacement/clear and stale media events remain selection-bound. The player performs no application-level file read; the identity adapter intentionally performs a bounded sequential full-file read.
 
-The engine has no React, DOM, network transport, or persistence. SHA-256 is injected; browser cryptography stays in the adapter. `PeerSession.sendApplicationMessage` supplies session/negotiation/participant context and rejects sends before handshake completion. Application callbacks are validated below React and detached at teardown. `RoomController` binds setup only to the current peer, preserves it on signaling-only recovery, and clears peer evidence/readiness on fresh transport replacement. No transfer engine is involved and no playback authority is implemented.
+The engine has no React, DOM, network transport, or persistence. SHA-256 is injected; browser cryptography stays in the adapter. `PeerSession.sendApplicationMessage` supplies session/negotiation/participant context and rejects sends before handshake completion. Application callbacks are validated below React and detached at teardown. `RoomController` binds setup only to the current peer, preserves it on signaling-only recovery, and clears peer evidence/readiness on fresh transport replacement. No transfer engine is involved. Phase 3B adds playback authority below React as described next.
+
+## Implemented Phase 3B responsibility split
+
+```text
+Local Sync readiness
+    ↓
+pure playback authority state (sync-engine)
+    ↓
+host playback controller → PeerSession → driftless-control
+                                           ↓
+                                  guest playback controller
+                                           ↓
+                                     HTMLVideoElement
+```
+
+`PlaybackSyncController` subscribes to readiness, attaches only the current selection's element through a controlled callback, and owns browser preparation/application and UI-facing state. `LocalMediaPlayer` retains File/object URL/media-element ownership. Replacement detaches the old playback attachment synchronously; captured stale callbacks and asynchronous completions cannot affect the new element. React only renders state and dispatches intent.
+
+Host authority is checked in PeerSession outbound and inbound. Playback revisions order domain authority; the existing envelope sequence separately orders one authenticated transport stream. A baseline PAUSE revision 1 activates each Ready cycle. All three commands use the same application rate bucket as setup traffic. Loss of readiness pauses locally without an invalidated authority send; fresh peer recovery requires Ready again. Signaling-only recovery leaves a healthy channel and authority intact.
+
+3B is event-driven only: baseline, Play, Pause, committed Seek, and end-of-media Pause. No timeupdate sends, polling, timing loop, heartbeat, delay compensation, acknowledgements, retries, or replay queue. Volume/mute are local preferences; their native UI is temporarily unavailable during authority. Only active playback is constrained to 1×.
 
 ## Web Client Components
 

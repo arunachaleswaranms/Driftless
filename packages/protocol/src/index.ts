@@ -159,3 +159,5 @@ export {
   type ReadyMessage,
   type NotReadyMessage,
 } from './messages.js';
+
+export type { PlaybackPayload, PlaybackMessage, PlaybackBody } from './messages.js';

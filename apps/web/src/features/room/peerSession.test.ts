@@ -1097,3 +1097,154 @@ describe('inbound peer application rate bound', () => {
     expect(fresh.states.at(-1)?.failure).toBe('application_rate_limit');
   });
 });
+
+async function appGuest(options: Parameters<typeof setup>[1] = {}) {
+  const received: ApplicationBody[] = [];
+  const h = setup('guest', { ...options, onApplicationMessage: (body) => received.push(body) });
+  void h.session.acceptOffer('v=0\r\nremote-offer\r\n');
+  await flush();
+  await h.connection().settle('setRemoteDescription');
+  await h.connection().settle('createAnswer');
+  await h.connection().settle('setLocalDescription');
+  const channel = new FakeDataChannel(PEER_CONTROL_CHANNEL_LABEL);
+  h.connection().announceChannel(channel);
+  channel.open();
+  const context = {
+    senderId: HOST_ID,
+    recipientId: GUEST_ID,
+    sessionId: SESSION_ID,
+    negotiationId: NEGOTIATION,
+  };
+  channel.receive(hello(0, context));
+  channel.receive(ready(1, context));
+  return { ...h, channel, received, context };
+}
+const playbackPayload = {
+  localSelectionId: 'A'.repeat(22),
+  remoteSelectionId: 'B'.repeat(21) + 'A',
+  revision: 1,
+  positionMs: 2500,
+};
+describe('host-only playback transport boundary', () => {
+  it.each(['PLAY', 'PAUSE', 'SEEK'] as const)(
+    'host sends %s with injected context and shared sequence',
+    async (type) => {
+      const h = await appHost();
+      h.session.sendApplicationMessage(appBody);
+      expect(
+        h.session.sendApplicationMessage({ type, payload: playbackPayload } as ApplicationBody),
+      ).toBe(true);
+      expect(h.channel.sent.at(-1)).toMatchObject({
+        type,
+        sequence: 3,
+        payload: {
+          ...playbackPayload,
+          sessionId: SESSION_ID,
+          negotiationId: NEGOTIATION,
+          senderId: HOST_ID,
+          recipientId: GUEST_ID,
+        },
+      });
+    },
+  );
+  it.each(['PLAY', 'PAUSE', 'SEEK'] as const)(
+    'guest outbound %s refused without send',
+    async (type) => {
+      const h = await appGuest();
+      const before = h.channel.sent.length;
+      expect(
+        h.session.sendApplicationMessage({ type, payload: playbackPayload } as ApplicationBody),
+      ).toBe(false);
+      expect(h.channel.sent.length).toBe(before);
+    },
+  );
+  it.each(['PLAY', 'PAUSE', 'SEEK'] as const)(
+    'guest receives host %s with context projected out; stale handler powerless',
+    async (type) => {
+      const h = await appGuest();
+      h.channel.receive(incomingApp(2, h.context, type, playbackPayload));
+      expect(h.received).toEqual([{ type, payload: playbackPayload }]);
+      const handler = h.channel.onmessage;
+      h.session.close();
+      handler?.call(
+        h.channel.asChannel(),
+        new MessageEvent('message', { data: incomingApp(3, h.context, type, playbackPayload) }),
+      );
+      expect(h.received).toHaveLength(1);
+    },
+  );
+  it.each(['PLAY', 'PAUSE', 'SEEK'] as const)(
+    'host rejects guest %s before application dispatch',
+    async (type) => {
+      const h = await appHost();
+      h.channel.receive(incomingApp(2, {}, type, playbackPayload));
+      expect(h.received).toEqual([]);
+      expect(h.states.at(-1)?.failure).toBe('peer_protocol');
+    },
+  );
+  it('all eight applications share one bucket, handshake excluded', async () => {
+    const h = await appGuest({ clock: () => 0 });
+    const bodies = [
+      [
+        'MEDIA_INFO',
+        {
+          selectionId: playbackPayload.localSelectionId,
+          fingerprintVersion: 1,
+          fingerprint: 'A'.repeat(43),
+          byteLength: 1,
+        },
+      ],
+      [
+        'MEDIA_MATCH',
+        {
+          localSelectionId: playbackPayload.localSelectionId,
+          remoteSelectionId: playbackPayload.remoteSelectionId,
+          fingerprint: 'A'.repeat(43),
+        },
+      ],
+      [
+        'MEDIA_MISMATCH',
+        {
+          localSelectionId: playbackPayload.localSelectionId,
+          remoteSelectionId: playbackPayload.remoteSelectionId,
+          reason: 'IDENTITY_MISMATCH',
+        },
+      ],
+      [
+        'READY',
+        {
+          localSelectionId: playbackPayload.localSelectionId,
+          remoteSelectionId: playbackPayload.remoteSelectionId,
+          fingerprint: 'A'.repeat(43),
+        },
+      ],
+      ['NOT_READY', appBody.payload],
+      ['PLAY', playbackPayload],
+      ['PAUSE', playbackPayload],
+      ['SEEK', playbackPayload],
+    ] as const;
+    for (let i = 0; i < 32; i++) {
+      const body = bodies[i % 8];
+      if (body) h.channel.receive(incomingApp(i + 2, h.context, body[0], body[1]));
+    }
+    expect(h.received).toHaveLength(32);
+    expect(h.session.state).toBe('connected');
+    h.channel.receive(incomingApp(34, h.context, 'PLAY', playbackPayload));
+    expect(h.states.at(-1)?.failure).toBe('application_rate_limit');
+  });
+  it.each(['PLAY', 'PAUSE', 'SEEK'])(
+    '%s consumes the existing bucket at exhaustion',
+    async (type) => {
+      const h = await appGuest({ clock: () => 0 });
+      for (let i = 0; i < 32; i++) h.channel.receive(incomingApp(i + 2, h.context));
+      h.channel.receive(incomingApp(34, h.context, type, playbackPayload));
+      expect(h.states.at(-1)?.failure).toBe('application_rate_limit');
+    },
+  );
+  it('malformed playback remains peer_protocol', async () => {
+    const h = await appGuest();
+    h.channel.receive(incomingApp(2, h.context, 'PLAY', { ...playbackPayload, revision: 0 }));
+    expect(h.states.at(-1)?.failure).toBe('peer_protocol');
+    expect(h.received).toEqual([]);
+  });
+});

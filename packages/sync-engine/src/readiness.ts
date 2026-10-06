@@ -53,7 +53,7 @@ export type LocalSyncEvent =
       readonly failure: FingerprintFailure;
     }
   | { readonly type: 'ready' }
-  | { readonly type: 'not-ready' }
+  | { readonly type: 'not-ready'; readonly reason?: 'USER' | 'PLAYBACK_UNAVAILABLE' }
   | { readonly type: 'receive'; readonly body: ApplicationBody };
 export type MatchState = 'waiting' | 'match' | 'mismatch';
 export function mediaMatch(state: LocalSyncState): MatchState {
@@ -209,7 +209,7 @@ export function reduceLocalSync(
       });
       break;
     case 'not-ready':
-      notReady('USER');
+      notReady(event.reason ?? 'USER');
       next = { ...state, localReady: false };
       break;
     case 'receive': {

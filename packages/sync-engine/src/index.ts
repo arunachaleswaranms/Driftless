@@ -17,3 +17,12 @@ export {
   type LocalSyncEvent,
   type MatchState,
 } from './readiness.js';
+export {
+  initialPlaybackState,
+  playbackReadiness,
+  hostPlayback,
+  guestPlayback,
+  isPlaybackBody,
+  type PlaybackPair,
+  type PlaybackSyncState,
+} from './playback.js';

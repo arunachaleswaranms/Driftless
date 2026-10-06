@@ -380,6 +380,9 @@ const PEER_DECODERS: DecoderTable<PeerMessage> = {
       }
     );
   },
+  PLAY: decodePlayback,
+  PAUSE: decodePlayback,
+  SEEK: decodePlayback,
   MEDIA_MATCH: decodeMediaPair,
   READY: decodeMediaPair,
   MEDIA_MISMATCH: (value) => {
@@ -656,6 +659,36 @@ function decodeMediaPair(value: unknown) {
       localSelectionId: p.localSelectionId,
       remoteSelectionId: p.remoteSelectionId,
       fingerprint: p.fingerprint,
+    }
+  );
+}
+
+function decodePlayback(
+  value: unknown,
+): import('./messages.js').PlaybackMessage['payload'] | undefined {
+  const p = applicationObject(value, [
+    'localSelectionId',
+    'remoteSelectionId',
+    'revision',
+    'positionMs',
+  ]);
+  if (
+    !p ||
+    !isMediaSelectionId(p.localSelectionId) ||
+    !isMediaSelectionId(p.remoteSelectionId) ||
+    !isWireInteger(p.revision) ||
+    p.revision === 0 ||
+    !isWireInteger(p.positionMs)
+  )
+    return undefined;
+  const context = peerContext(p);
+  return (
+    context && {
+      ...context,
+      localSelectionId: p.localSelectionId,
+      remoteSelectionId: p.remoteSelectionId,
+      revision: p.revision,
+      positionMs: p.positionMs,
     }
   );
 }

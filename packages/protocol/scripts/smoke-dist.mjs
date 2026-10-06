@@ -132,3 +132,26 @@ assert.equal(new TextDecoder().decode(input.subarray(0, 19)), 'driftless-resume-
 assert.equal(protocol.resumeProofInput('short', 'B'.repeat(16), 'C'.repeat(32)), undefined);
 
 console.log('@driftless/protocol dist smoke test passed');
+
+for (const type of ['PLAY', 'PAUSE', 'SEEK']) {
+  const text = JSON.stringify({
+    protocolVersion: 1,
+    type,
+    sequence: 1,
+    sentAt: 0,
+    payload: {
+      sessionId: 'A'.repeat(27),
+      negotiationId: 'A'.repeat(24),
+      senderId: 'A'.repeat(16),
+      recipientId: 'B'.repeat(16),
+      localSelectionId: 'A'.repeat(22),
+      remoteSelectionId: 'B'.repeat(21) + 'A',
+      revision: Number.MAX_SAFE_INTEGER,
+      positionMs: Number.MAX_SAFE_INTEGER,
+    },
+  });
+  assert.equal(protocol.parsePeerMessage(text).ok, true);
+  assert.equal(protocol.parseClientMessage(text).ok, false);
+  assert.equal(protocol.parseServerMessage(text).ok, false);
+  assert.ok(protocol.utf8ByteLength(text) < protocol.MAX_PEER_MESSAGE_BYTES);
+}
