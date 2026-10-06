@@ -162,3 +162,11 @@ export function isMediaSelectionId(value: unknown): value is MediaSelectionId {
 export function isMediaFingerprint(value: unknown): value is MediaFingerprint {
   return typeof value === 'string' && INVITE_SECRET_PATTERN.test(value);
 }
+
+/** Fresh participant-local identity for one explicit Ready intent; not a credential. */
+export type ReadinessId = Brand<string, 'ReadinessId'>;
+export const READINESS_ID_BYTES = 16;
+export const READINESS_ID_LENGTH = 22;
+export function isReadinessId(value: unknown): value is ReadinessId {
+  return typeof value === 'string' && ROOM_ID_PATTERN.test(value);
+}

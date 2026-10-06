@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { MediaSelectionId, MediaFingerprint, PlaybackBody } from '@driftless/protocol';
+import type {
+  MediaSelectionId,
+  MediaFingerprint,
+  PlaybackBody,
+  ReadinessId,
+} from '@driftless/protocol';
 import {
   initialPlaybackState,
   playbackReadiness,
@@ -10,6 +15,8 @@ import {
 } from '../src/index.js';
 const local = 'A'.repeat(22) as MediaSelectionId;
 const remote = ('B'.repeat(21) + 'A') as MediaSelectionId;
+const localReadyId = ('C'.repeat(21) + 'A') as ReadinessId;
+const remoteReadyId = ('D'.repeat(21) + 'A') as ReadinessId;
 const fingerprint = 'A'.repeat(43) as MediaFingerprint;
 const ready: LocalSyncState = {
   connected: true,
@@ -23,6 +30,8 @@ const ready: LocalSyncState = {
   },
   remote: { selectionId: remote, byteLength: 1, fingerprintVersion: 1, fingerprint },
   peerMatched: true,
+  localReadinessId: localReadyId,
+  remoteReadinessId: remoteReadyId,
   localReady: true,
   remoteReady: true,
 };
@@ -34,7 +43,14 @@ const incoming = (
   positionMs = 3000,
 ): PlaybackBody => ({
   type,
-  payload: { localSelectionId: remote, remoteSelectionId: local, revision, positionMs },
+  payload: {
+    localSelectionId: remote,
+    remoteSelectionId: local,
+    localReadinessId: remoteReadyId,
+    remoteReadinessId: localReadyId,
+    revision,
+    positionMs,
+  },
 });
 describe('pure playback authority', () => {
   it('initial inactive, no commands or readiness resurrection', () => {
@@ -46,7 +62,12 @@ describe('pure playback authority', () => {
     expect(baseline()).toEqual({
       state: {
         active: true,
-        pair: { localSelectionId: local, remoteSelectionId: remote },
+        pair: {
+          localSelectionId: local,
+          remoteSelectionId: remote,
+          localReadinessId: localReadyId,
+          remoteReadinessId: remoteReadyId,
+        },
         revision: 1,
         mode: 'paused',
         positionMs: 2500,
@@ -56,6 +77,8 @@ describe('pure playback authority', () => {
         payload: {
           localSelectionId: local,
           remoteSelectionId: remote,
+          localReadinessId: localReadyId,
+          remoteReadinessId: remoteReadyId,
           revision: 1,
           positionMs: 2500,
         },
@@ -137,4 +160,37 @@ describe('pure playback authority', () => {
     ).toBeNull();
     expect(playbackReadiness(baseline().state, ready)).toEqual(baseline().state);
   });
+});
+
+it.each(['localReadinessId', 'remoteReadinessId'] as const)(
+  'rejects wrong %s before revision ordering',
+  (field) => {
+    const s = waiting();
+    for (const revision of [1, 10]) {
+      const cmd = incoming('PAUSE', revision);
+      expect(
+        guestPlayback(s, {
+          ...cmd,
+          payload: { ...cmd.payload, [field]: ('E'.repeat(21) + 'A') as ReadinessId },
+        }),
+      ).toBe(s);
+    }
+  },
+);
+it('same media with a fresh Ready generation resets revision and rejects the old rev1 baseline', () => {
+  const old = incoming('PAUSE', 1, 2000);
+  const freshId = ('E'.repeat(21) + 'A') as ReadinessId;
+  const s = playbackReadiness(guestPlayback(waiting(), old), {
+    ...ready,
+    localReadinessId: freshId,
+  });
+  expect(s.revision).toBe(0);
+  expect(s.active).toBe(false);
+  expect(guestPlayback(s, old)).toBe(s);
+  const fresh = guestPlayback(s, {
+    ...old,
+    payload: { ...old.payload, remoteReadinessId: freshId, positionMs: 6000 },
+  });
+  expect(fresh).toMatchObject({ active: true, revision: 1, mode: 'paused', positionMs: 6000 });
+  expect(guestPlayback(fresh, { ...old, payload: { ...old.payload, revision: 99 } })).toBe(fresh);
 });

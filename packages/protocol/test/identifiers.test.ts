@@ -13,6 +13,9 @@ import {
   RESUME_PROOF_LENGTH,
   RESUME_SECRET_BYTES,
   RESUME_SECRET_LENGTH,
+  READINESS_ID_BYTES,
+  READINESS_ID_LENGTH,
+  isReadinessId,
   ROOM_ID_BYTES,
   ROOM_ID_LENGTH,
   SESSION_ID_BYTES,
@@ -38,6 +41,12 @@ import {
 } from './fixtures.js';
 
 const formats = [
+  {
+    name: 'readiness ID',
+    check: isReadinessId,
+    bytes: READINESS_ID_BYTES,
+    length: READINESS_ID_LENGTH,
+  },
   { name: 'room ID', check: isRoomId, bytes: ROOM_ID_BYTES, length: ROOM_ID_LENGTH },
   {
     name: 'invite secret',
@@ -173,6 +182,9 @@ describe('identifier formats', () => {
   it('rejects non-canonical final characters', () => {
     // 16 and 32 bytes do not fill the last character; its unused bits must be zero.
     expect(isRoomId(`${ROOM_ID.slice(0, -1)}B`)).toBe(false);
+    expect(isReadinessId('A'.repeat(21) + 'B')).toBe(false);
+    expect(READINESS_ID_BYTES).toBe(16);
+    expect(READINESS_ID_LENGTH).toBe(22);
     expect(isInviteSecret(`${INVITE_SECRET.slice(0, -1)}B`)).toBe(false);
     expect(isRoomId(`${ROOM_ID.slice(0, -1)}Q`)).toBe(true);
     expect(isInviteSecret(`${INVITE_SECRET.slice(0, -1)}E`)).toBe(true);

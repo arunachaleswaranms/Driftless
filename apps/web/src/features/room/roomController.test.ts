@@ -1,3 +1,4 @@
+import { readinessId } from '../../test/playback.ts';
 import {
   type ApplicationBody,
   type MediaFingerprint,
@@ -188,7 +189,10 @@ describe('peer application flooding and Local Sync recovery', () => {
         fingerprint,
       },
     };
-    const readyBody: ApplicationBody = { type: 'READY', payload: match.payload };
+    const readyBody: ApplicationBody = {
+      type: 'READY',
+      payload: { ...match.payload, readinessId: readinessId(50) },
+    };
     const deliver = (peer: typeof old, body: ApplicationBody, sequence: number) => {
       peer.channel.receive(
         JSON.stringify({
@@ -209,7 +213,7 @@ describe('peer application flooding and Local Sync recovery', () => {
     const receive = vi.spyOn(sync, 'receive');
     deliver(old, info, 2);
     deliver(old, match, 3);
-    sync.dispatch({ type: 'ready' });
+    sync.dispatch({ type: 'ready', readinessId: readinessId(1) });
     deliver(old, readyBody, 4);
     const local = sync.getState().local;
     expect(sync.getState()).toMatchObject({
@@ -237,6 +241,8 @@ describe('peer application flooding and Local Sync recovery', () => {
       local,
       remote: null,
       peerMatched: false,
+      localReadinessId: null,
+      remoteReadinessId: null,
       localReady: false,
       remoteReady: false,
     });
@@ -266,10 +272,12 @@ describe('peer application flooding and Local Sync recovery', () => {
     expect(sync.getState()).toMatchObject({
       connected: true,
       peerMatched: true,
+      localReadinessId: null,
+      remoteReadinessId: null,
       localReady: false,
       remoteReady: false,
     });
-    sync.dispatch({ type: 'ready' });
+    sync.dispatch({ type: 'ready', readinessId: readinessId(1) });
     deliver(fresh, readyBody, 4);
     expect(sync.getState()).toMatchObject({ localReady: true, remoteReady: true });
     h.controller.leaveRoom();

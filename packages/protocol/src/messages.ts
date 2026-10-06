@@ -1,6 +1,7 @@
 import type { ErrorCode } from './errors.js';
 import type {
   MediaSelectionId,
+  ReadinessId,
   MediaFingerprint,
   InviteSecret,
   NegotiationId,
@@ -454,7 +455,10 @@ export type MediaMismatchMessage = Envelope<
     readonly reason: 'IDENTITY_MISMATCH';
   }
 >;
-export type ReadyMessage = Envelope<'READY', PeerHandshakePayload & MediaPair>;
+export type ReadyMessage = Envelope<
+  'READY',
+  PeerHandshakePayload & MediaPair & { readonly readinessId: ReadinessId }
+>;
 export type NotReadyMessage = Envelope<
   'NOT_READY',
   PeerHandshakePayload & {
@@ -463,6 +467,8 @@ export type NotReadyMessage = Envelope<
   }
 >;
 export interface PlaybackPayload {
+  readonly localReadinessId: ReadinessId;
+  readonly remoteReadinessId: ReadinessId;
   readonly localSelectionId: MediaSelectionId;
   readonly remoteSelectionId: MediaSelectionId;
   readonly revision: number;

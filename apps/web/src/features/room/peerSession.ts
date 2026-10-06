@@ -641,6 +641,8 @@ export class PeerSession {
             payload: {
               localSelectionId: message.payload.localSelectionId,
               remoteSelectionId: message.payload.remoteSelectionId,
+              localReadinessId: message.payload.localReadinessId,
+              remoteReadinessId: message.payload.remoteReadinessId,
               revision: message.payload.revision,
               positionMs: message.payload.positionMs,
             },
@@ -657,8 +659,18 @@ export class PeerSession {
             },
           });
           break;
-        case 'MEDIA_MATCH':
         case 'READY':
+          this.#applicationCallback?.({
+            type: message.type,
+            payload: {
+              localSelectionId: message.payload.localSelectionId,
+              remoteSelectionId: message.payload.remoteSelectionId,
+              fingerprint: message.payload.fingerprint,
+              readinessId: message.payload.readinessId,
+            },
+          });
+          break;
+        case 'MEDIA_MATCH':
           this.#applicationCallback?.({
             type: message.type,
             payload: {

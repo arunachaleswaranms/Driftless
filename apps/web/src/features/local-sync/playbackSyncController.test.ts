@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { command, FakePlaybackMedia, localId, playbackHarness } from '../../test/playback.ts';
+import {
+  command,
+  FakePlaybackMedia,
+  localId,
+  playbackHarness,
+  readinessId,
+} from '../../test/playback.ts';
 import { formatPlaybackPosition, positionMilliseconds } from './playbackSyncController.ts';
 
 describe('browser playback authority adapter', () => {
@@ -40,6 +46,8 @@ describe('browser playback authority adapter', () => {
         payload: {
           localSelectionId: localId,
           remoteSelectionId: command('PAUSE', 1, 0).payload.localSelectionId,
+          localReadinessId: readinessId(1),
+          remoteReadinessId: readinessId(50),
           revision: 1,
           positionMs: 4000,
         },
@@ -292,8 +300,8 @@ it('old PLAY rejection cannot withdraw a newer Ready cycle with reused revisions
   h.c.dispatch({ type: 'not-ready' });
   h.video.pendingPlay = null;
   await h.c.playback.ready();
-  h.c.receive(command('PAUSE', 1, 4000));
-  h.c.receive(command('PLAY', 2, 4000));
+  h.c.receive(h.command('PAUSE', 1, 4000));
+  h.c.receive(h.command('PLAY', 2, 4000));
   reject?.(new Error('private'));
   await Promise.resolve();
   expect(h.c.getState().localReady).toBe(true);
@@ -325,3 +333,126 @@ it('guest baseline wait preserves preview rate until authority activates', async
   h.c.receive(command('PAUSE', 1, 2500));
   expect(h.video.playbackRate).toBe(1);
 });
+
+it('Ready IDs are generated only after successful preparation and each explicit re-Ready is fresh', async () => {
+  const h = playbackHarness('guest');
+  expect(h.generations()).toBe(0);
+  let finish: (() => void) | undefined;
+  h.video.pendingPlay = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const preparation = h.c.playback.ready();
+  expect(h.generations()).toBe(0);
+  expect(h.c.getState().localReadinessId).toBeNull();
+  finish?.();
+  await preparation;
+  expect(h.generations()).toBe(1);
+  expect(h.c.getState().localReadinessId).toBe(readinessId(1));
+  await h.c.playback.ready();
+  expect(h.generations()).toBe(1);
+  h.c.dispatch({ type: 'not-ready' });
+  h.video.pendingPlay = null;
+  h.video.rejectPlay = true;
+  await h.c.playback.ready();
+  expect(h.generations()).toBe(1);
+  expect(h.c.getState().localReadinessId).toBeNull();
+  h.video.rejectPlay = false;
+  await h.c.playback.ready();
+  expect(h.generations()).toBe(2);
+  expect(h.c.getState().localReadinessId).toBe(readinessId(2));
+});
+it('3B-01 opposite-direction old H1/G1 rev1 baseline cannot activate H1/G2', async () => {
+  const h = playbackHarness('guest');
+  await h.c.playback.ready();
+  h.peerReady();
+  const old = h.command('PAUSE', 1, 2000); // Capture, never deliver Cycle A baseline.
+  const h1 = h.c.getState().remoteReadinessId;
+  const g1 = h.c.getState().localReadinessId;
+  h.c.dispatch({ type: 'not-ready' });
+  expect(h.c.getState().localReadinessId).toBeNull();
+  await h.c.playback.ready();
+  const g2 = h.c.getState().localReadinessId;
+  expect(g2).not.toBe(g1);
+  expect(h.c.getState().remoteReadinessId).toBe(h1);
+  expect(h.c.playback.getState().authority).toMatchObject({
+    active: false,
+    revision: 0,
+    pair: { localReadinessId: g2, remoteReadinessId: h1 },
+  });
+  // NOT_READY/READY travel guest→host; PAUSE travels host→guest. Sender sequence
+  // ordering cannot order these opposite directions or identify this Ready cycle.
+  const position = h.video.currentTime;
+  h.c.receive(old);
+  expect(h.c.playback.getState().authority).toMatchObject({ active: false, revision: 0 });
+  expect(h.video.currentTime).toBe(position);
+  expect(h.video.currentTime).not.toBe(2);
+  h.c.receive(h.command('PAUSE', 1, 6000));
+  expect(h.c.playback.getState().authority).toMatchObject({
+    active: true,
+    revision: 1,
+    mode: 'paused',
+    positionMs: 6000,
+  });
+  expect(h.video.currentTime).toBe(6);
+  expect(h.video.paused).toBe(true);
+});
+it('PLAYBACK_UNAVAILABLE ends G1; delayed Cycle A commands cannot control re-Ready G2', async () => {
+  const h = playbackHarness('guest');
+  await h.activate();
+  const g1 = h.c.getState().localReadinessId;
+  const old = ['PLAY', 'PAUSE', 'SEEK'].map((type) =>
+    h.command(type as 'PLAY' | 'PAUSE' | 'SEEK', type === 'PAUSE' ? 1 : 50, 2000),
+  );
+  h.video.rejectPlay = true;
+  h.c.receive(h.command('PLAY', 2, 3000));
+  await Promise.resolve();
+  expect(h.c.getState().localReadinessId).toBeNull();
+  expect(h.sends.at(-1)).toMatchObject({
+    type: 'NOT_READY',
+    payload: { reason: 'PLAYBACK_UNAVAILABLE' },
+  });
+  h.video.rejectPlay = false;
+  await h.c.playback.ready();
+  expect(h.c.getState().localReadinessId).not.toBe(g1);
+  const position = h.video.currentTime;
+  for (const cmd of old) {
+    h.c.receive(cmd);
+    expect(h.c.playback.getState().authority).toMatchObject({ active: false, revision: 0 });
+    expect(h.video.currentTime).toBe(position);
+    expect(h.video.paused).toBe(true);
+  }
+  h.c.receive(h.command('PAUSE', 1, 6000));
+  expect(h.c.playback.getState().authority).toMatchObject({
+    active: true,
+    revision: 1,
+    positionMs: 6000,
+  });
+  expect(h.video.currentTime).toBe(6);
+});
+it.each(['resolve', 'reject'] as const)(
+  'old PLAY %s cannot mutate a fresh paused Ready cycle',
+  async (result) => {
+    const h = playbackHarness('guest');
+    await h.activate();
+    let resolve: (() => void) | undefined;
+    let reject: ((error: Error) => void) | undefined;
+    h.video.pendingPlay = new Promise<void>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    h.c.receive(h.command('PLAY', 2, 3000));
+    h.c.dispatch({ type: 'not-ready' });
+    h.video.pendingPlay = null;
+    await h.c.playback.ready();
+    h.c.receive(h.command('PAUSE', 1, 6000));
+    const state = h.c.playback.getState().authority;
+    const pauses = h.video.pauses;
+    if (result === 'resolve') resolve?.();
+    else reject?.(new Error('private'));
+    await Promise.resolve();
+    expect(h.c.playback.getState().authority).toBe(state);
+    expect(h.c.getState().localReady).toBe(true);
+    expect(h.video.currentTime).toBe(6);
+    expect(h.video.pauses).toBe(pauses);
+  },
+);

@@ -4,6 +4,8 @@
 
 Evidence classification: **AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE**. This is command synchronization only. No heartbeat/drift correction, continuous synchronization accuracy, physical-device, Android autoplay, different-network or public TURN qualification is claimed. Phase 3 remains IN PROGRESS, exit gate NOT PASSED. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**; its literal physical gate is NOT PASSED. All existing deferred physical debts remain OPEN.
 
+The sections below, up to the separate independent-review correction, preserve the original implementation evidence for `8b11ae7ca8a0989a3d676420d184c12a80192cba`. Current Ready/playback wire shapes and verification are recorded in the correction section and [PROTOCOL.md](PROTOCOL.md).
+
 ## Starting state and candidate identity
 
 Verified after fetch, branch switch and fast-forward pull on `phase/3-local-sync`:
@@ -12,7 +14,7 @@ Verified after fetch, branch switch and fast-forward pull on `phase/3-local-sync
 - Exactly two commits ahead / zero behind merged origin/main `2dd7dea8798bcfc742c8902e853cef69c053eecd`.
 - Phase 3A IMPLEMENTED / REVIEW PASS, supplied by the user for `087687e17f2b1ed350f0296ecb7ce3c1cf150f20` and `7ce7aba332c9941a7ed5c87b2fa0d3b0cc495fd3`. Neither is amended.
 
-The Phase 3B candidate is the single new direct-child commit introducing this record, with message `feat: add host-authoritative playback controls`. Its exact SHA is captured in the post-commit/push handoff. Resolve that exact evidence-bearing commit with `git log -1 --format=%H -- docs/PHASE3B_IMPLEMENTATION.md`; the SHA cannot be embedded in its own committed contents.
+The original Phase 3B implementation is `8b11ae7ca8a0989a3d676420d184c12a80192cba`, `feat: add host-authoritative playback controls`, the direct child of approved Phase 3A `7ce7aba332c9941a7ed5c87b2fa0d3b0cc495fd3`. The correction is a separate child commit; neither original commit is amended.
 
 Environment checked live on 2026-10-05; final verification continued on 2026-10-06: Node **v26.3.0**, npm **11.16.0**, Playwright **1.63.0**, Playwright Chromium **153.0.8010.12**, installed Google Chrome **154.0.8037.97**. Browser versions are from their installed app bundles. Git identity remains **Arunachaleswaran M S <arunachaleswaranms@gmail.com>**. No new dependency, lockfile change, signaling production change or transfer-engine change.
 
@@ -144,3 +146,95 @@ Phase 2 physical/network qualification — DEFERRED / NOT CLOSED
 ```
 
 Independent GitHub review of the exact pushed Phase 3B commit. Do not begin Phase 3C before review PASS.
+
+
+## Independent review correction — Ready-cycle playback binding
+
+Starting state verified on 2026-10-06 after fetch, branch switch and ff-only pull: local and origin `phase/3-local-sync` both exactly `8b11ae7ca8a0989a3d676420d184c12a80192cba`, clean worktree. Verification continued on 2026-10-07. One separate fix commit, `fix: bind playback to readiness cycles`, preserves original 3B and approved 3A history. No amend, force push, PR, merge, or phase advancement.
+
+**3B-01 root cause:** media IDs remain unchanged when a participant withdraws/re-readies. Revision resets to 1, so delayed Cycle-A PAUSE revision 1 could activate Cycle B and block its genuine revision-1 baseline. Guest→host NOT_READY/READY and host→guest PAUSE are opposite directions; ordered per-sender transport sequence cannot order this cross-direction application state.
+
+`ReadinessId` is 16 cryptographically random bytes (128 bits), canonical unpadded base64url (22 characters, canonical trailing bits), with exported byte/length constants and fixed guard. It is a fresh participant-local identity for one explicit Ready intent, generated through an injectable browser `crypto.getRandomValues` adapter exactly once after successful preparation. Failed preparation consumes/stores no current generation; every explicit re-Ready is fresh.
+
+Exact coordinated peer-domain wire changes (PeerSession still adds sessionId, negotiationId, senderId, recipientId):
+
+```text
+READY { localSelectionId, remoteSelectionId, fingerprint, readinessId }
+PLAY / PAUSE / SEEK {
+  localSelectionId, remoteSelectionId,
+  localReadinessId, remoteReadinessId,
+  revision, positionMs
+}
+```
+
+Host commands use the stored current activation context. Guest validates flipped sender-local media **and readiness** IDs before revision ordering. Only both Ready with both non-null IDs can establish an activation. PAUSE revision 1 still begins every fresh cycle; H1/G1 differs from H1/G2, so old revision 1 cannot activate the new cycle. No history. PeerSession sequence is the transport ordering/replay boundary, readiness IDs identify cycles, playback revisions order authority within one cycle. Authentication remains PeerSession/session context; ReadinessId is not a credential.
+
+NOT_READY remains unchanged: ordered same-direction delivery and sequence checks ensure withdrawal precedes that sender's later READY. A READY cannot replace a still-current remote ID; after withdrawal it can record a fresh one. Playback IDs solve the opposite-direction race without withdrawal history. PROTOCOL_VERSION stays 1 because pre-release endpoints ship together. Strict old shapes are rejected. All eight application families still share burst 32/refill 8/s and MAX_PEER_MESSAGE_BYTES = 1024.
+
+Local ID is cleared on Not Ready/PLAYBACK_UNAVAILABLE and every local readiness invalidation; remote ID is cleared whenever remote Ready ends. Replacement, clear, mismatch/errors and fresh peer transitions clear affected IDs. Fresh peer recovery clears both; the same healthy channel during signaling reconnect preserves readiness IDs, activation, revision and playback. IDs are random, ephemeral, memory-only, peer-only, never media/time/room/participant-derived, persisted, displayed, logged, placed in URLs or added to signaling/resume/room storage. No dependency/lockfile or signaling-production change.
+
+Mandatory deterministic controller test `3B-01 opposite-direction old H1/G1 rev1 baseline cannot activate H1/G2`: capture PAUSE revision 1 at **2000 ms**, do not deliver; guest withdraws G1 and re-readies G2 while retaining H1. Old baseline is ignored: waiting/inactive, revision **0**, currentTime unchanged at **2.5 s**, never **2 s**. Genuine H1/G2 PAUSE revision 1 at **6000 ms** activates, revision **1**, paused at exactly **6 s**. Separate PLAYBACK_UNAVAILABLE regression ends G1 after rejected PLAY, re-readies G2, rejects delayed old PLAY/PAUSE/SEEK, and accepts the fresh 6 s baseline. Late old PLAY promises cannot affect a new cycle. Pure state tests cover both incorrect readiness orientations and same-media fresh-cycle revision reset.
+
+Supplemental browser regression uses the existing real-channel probe: capture Cycle A, withdraw/re-ready the same media, establish Cycle B paused at 6 s, then inject old readiness IDs with fresh envelope sequence and revision 50 at 2 s. Guest remains paused at 6 s with controls hidden/current authority intact and channel connected. No production test hook.
+
+### Correction root/unit verification
+
+`npm ci` passed, **235 packages added**, with the unchanged optional fsevents install-script policy warning. Full `npm run check` passed typecheck, lint, formatting, all unit/component/integration tests, builds, and protocol/sync-engine/signaling built-package smoke checks. Final root results:
+
+| Workspace | Passed | Failed | Skipped |
+| --- | ---: | ---: | ---: |
+| protocol | 295 | 0 | 0 |
+| sync-engine | 62 | 0 | 0 |
+| signaling | 206 | 0 | 0 |
+| web | 446 | 0 | 0 |
+| Total | 1009 | 0 | 0 |
+
+Focused readiness/playback tests passed **43/43**; LocalSyncPanel/controller, PlaybackSyncController, PeerSession and room-controller focused tests passed **193/193**, no skips. Protocol Local Sync/identifier focused tests passed **82/82** on the final sources (**295/295** overall). The correction adds seven protocol, seven sync-engine and five web cases. Existing fingerprint vectors and all role/sequence/rate tests pass.
+
+Largest legal envelopes with maximal sequence/sentAt/revision/position values: READY **438 B**, PLAY **485 B**, PAUSE **486 B**, SEEK **485 B**. Strict required readiness fields, malformed IDs, missing/extra keys and old shapes are tested. All are below **1024 B**. SYNC remains unknown.
+
+Environment verified live: Node **v26.3.0**, npm **11.16.0**, Playwright **1.63.0**, Playwright Chromium **153.0.8010.12**, installed Chrome **154.0.8037.98**. Browser versions read from installed app bundles. Serial runs use workers=1/retries=0; temporary caffeinate prevents idle system sleep. Same-host contexts/real channels/synthetic MP4 remain development-browser evidence, not physical, Android, different-network, or TURN qualification.
+
+### Correction audit and failed-run evidence
+
+`npm audit` on 2026-10-07 returned **1 high-severity development dependency vulnerability**, exit 1: existing `source-map-js@1.2.1`, advisory [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q). `npm explain source-map-js` identifies it as dev. `npm audit --omit=dev` returned **0 vulnerabilities**, exit 0. No audit fix/dependency/lockfile change was made in this targeted correction. Historical zero-audit results above describe the earlier implementation, not this current registry result.
+
+Development typecheck/test failures from outdated shapes/projections/fixtures and a duplicate test import were corrected. One focused web run had **187 passed / 1 failed** due to the old exact-state fixture omitting readiness IDs; corrected rerun passed **193/193** after adding regressions. Root attempt 1 failed the outdated protocol export smoke assertion. Restricted root attempt 2 hit signaling loopback `listen EPERM`: **162 passed / 44 failed**. The first unrestricted root run caught a test-adapter require-await lint issue; the next caught formatting; final root rerun passed. Restricted audit DNS failures (`ENOTFOUND registry.npmjs.org`) were rerun with registry access. These failures are not passing results and no retry setting hid them.
+
+Durable local logs are retained under `/private/tmp/driftless-3b-fix-*.log`: `check-attempt1`, `check-attempt2`, `check-unrestricted`, `check-final`, `check-final2` (passing final root), `npm-ci`, `audit`, `audit-prod`, `audit-unrestricted`, `audit-prod-unrestricted`. Browser logs and separate per-run trace directories use the same prefix; failed evidence is not deleted or committed as generated data.
+
+### Correction browser verification
+
+| Required correction run | Passed | Failed | Skipped | Reported elapsed |
+| --- | ---: | ---: | ---: | --- |
+| Full root Playwright Chromium regression | 67 | 0 | 0 | 1.5 min |
+| Phase 3B baseline → Play → Pause → Seek → Play → Pause, 10 consecutive executions | 10 | 0 | 0 | 24.1 s |
+| Full Chromium run 1 | 67 | 0 | 0 | 1.5 min |
+| Full Chromium run 2 | 67 | 0 | 0 | 1.5 min |
+| Full Chromium run 3 | 67 | 0 | 0 | 1.5 min |
+| Installed Chrome opt-in: 67 Chromium + 67 Chrome | 134 | 0 | 0 | 3.1 min |
+| Total browser executions | 412 | 0 | 0 | |
+
+Every run used **workers=1/retries=0**. Three required Chromium full runs were consecutive, with no implementation/test edits between them. Each full browser run includes the new same-media stale-readiness regression; it passed in both Chromium and installed Chrome. All existing Phase 3B/Local Sync/room/media/diagnostic/recovery/browser regression cases remain passing. No correction browser run failed or was skipped. Logs are `e2e-root`, `repeat10`, `chromium-1`, `chromium-2`, `chromium-3`, and `optin` under `/private/tmp/driftless-3b-fix-*.log`; separate trace/output directories are `root-traces`, `repeat-traces`, `chromium-{1,2,3}-traces`, and `optin-traces` under that prefix. Historical failed-run evidence above remains intact.
+
+Commands (each browser run also used a separate `--output=/private/tmp/driftless-3b-fix-...-traces` directory):
+
+```bash
+npm ci
+npm run check
+npm run test:e2e -- --workers=1 --retries=0
+npm run test:e2e -- playback-sync.spec.ts --grep 'repeated command sequence' --repeat-each=10 --workers=1 --retries=0
+npm run test:e2e -- --project=chromium --workers=1 --retries=0 # three consecutive runs
+DRIFTLESS_E2E_CHROME=1 npm run test:e2e -- --workers=1 --retries=0
+npm audit
+npm audit --omit=dev
+```
+
+Final scope search and diff review find no new SYNC, heartbeat, timers/polling/animation-frame synchronization, clock offset, RTT/delay compensation, drift detection/correction, transfer, MSE, OPFS, MP4Box or Progressive Watch implementation. Only existing module/domain names and explanatory UI/type references match the requested search. No signaling-production/dependency/lockfile changes. The staged changes contain source, tests, built-import smoke expectations and documentation only, no secrets or generated evidence.
+
+The exact separate fix SHA is supplied by the post-commit/push handoff and can be resolved with `git log -1 --format=%H -- docs/PHASE3B_IMPLEMENTATION.md`. Author identity remains **Arunachaleswaran M S <arunachaleswaranms@gmail.com>** with no additional attribution.
+
+Status remains **3B — IMPLEMENTED; independent review pending**. Phase 3C/3D are NOT STARTED, overall Phase 3 exit gate NOT PASSED, and Phase 2 physical/network qualification DEFERRED / NOT CLOSED.
+
+
+Independent GitHub re-review of the exact Phase 3B fix commit. Do not begin Phase 3C before review PASS.

@@ -133,6 +133,10 @@ export {
 } from './webrtc.js';
 
 export {
+  READINESS_ID_BYTES,
+  READINESS_ID_LENGTH,
+  isReadinessId,
+  type ReadinessId,
   MEDIA_SELECTION_ID_BYTES,
   MEDIA_SELECTION_ID_LENGTH,
   MEDIA_FINGERPRINT_BYTES,

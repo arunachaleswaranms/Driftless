@@ -3,6 +3,7 @@ import {
   type ApplicationBody,
   type MediaIdentity,
   type MediaSelectionId,
+  type ReadinessId,
   type MediaFingerprint,
   type NotReadyReason,
 } from '@driftless/protocol';
@@ -21,6 +22,8 @@ export interface LocalSyncState {
   readonly local: LocalSelection | null;
   readonly remote: MediaIdentity | null;
   readonly peerMatched: boolean;
+  readonly localReadinessId: ReadinessId | null;
+  readonly remoteReadinessId: ReadinessId | null;
   readonly localReady: boolean;
   readonly remoteReady: boolean;
 }
@@ -29,6 +32,8 @@ export const initialLocalSyncState: LocalSyncState = {
   local: null,
   remote: null,
   peerMatched: false,
+  localReadinessId: null,
+  remoteReadinessId: null,
   localReady: false,
   remoteReady: false,
 };
@@ -52,7 +57,7 @@ export type LocalSyncEvent =
       readonly selectionId: MediaSelectionId;
       readonly failure: FingerprintFailure;
     }
-  | { readonly type: 'ready' }
+  | { readonly type: 'ready'; readonly readinessId: ReadinessId }
   | { readonly type: 'not-ready'; readonly reason?: 'USER' | 'PLAYBACK_UNAVAILABLE' }
   | { readonly type: 'receive'; readonly body: ApplicationBody };
 export type MatchState = 'waiting' | 'match' | 'mismatch';
@@ -75,7 +80,13 @@ export function readinessBlock(state: LocalSyncState): string | null {
   return null;
 }
 export function bothReady(state: LocalSyncState): boolean {
-  return readinessBlock(state) === null && state.localReady && state.remoteReady;
+  return (
+    readinessBlock(state) === null &&
+    state.localReady &&
+    state.remoteReady &&
+    state.localReadinessId !== null &&
+    state.remoteReadinessId !== null
+  );
 }
 /** Pure transitions; stale selection evidence is ignored without mutating current truth. */
 export function reduceLocalSync(
@@ -91,7 +102,13 @@ export function reduceLocalSync(
         payload: { localSelectionId: state.local?.selectionId ?? null, reason },
       });
   };
-  const invalidate = () => ({ localReady: false, remoteReady: false, peerMatched: false });
+  const invalidate = () => ({
+    localReady: false,
+    remoteReady: false,
+    localReadinessId: null,
+    remoteReadinessId: null,
+    peerMatched: false,
+  });
   const announce = () => {
     if (
       next.connected &&
@@ -165,7 +182,13 @@ export function reduceLocalSync(
       next = { ...state, local: { ...state.local, playback: event.status } };
       if (event.status === 'error') {
         notReady('LOCAL_MEDIA_ERROR');
-        next = { ...next, localReady: false, remoteReady: false };
+        next = {
+          ...next,
+          localReady: false,
+          remoteReady: false,
+          localReadinessId: null,
+          remoteReadinessId: null,
+        };
       }
       break;
     case 'progress':
@@ -198,19 +221,20 @@ export function reduceLocalSync(
         state.localReady
       )
         break;
-      next = { ...state, localReady: true };
+      next = { ...state, localReady: true, localReadinessId: event.readinessId };
       effects.push({
         type: 'READY',
         payload: {
           localSelectionId: state.local.selectionId,
           remoteSelectionId: state.remote.selectionId,
           fingerprint: state.local.fingerprint,
+          readinessId: event.readinessId,
         },
       });
       break;
     case 'not-ready':
       notReady(event.reason ?? 'USER');
-      next = { ...state, localReady: false };
+      next = { ...state, localReady: false, localReadinessId: null };
       break;
     case 'receive': {
       if (!state.connected) break;
@@ -234,7 +258,10 @@ export function reduceLocalSync(
         next = {
           ...state,
           remoteReady: false,
-          ...(removed ? { remote: null, localReady: false, peerMatched: false } : {}),
+          remoteReadinessId: null,
+          ...(removed
+            ? { remote: null, localReady: false, localReadinessId: null, peerMatched: false }
+            : {}),
         };
         break;
       }
@@ -256,8 +283,8 @@ export function reduceLocalSync(
       )
         break;
       if (body.type === 'MEDIA_MATCH') next = { ...state, peerMatched: true };
-      if (body.type === 'READY' && readinessBlock(state) === null)
-        next = { ...state, remoteReady: true };
+      if (body.type === 'READY' && readinessBlock(state) === null && !state.remoteReady)
+        next = { ...state, remoteReady: true, remoteReadinessId: body.payload.readinessId };
       break;
     }
   }

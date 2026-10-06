@@ -161,7 +161,10 @@ export class PlaybackSyncController {
     this.#state = { ...this.#state, preparing: false, error: success ? null : PREPARATION_ERROR };
     this.#notify();
     if (success && epoch === this.#readyEpoch && readinessBlock(this.readiness.getState()) === null)
-      this.readiness.dispatch({ type: 'ready' });
+      this.readiness.dispatch({
+        type: 'ready',
+        readinessId: this.readiness.adapters.readinessId(),
+      });
   }
   async play(): Promise<void> {
     if (!this.#canHost() || !this.#video) return;
@@ -224,7 +227,7 @@ export class PlaybackSyncController {
       authority: next,
       durationMs: positionMilliseconds(this.#video?.duration ?? 0),
     };
-    if (!next.pair && previous.pair) this.#pause();
+    if (next.pair !== previous.pair && previous.pair) this.#pause();
     if (this.#video) this.#video.controls = next.pair === null;
     if (next.active) this.#normalRate();
     if (next.pair && !next.active && this.#state.role === 'host') {
@@ -272,6 +275,7 @@ export class PlaybackSyncController {
     const video = this.#video,
       generation = this.#generation;
     if (!video) return;
+    const pair = this.#state.authority.pair;
     const attempt = ++this.#playAttempt;
     let promise: Promise<void>;
     this.#operating = true;
@@ -291,6 +295,7 @@ export class PlaybackSyncController {
         video === this.#video &&
         generation === this.#generation &&
         attempt === this.#playAttempt &&
+        pair === this.#state.authority.pair &&
         this.#state.authority.active &&
         this.#state.authority.mode === 'playing'
       )
@@ -298,6 +303,7 @@ export class PlaybackSyncController {
     }
     if (
       video === this.#video &&
+      pair === this.#state.authority.pair &&
       (!this.#state.authority.active || this.#state.authority.mode === 'paused')
     )
       this.#pause();

@@ -3,11 +3,13 @@ import type {
   MediaSelectionId,
   MediaFingerprint,
   PlaybackBody,
+  ReadinessId,
 } from '@driftless/protocol';
 import { LocalSyncController } from '../features/local-sync/localSyncController.ts';
 import type { PlaybackMedia } from '../features/local-sync/playbackSyncController.ts';
 export const localId = 'A'.repeat(22) as MediaSelectionId;
 export const remoteId = ('B'.repeat(21) + 'A') as MediaSelectionId;
+export const readinessId = (n: number) => `${String(n).padStart(21, 'R')}A` as ReadinessId;
 const fingerprint = 'A'.repeat(43) as MediaFingerprint;
 export class FakePlaybackMedia extends EventTarget implements PlaybackMedia {
   currentTime = 2.5;
@@ -37,7 +39,12 @@ export class FakePlaybackMedia extends EventTarget implements PlaybackMedia {
   }
 }
 export function playbackHarness(role: 'host' | 'guest' = 'host') {
-  const c = new LocalSyncController();
+  let generations = 0;
+  const c = new LocalSyncController({
+    selectionId: () => localId,
+    readinessId: () => readinessId(++generations),
+    sha256: () => Promise.resolve(new Uint8Array(32)),
+  });
   const video = new FakePlaybackMedia();
   const sends: ApplicationBody[] = [];
   c.playback.setRole(role);
@@ -60,22 +67,46 @@ export function playbackHarness(role: 'host' | 'guest' = 'host') {
   const peerReady = () => {
     c.receive({
       type: 'READY',
-      payload: { localSelectionId: remoteId, remoteSelectionId: localId, fingerprint },
+      payload: {
+        localSelectionId: remoteId,
+        remoteSelectionId: localId,
+        fingerprint,
+        readinessId: readinessId(50),
+      },
     });
   };
+  const currentCommand = (type: PlaybackBody['type'], revision: number, positionMs: number) =>
+    command(type, revision, positionMs, c.getState().localReadinessId ?? readinessId(1));
   const activate = async () => {
     await c.playback.ready();
     peerReady();
-    if (role === 'guest') c.receive(command('PAUSE', 1, 2500));
+    if (role === 'guest') c.receive(currentCommand('PAUSE', 1, 2500));
   };
   const commands = () => sends.filter((b) => ['PLAY', 'PAUSE', 'SEEK'].includes(b.type));
-  return { c, video, sends, peerReady, activate, commands };
+  return {
+    c,
+    video,
+    sends,
+    peerReady,
+    activate,
+    commands,
+    command: currentCommand,
+    generations: () => generations,
+  };
 }
 export const command = (
   type: PlaybackBody['type'],
   revision: number,
   positionMs: number,
+  guestReadinessId: ReadinessId = readinessId(1),
 ): PlaybackBody => ({
   type,
-  payload: { localSelectionId: remoteId, remoteSelectionId: localId, revision, positionMs },
+  payload: {
+    localSelectionId: remoteId,
+    remoteSelectionId: localId,
+    localReadinessId: readinessId(50),
+    remoteReadinessId: guestReadinessId,
+    revision,
+    positionMs,
+  },
 });

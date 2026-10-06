@@ -1,4 +1,4 @@
-import { FakePlaybackMedia, playbackHarness } from '../../test/playback.ts';
+import { FakePlaybackMedia, playbackHarness, readinessId } from '../../test/playback.ts';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { MediaFingerprint, MediaSelectionId } from '@driftless/protocol';
@@ -92,10 +92,11 @@ describe('Local Sync setup accessibility and readiness UI', () => {
       local(c);
       match(c);
       c.dispatch({ type: 'playback', selectionId: localSelectionId, status: 'ready' });
-      c.dispatch({ type: 'ready' });
+      c.dispatch({ type: 'ready', readinessId: readinessId(1) });
       c.receive({
         type: 'READY',
         payload: {
+          readinessId: readinessId(50),
           localSelectionId: remoteSelectionId,
           remoteSelectionId: localSelectionId,
           fingerprint,

@@ -3,6 +3,7 @@ import {
   type ApplicationBody,
   type MediaFingerprint,
   type MediaSelectionId,
+  type ReadinessId,
 } from '@driftless/protocol';
 import {
   initialLocalSyncState,
@@ -14,6 +15,8 @@ import {
   type LocalSyncEvent,
 } from '../src/index.js';
 const id = (n: number) => Buffer.alloc(16, n).toString('base64url') as MediaSelectionId;
+const rid = (n: number) => Buffer.alloc(16, n).toString('base64url') as ReadinessId;
+const readyPair = () => ({ ...peerPair, readinessId: rid(2) });
 const fp = (n = 1) => Buffer.alloc(32, n).toString('base64url') as MediaFingerprint;
 const info = (selectionId = id(2), fingerprint = fp()): ApplicationBody => ({
   type: 'MEDIA_INFO',
@@ -35,17 +38,17 @@ function matched(): LocalSyncState {
   return s;
 }
 function ready(): LocalSyncState {
-  return apply(apply(matched(), { type: 'ready' }), {
+  return apply(apply(matched(), { type: 'ready', readinessId: rid(1) }), {
     type: 'receive',
-    body: { type: 'READY', payload: peerPair },
+    body: { type: 'READY', payload: readyPair() },
   });
 }
 describe('Local Sync deterministic readiness', () => {
   it('starts empty and blocks Ready; disconnected input is powerless', () => {
     expect(readinessBlock(initialLocalSyncState)).toBe('PEER_DISCONNECTED');
-    expect(reduceLocalSync(initialLocalSyncState, { type: 'ready' }).state).toBe(
-      initialLocalSyncState,
-    );
+    expect(
+      reduceLocalSync(initialLocalSyncState, { type: 'ready', readinessId: rid(1) }).state,
+    ).toBe(initialLocalSyncState);
     expect(apply(initialLocalSyncState, { type: 'receive', body: info() })).toBe(
       initialLocalSyncState,
     );
@@ -76,7 +79,7 @@ describe('Local Sync deterministic readiness', () => {
       },
     ]);
     expect(readinessBlock(s)).toBe('WAITING_FOR_PEER_MATCH');
-    expect(reduceLocalSync(s, { type: 'ready' }).effects).toEqual([]);
+    expect(reduceLocalSync(s, { type: 'ready', readinessId: rid(1) }).effects).toEqual([]);
   });
   it('mismatch (digest or byte length) blocks Ready and emits bounded reason', () => {
     for (const remote of [
@@ -103,16 +106,23 @@ describe('Local Sync deterministic readiness', () => {
     const s = matched();
     expect(readinessBlock(s)).toBeNull();
     expect(bothReady(s)).toBe(false);
-    const local = reduceLocalSync(s, { type: 'ready' });
+    const local = reduceLocalSync(s, { type: 'ready', readinessId: rid(1) });
     expect(local.effects).toEqual([
       {
         type: 'READY',
-        payload: { localSelectionId: id(1), remoteSelectionId: id(2), fingerprint: fp() },
+        payload: {
+          localSelectionId: id(1),
+          remoteSelectionId: id(2),
+          fingerprint: fp(),
+          readinessId: rid(1),
+        },
       },
     ]);
     expect(bothReady(local.state)).toBe(false);
     expect(bothReady(ready())).toBe(true);
-    expect(reduceLocalSync(local.state, { type: 'ready' }).effects).toEqual([]);
+    expect(reduceLocalSync(local.state, { type: 'ready', readinessId: rid(1) }).effects).toEqual(
+      [],
+    );
   });
   it('local Not Ready withdraws without losing media or peer match', () => {
     const result = reduceLocalSync(ready(), { type: 'not-ready' });
@@ -170,7 +180,7 @@ describe('Local Sync deterministic readiness', () => {
     expect(s.peerMatched).toBe(false);
     for (const body of [
       { type: 'MEDIA_MATCH', payload: peerPair },
-      { type: 'READY', payload: peerPair },
+      { type: 'READY', payload: readyPair() },
       {
         type: 'MEDIA_MISMATCH',
         payload: { localSelectionId: id(2), remoteSelectionId: id(1), reason: 'IDENTITY_MISMATCH' },
@@ -223,8 +233,8 @@ describe('Local Sync deterministic readiness', () => {
     const s = matched();
     expect(apply(s, { type: 'receive', body: info() })).toBe(s);
     for (const payload of [
-      { ...peerPair, fingerprint: fp(3) },
-      { ...peerPair, remoteSelectionId: id(5) },
+      { ...readyPair(), fingerprint: fp(3) },
+      { ...readyPair(), remoteSelectionId: id(5) },
     ])
       expect(apply(s, { type: 'receive', body: { type: 'READY', payload } })).toBe(s);
   });
@@ -248,4 +258,83 @@ it('late identity after playback error stays private and fresh peers do not anno
   expect(readinessBlock(completed.state)).toBe('LOCAL_MEDIA_ERROR');
   s = apply(completed.state, { type: 'channel', connected: false });
   expect(reduceLocalSync(s, { type: 'channel', connected: true }).effects).toEqual([]);
+});
+
+it('stores one explicit Ready generation, clears it on withdrawal, and sends the fresh value on re-Ready', () => {
+  const first = reduceLocalSync(matched(), { type: 'ready', readinessId: rid(10) });
+  expect(first.state.localReadinessId).toBe(rid(10));
+  expect(first.effects[0]).toMatchObject({ type: 'READY', payload: { readinessId: rid(10) } });
+  const withdrawn = apply(first.state, { type: 'not-ready' });
+  expect(withdrawn.localReadinessId).toBeNull();
+  const second = apply(withdrawn, { type: 'ready', readinessId: rid(11) });
+  expect(second.localReadinessId).toBe(rid(11));
+  expect(second.localReadinessId).not.toBe(first.state.localReadinessId);
+});
+it('remote generation cannot change until withdrawn, then the new READY records it', () => {
+  const s = ready();
+  expect(s.remoteReadinessId).toBe(rid(2));
+  const newReady = { type: 'READY', payload: { ...peerPair, readinessId: rid(12) } } as const;
+  expect(apply(s, { type: 'receive', body: newReady })).toBe(s);
+  const withdrawn = apply(s, {
+    type: 'receive',
+    body: { type: 'NOT_READY', payload: { localSelectionId: id(2), reason: 'USER' } },
+  });
+  expect(withdrawn.remoteReadinessId).toBeNull();
+  expect(withdrawn.localReadinessId).toBe(s.localReadinessId);
+  expect(apply(withdrawn, { type: 'receive', body: newReady }).remoteReadinessId).toBe(rid(12));
+});
+it('all invalidating transitions preserve the boolean/ID invariant', () => {
+  const events: LocalSyncEvent[] = [
+    { type: 'not-ready' },
+    { type: 'not-ready', reason: 'PLAYBACK_UNAVAILABLE' },
+    { type: 'select', selectionId: id(3), byteLength: 10 },
+    { type: 'clear' },
+    { type: 'playback', selectionId: id(1), status: 'error' },
+    { type: 'failure', selectionId: id(1), failure: 'READ_FAILED' },
+    { type: 'channel', connected: false },
+    { type: 'receive', body: info(id(3)) },
+    {
+      type: 'receive',
+      body: {
+        type: 'MEDIA_MISMATCH',
+        payload: { localSelectionId: id(2), remoteSelectionId: id(1), reason: 'IDENTITY_MISMATCH' },
+      },
+    },
+    ...(
+      [
+        'USER',
+        'PLAYBACK_UNAVAILABLE',
+        'NO_MEDIA',
+        'MEDIA_CHANGED',
+        'LOCAL_MEDIA_ERROR',
+        'PEER_MEDIA_CHANGED',
+        'MEDIA_MISMATCH',
+      ] as const
+    ).map(
+      (reason) =>
+        ({
+          type: 'receive',
+          body: { type: 'NOT_READY', payload: { localSelectionId: id(2), reason } },
+        }) as const,
+    ),
+  ];
+  for (const event of events) {
+    const s = apply(ready(), event);
+    expect(s.localReady).toBe(s.localReadinessId !== null);
+    expect(s.remoteReady).toBe(s.remoteReadinessId !== null);
+    expect(bothReady(s)).toBe(false);
+  }
+  const preserved = apply(ready(), { type: 'channel', connected: true });
+  expect(preserved.localReadinessId).toBe(rid(1));
+  expect(preserved.remoteReadinessId).toBe(rid(2));
+  const fresh = apply(apply(ready(), { type: 'channel', connected: false }), {
+    type: 'channel',
+    connected: true,
+  });
+  expect(fresh.localReadinessId).toBeNull();
+  expect(fresh.remoteReadinessId).toBeNull();
+});
+it('bothReady refuses booleans without their corresponding current IDs', () => {
+  expect(bothReady({ ...ready(), localReadinessId: null })).toBe(false);
+  expect(bothReady({ ...ready(), remoteReadinessId: null })).toBe(false);
 });

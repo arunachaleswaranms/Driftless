@@ -1,3 +1,4 @@
+import { readinessId } from '../../test/playback.ts';
 import { describe, expect, it, vi } from 'vitest';
 import {
   type ApplicationBody,
@@ -28,7 +29,11 @@ function selection(
 function setup(sha256 = hash) {
   let n = 0;
   const sent: ApplicationBody[] = [];
-  const controller = new LocalSyncController({ selectionId: () => id(++n), sha256 });
+  const controller = new LocalSyncController({
+    selectionId: () => id(++n),
+    readinessId: () => readinessId(++n),
+    sha256,
+  });
   controller.setRoom(session);
   controller.setChannel((body) => {
     sent.push(body);
@@ -61,8 +66,8 @@ async function ready() {
   h.controller.updateMedia(selection(1));
   await settle();
   const pair = match(h.controller);
-  h.controller.dispatch({ type: 'ready' });
-  h.controller.receive({ type: 'READY', payload: pair });
+  h.controller.dispatch({ type: 'ready', readinessId: readinessId(1) });
+  h.controller.receive({ type: 'READY', payload: { ...pair, readinessId: readinessId(50) } });
   expect(bothReady(h.controller.getState())).toBe(true);
   return h;
 }
@@ -83,7 +88,11 @@ describe('browser Local Sync controller', () => {
   });
   it('selection already loaded before entering room retains metadata usability', async () => {
     let n = 0;
-    const controller = new LocalSyncController({ selectionId: () => id(++n), sha256: hash });
+    const controller = new LocalSyncController({
+      selectionId: () => id(++n),
+      readinessId: () => readinessId(++n),
+      sha256: hash,
+    });
     controller.updateMedia(selection(1));
     controller.setRoom(session);
     controller.setChannel(() => true);
@@ -102,7 +111,7 @@ describe('browser Local Sync controller', () => {
         byteLength: 1,
       },
     });
-    controller.dispatch({ type: 'ready' });
+    controller.dispatch({ type: 'ready', readinessId: readinessId(1) });
     expect(controller.getState().localReady).toBe(false);
   });
   it('replacement cancels A; late completion cannot announce or restore A', async () => {
@@ -172,8 +181,8 @@ describe('browser Local Sync controller', () => {
     controller.updateMedia(selection(1));
     await settle();
     const pair = match(controller);
-    controller.dispatch({ type: 'ready' });
-    controller.receive({ type: 'READY', payload: pair });
+    controller.dispatch({ type: 'ready', readinessId: readinessId(1) });
+    controller.receive({ type: 'READY', payload: { ...pair, readinessId: readinessId(50) } });
     const calls = sha256.mock.calls.length;
     controller.setChannel(undefined);
     expect(controller.getState().remote).toBeNull();

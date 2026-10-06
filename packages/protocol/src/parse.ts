@@ -2,6 +2,7 @@ import { fitsUtf8Bytes } from './encoding.js';
 import { isErrorCode, MAX_ERROR_MESSAGE_LENGTH } from './errors.js';
 import {
   isMediaSelectionId,
+  isReadinessId,
   isMediaFingerprint,
   isInviteSecret,
   isNegotiationId,
@@ -384,7 +385,18 @@ const PEER_DECODERS: DecoderTable<PeerMessage> = {
   PAUSE: decodePlayback,
   SEEK: decodePlayback,
   MEDIA_MATCH: decodeMediaPair,
-  READY: decodeMediaPair,
+  READY: (value) => {
+    const p = applicationObject(value, [
+      'localSelectionId',
+      'remoteSelectionId',
+      'fingerprint',
+      'readinessId',
+    ]);
+    if (!p || !isReadinessId(p.readinessId)) return undefined;
+    const { readinessId, ...pair } = p;
+    const decoded = decodeMediaPair(pair);
+    return decoded && { ...decoded, readinessId };
+  },
   MEDIA_MISMATCH: (value) => {
     const p = applicationObject(value, ['localSelectionId', 'remoteSelectionId', 'reason']);
     if (
@@ -669,6 +681,8 @@ function decodePlayback(
   const p = applicationObject(value, [
     'localSelectionId',
     'remoteSelectionId',
+    'localReadinessId',
+    'remoteReadinessId',
     'revision',
     'positionMs',
   ]);
@@ -676,6 +690,8 @@ function decodePlayback(
     !p ||
     !isMediaSelectionId(p.localSelectionId) ||
     !isMediaSelectionId(p.remoteSelectionId) ||
+    !isReadinessId(p.localReadinessId) ||
+    !isReadinessId(p.remoteReadinessId) ||
     !isWireInteger(p.revision) ||
     p.revision === 0 ||
     !isWireInteger(p.positionMs)
@@ -687,6 +703,8 @@ function decodePlayback(
       ...context,
       localSelectionId: p.localSelectionId,
       remoteSelectionId: p.remoteSelectionId,
+      localReadinessId: p.localReadinessId,
+      remoteReadinessId: p.remoteReadinessId,
       revision: p.revision,
       positionMs: p.positionMs,
     }

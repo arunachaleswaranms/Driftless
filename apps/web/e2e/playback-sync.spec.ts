@@ -167,6 +167,8 @@ test('3B repeated command sequence Play Pause Seek Play Pause', async ({
   for (const c of cmds) {
     expect(c.payload.localSelectionId).toBe(cmds[0]?.payload.localSelectionId);
     expect(c.payload.remoteSelectionId).toBe(cmds[0]?.payload.remoteSelectionId);
+    expect(c.payload.localReadinessId).toBe(cmds[0]?.payload.localReadinessId);
+    expect(c.payload.remoteReadinessId).toBe(cmds[0]?.payload.remoteReadinessId);
   }
   const position = cmds.at(-1)?.payload.positionMs ?? -1;
   await expect
@@ -342,6 +344,7 @@ test('3B forged guest PLAY fails host current channel and recovers without dispa
           revision: 2,
           positionMs: 6000,
           fingerprint: undefined,
+          readinessId: undefined,
         },
       }),
     );
@@ -351,4 +354,51 @@ test('3B forged guest PLAY fails host current channel and recovers without dispa
     await expect(status(p.page)).toHaveText(CONNECTED_STATUS, { timeout: 20_000 });
   }
   expect(await media(host).evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+});
+
+test('3B stale Ready-cycle command with fresh peer sequence cannot control the same media', async ({
+  browser,
+  baseURL,
+  pageProblems,
+}) => {
+  const { host, guest } = await pair(browser, baseURL, pageProblems);
+  const old = (await commands(host))[0];
+  expect(old).toBeDefined();
+  await panel(guest).getByRole('button', { name: 'Not ready', exact: true }).click();
+  await expect(panel(host).getByRole('button', { name: 'Play', exact: true })).toHaveCount(0);
+  await media(host).evaluate((v: HTMLVideoElement) => {
+    v.currentTime = 6;
+  });
+  await panel(guest).getByRole('button', { name: "I'm ready", exact: true }).click();
+  await expect(panel(guest).getByText('The host controls playback.')).toBeVisible();
+  const fresh = (await commands(host)).at(-1);
+  expect(fresh).toMatchObject({ type: 'PAUSE', payload: { revision: 1, positionMs: 6000 } });
+  expect(fresh?.payload.localSelectionId).toBe(old?.payload.localSelectionId);
+  expect(fresh?.payload.remoteSelectionId).toBe(old?.payload.remoteSelectionId);
+  expect(fresh?.payload.localReadinessId).toBe(old?.payload.localReadinessId);
+  expect(fresh?.payload.remoteReadinessId).not.toBe(old?.payload.remoteReadinessId);
+  const before = await guest.page.evaluate(() => window.rtcProbe.received.length);
+  // Existing test-only real-channel probe: valid current transport envelope,
+  // same media, old Ready IDs, and a revision newer than Cycle B's baseline.
+  await host.page.evaluate((cmd) => {
+    const last = JSON.parse(window.rtcProbe.controlSends.at(-1)?.text ?? '{}') as {
+      sequence: number;
+    };
+    window.rtcProbe.channels.at(-1)?.send(
+      JSON.stringify({
+        ...cmd,
+        sequence: last.sequence + 1,
+        payload: { ...cmd?.payload, revision: 50, positionMs: 2000 },
+      }),
+    );
+  }, old);
+  await expect
+    .poll(() => guest.page.evaluate(() => window.rtcProbe.received.length))
+    .toBe(before + 1);
+  expect(await media(guest).evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(6, 2);
+  expect(await media(guest).evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  expect(await media(guest).evaluate((v: HTMLVideoElement) => v.controls)).toBe(false);
+  await expect(panel(guest).getByText('The host controls playback.')).toBeVisible();
+  await expectConnected(host, guest);
+  await privacy(host, guest);
 });

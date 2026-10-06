@@ -1049,7 +1049,7 @@ describe('inbound peer application rate bound', () => {
     ],
     ['MEDIA_MATCH', { ...pair, fingerprint: 'A'.repeat(43) }],
     ['MEDIA_MISMATCH', { ...pair, reason: 'IDENTITY_MISMATCH' }],
-    ['READY', { ...pair, fingerprint: 'A'.repeat(43) }],
+    ['READY', { ...pair, fingerprint: 'A'.repeat(43), readinessId: 'A'.repeat(22) }],
     ['NOT_READY', appBody.payload],
   ])('counts valid %s against the same application bucket', async (type, payload) => {
     const { channel, received, states } = await appHost();
@@ -1120,6 +1120,8 @@ async function appGuest(options: Parameters<typeof setup>[1] = {}) {
   return { ...h, channel, received, context };
 }
 const playbackPayload = {
+  localReadinessId: 'C'.repeat(21) + 'A',
+  remoteReadinessId: 'D'.repeat(21) + 'A',
   localSelectionId: 'A'.repeat(22),
   remoteSelectionId: 'B'.repeat(21) + 'A',
   revision: 1,
@@ -1213,6 +1215,7 @@ describe('host-only playback transport boundary', () => {
       [
         'READY',
         {
+          readinessId: playbackPayload.localReadinessId,
           localSelectionId: playbackPayload.localSelectionId,
           remoteSelectionId: playbackPayload.remoteSelectionId,
           fingerprint: 'A'.repeat(43),

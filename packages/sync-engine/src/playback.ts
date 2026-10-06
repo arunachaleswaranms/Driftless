@@ -1,7 +1,15 @@
-import type { MediaSelectionId, ParticipantRole, PlaybackBody } from '@driftless/protocol';
+import type {
+  MediaSelectionId,
+  ReadinessId,
+  ParticipantRole,
+  PlaybackBody,
+} from '@driftless/protocol';
 import { bothReady, type LocalSyncState } from './readiness.js';
 
+/** Current activation only: selections plus both explicit Ready generations. */
 export interface PlaybackPair {
+  readonly localReadinessId: ReadinessId;
+  readonly remoteReadinessId: ReadinessId;
   readonly localSelectionId: MediaSelectionId;
   readonly remoteSelectionId: MediaSelectionId;
 }
@@ -25,14 +33,25 @@ export function playbackReadiness(
   state: PlaybackSyncState,
   ready: LocalSyncState,
 ): PlaybackSyncState {
-  if (!bothReady(ready) || !ready.local || !ready.remote) return initialPlaybackState;
+  if (
+    !bothReady(ready) ||
+    !ready.local ||
+    !ready.remote ||
+    !ready.localReadinessId ||
+    !ready.remoteReadinessId
+  )
+    return initialPlaybackState;
   const pair = {
+    localReadinessId: ready.localReadinessId,
+    remoteReadinessId: ready.remoteReadinessId,
     localSelectionId: ready.local.selectionId,
     remoteSelectionId: ready.remote.selectionId,
   };
   if (
     state.pair?.localSelectionId === pair.localSelectionId &&
-    state.pair.remoteSelectionId === pair.remoteSelectionId
+    state.pair.remoteSelectionId === pair.remoteSelectionId &&
+    state.pair.localReadinessId === pair.localReadinessId &&
+    state.pair.remoteReadinessId === pair.remoteReadinessId
   )
     return state;
   return { ...initialPlaybackState, pair };
@@ -73,6 +92,8 @@ export function guestPlayback(state: PlaybackSyncState, body: PlaybackBody): Pla
     !state.pair ||
     p.localSelectionId !== state.pair.remoteSelectionId ||
     p.remoteSelectionId !== state.pair.localSelectionId ||
+    p.localReadinessId !== state.pair.remoteReadinessId ||
+    p.remoteReadinessId !== state.pair.localReadinessId ||
     p.revision <= state.revision ||
     (!state.active && (body.type !== 'PAUSE' || p.revision !== 1))
   )

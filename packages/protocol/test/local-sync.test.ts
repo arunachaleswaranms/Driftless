@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isMediaSelectionId,
+  isReadinessId,
   isMediaFingerprint,
   MAX_MEDIA_FINGERPRINT_BYTES,
   MAX_PEER_MESSAGE_BYTES,
@@ -30,18 +31,24 @@ const bodies = {
   PLAY: {
     localSelectionId: selectionId,
     remoteSelectionId: pair.remoteSelectionId,
+    localReadinessId: encodedBytes(16, 10),
+    remoteReadinessId: encodedBytes(16, 11),
     revision: Number.MAX_SAFE_INTEGER,
     positionMs: Number.MAX_SAFE_INTEGER,
   },
   PAUSE: {
     localSelectionId: selectionId,
     remoteSelectionId: pair.remoteSelectionId,
+    localReadinessId: encodedBytes(16, 10),
+    remoteReadinessId: encodedBytes(16, 11),
     revision: 1,
     positionMs: 0,
   },
   SEEK: {
     localSelectionId: selectionId,
     remoteSelectionId: pair.remoteSelectionId,
+    localReadinessId: encodedBytes(16, 10),
+    remoteReadinessId: encodedBytes(16, 11),
     revision: 2,
     positionMs: 1000,
   },
@@ -57,12 +64,13 @@ const bodies = {
     remoteSelectionId: pair.remoteSelectionId,
     reason: 'IDENTITY_MISMATCH',
   },
-  READY: pair,
+  READY: { ...pair, readinessId: encodedBytes(16, 10) },
   NOT_READY: { localSelectionId: null, reason: 'NO_MEDIA' },
 };
 describe('Local Sync protocol', () => {
   it.each([
     [isMediaSelectionId, selectionId, 22],
+    [isReadinessId, encodedBytes(16, 10), 22],
     [isMediaFingerprint, fingerprint, 43],
   ] as const)('validates canonical identity %s', (guard, value, length) => {
     expect(guard(value)).toBe(true);
@@ -170,15 +178,16 @@ describe('Local Sync protocol', () => {
     ).toBe(false);
   });
   it('enforces UTF-8 size before parsing and rejects extra envelope fields', () => {
-    const legal = envelope('READY', { ...context, ...pair });
+    const legal = envelope('READY', { ...context, ...bodies.READY });
     expect(
       parsePeerMessage(legal + ' '.repeat(MAX_PEER_MESSAGE_BYTES - utf8ByteLength(legal))).ok,
     ).toBe(true);
     expect(parsePeerMessage(legal + ' '.repeat(MAX_PEER_MESSAGE_BYTES)).ok).toBe(false);
     expect(parsePeerMessage('界'.repeat(342)).ok).toBe(false);
     expect(
-      parsePeerMessage(envelope('READY', { ...context, ...pair }, { __proto__: null, extra: 1 }))
-        .ok,
+      parsePeerMessage(
+        envelope('READY', { ...context, ...bodies.READY }, { __proto__: null, extra: 1 }),
+      ).ok,
     ).toBe(false);
   });
 });
@@ -202,3 +211,25 @@ describe('playback numeric contracts', () => {
     expect(parsePeerMessage(envelope('SYNC', { ...context, ...bodies.PLAY })).ok).toBe(false);
   });
 });
+
+it.each(['READY', 'PLAY', 'PAUSE', 'SEEK'] as const)(
+  '%s rejects every malformed readiness identity',
+  (type) => {
+    const fields = type === 'READY' ? ['readinessId'] : ['localReadinessId', 'remoteReadinessId'];
+    for (const field of fields)
+      for (const bad of [
+        null,
+        {},
+        4,
+        '',
+        'A'.repeat(21),
+        'A'.repeat(23),
+        'A'.repeat(22) + '=',
+        '+' + 'A'.repeat(21),
+        'A'.repeat(21) + 'B',
+      ])
+        expect(
+          parsePeerMessage(envelope(type, { ...context, ...bodies[type], [field]: bad })).ok,
+        ).toBe(false);
+  },
+);

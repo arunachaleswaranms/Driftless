@@ -10,7 +10,11 @@ import {
   guestPlayback,
 } from '@driftless/sync-engine';
 assert.equal(bothReady(initialLocalSyncState), false);
-assert.equal(reduceLocalSync(initialLocalSyncState, { type: 'ready' }).effects.length, 0);
+assert.equal(
+  reduceLocalSync(initialLocalSyncState, { type: 'ready', readinessId: 'A'.repeat(22) }).effects
+    .length,
+  0,
+);
 assert.equal(typeof fingerprintMedia, 'function');
 console.info('Built sync-engine import smoke passed.');
 

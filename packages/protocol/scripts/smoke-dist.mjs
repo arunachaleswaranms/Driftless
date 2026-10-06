@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import * as protocol from '@driftless/protocol';
 
 const EXPECTED_EXPORTS = [
+  'READINESS_ID_BYTES',
+  'READINESS_ID_LENGTH',
+  'isReadinessId',
   'MEDIA_SELECTION_ID_BYTES',
   'MEDIA_SELECTION_ID_LENGTH',
   'MEDIA_FINGERPRINT_BYTES',
@@ -146,6 +149,8 @@ for (const type of ['PLAY', 'PAUSE', 'SEEK']) {
       recipientId: 'B'.repeat(16),
       localSelectionId: 'A'.repeat(22),
       remoteSelectionId: 'B'.repeat(21) + 'A',
+      localReadinessId: 'C'.repeat(21) + 'A',
+      remoteReadinessId: 'D'.repeat(21) + 'A',
       revision: Number.MAX_SAFE_INTEGER,
       positionMs: Number.MAX_SAFE_INTEGER,
     },

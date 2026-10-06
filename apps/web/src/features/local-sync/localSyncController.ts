@@ -3,6 +3,9 @@ import { isPlaybackBody } from '@driftless/sync-engine';
 import {
   encodeBase64Url,
   isMediaSelectionId,
+  isReadinessId,
+  READINESS_ID_BYTES,
+  type ReadinessId,
   MEDIA_SELECTION_ID_BYTES,
   type ApplicationBody,
   type MediaSelectionId,
@@ -20,9 +23,15 @@ import type { LocalMediaSelection } from '../local-media/localMediaState.ts';
 
 export interface LocalSyncAdapters {
   readonly selectionId: () => MediaSelectionId;
+  readonly readinessId: () => ReadinessId;
   readonly sha256: Sha256;
 }
 const browserAdapters: LocalSyncAdapters = {
+  readinessId: () => {
+    const id = encodeBase64Url(crypto.getRandomValues(new Uint8Array(READINESS_ID_BYTES)));
+    if (!isReadinessId(id)) throw new Error('Readiness generation failed.');
+    return id;
+  },
   selectionId: () => {
     const id = encodeBase64Url(crypto.getRandomValues(new Uint8Array(MEDIA_SELECTION_ID_BYTES)));
     if (!isMediaSelectionId(id)) throw new Error('Media selection generation failed.');
