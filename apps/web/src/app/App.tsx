@@ -30,8 +30,9 @@ export function App() {
         <div className="app-container">
           <h1 className="app-title">Driftless</h1>
           <p className="app-build-status">
-            Early development build. Local Sync follows host playback controls; continuous drift
-            correction is still in development.
+            Early development build. Local Sync includes host-authoritative playback and automatic
+            guest drift correction. Physical, long-duration and real-network synchronization
+            qualification remains pending.
           </p>
         </div>
       </header>

@@ -78,7 +78,7 @@ These responsibilities remain the accepted target architecture. Current implemen
 - In production the client expects the signaling path on its own origin, so a deployment routes `/v1/signaling` to the service behind TLS. The development and preview servers forward the path to a loopback service. The expected deployment topology — TLS reverse proxy, loopback-bound service, coturn — is in [DEPLOYMENT.md](DEPLOYMENT.md); whether one existed for qualification is recorded in [PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md).
 - In Phase 2D the service also issues each admitted member its ICE configuration: configured STUN servers, and TURN servers with a short-lived credential it derives from a secret shared with the TURN server ([ADR-0007](adr/0007-ephemeral-turn-credentials.md)). It is not a TURN server and relays no media.
 - `packages/protocol/` gained, in Phase 2C, the session ID, resume secret, challenge, and proof formats, the canonical 76-byte resume proof input (no hashing; each endpoint uses platform crypto), the resume, presence, and recovery messages, and a pure base64url codec.
-- `packages/sync-engine/` is initialized in Phase 3A for pure media identity/readiness logic. Phase 3B adds pure host-authoritative playback state and revisions; heartbeat/drift logic remains future Phase 3C work. `packages/transfer-engine/` remains empty; media transfer and production Progressive Watch are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
+- `packages/sync-engine/` is initialized in Phase 3A for pure media identity/readiness logic. Phase 3B adds pure host-authoritative playback state and revisions; Phase 3C adds bounded clock estimation, projection and pure drift decisions. `packages/transfer-engine/` remains empty; media transfer and production Progressive Watch are not implemented. Reconnect and peer recovery exist only for signaling and the control data channel. The repository contains no STUN or TURN server; it contains the credential boundary and deployment guidance for one.
 - The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root lockfile.
 
 ## Implemented Phase 3A responsibility split
@@ -112,7 +112,27 @@ host playback controller → PeerSession → driftless-control
 
 Host authority is checked in PeerSession outbound and inbound. Playback revisions order domain authority; the existing envelope sequence separately orders one authenticated transport stream. A baseline PAUSE revision 1 activates each Ready cycle. All three commands use the same application rate bucket as setup traffic. Loss of readiness pauses locally without an invalidated authority send; fresh peer recovery requires Ready again. Signaling-only recovery leaves a healthy channel and authority intact.
 
-3B is event-driven only: baseline, Play, Pause, committed Seek, and end-of-media Pause. No timeupdate sends, polling, timing loop, heartbeat, delay compensation, acknowledgements, retries, or replay queue. Volume/mute are local preferences; their native UI is temporarily unavailable during authority. Only active playback is constrained to 1×.
+3B is event-driven only: baseline, Play, Pause, committed Seek, and end-of-media Pause. No timeupdate sends, polling, timing loop, heartbeat, delay compensation, acknowledgements, retries, or replay queue. Volume/mute are local preferences; their native UI is temporarily unavailable during authority. The host stays at 1×; Phase 3C permits only temporary guest correction rates.
+
+## Implemented Phase 3C responsibility split
+
+```text
+host HTMLVideoElement
+    ↓
+authoritative playback snapshot
+    ↓
+SYNC heartbeat → guest monotonic observation → host bounded clock estimator
+    ↓ next heartbeat with prior best estimate
+expected host position in guest clock
+    ↓
+pure drift policy (sync-engine)
+    ↓
+guest-only playbackRate / internal seek correction
+```
+
+`ContinuousSyncController` owns the one host recursive timeout and invokes pure `SyncClock`, projection and drift policy. `PlaybackSyncController` retains discrete authority, browser media ownership checks and suppressed internal seeks. LocalSyncController routes SYNC separately from readiness and playback commands. React renders fixed conservative text and accessible host intent controls; it owns no timing logic or 2 Hz live announcements. The injectable browser boundary supplies rounded performance.now(), setTimeout and clearTimeout. Pure engine code reads only supplied numbers.
+
+The same authenticated peer channel carries setup, command and SYNC traffic under unchanged size/rate bounds. Signaling is uninvolved. Four activation IDs guard the cycle before clock/revision logic; equal revision/mode is mandatory for correction, and SYNC never establishes or repairs authority. Observations influence only the estimate returned to that guest, never host media or Ready state. Timer callbacks use generation ownership; activation/element/channel loss resets the bounded state and restores guest 1×. Signaling-only reconnect preserves the healthy sync plane. No transfer engine, persistence or external dependency. See [3C implementation evidence](PHASE3C_IMPLEMENTATION.md).
 
 ## Web Client Components
 

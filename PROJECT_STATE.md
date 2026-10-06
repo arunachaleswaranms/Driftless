@@ -44,7 +44,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 
 The latest physical qualification attempt at `3a5922200ab0a77a1dd55d9d911a79a492971874` on 2026-10-04 identified the physical OnePlus Nord 5 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but did not execute a cellular / Wi-Fi-off cross-network session. Real-device data-channel establishment, selected-path evidence on both peers, and genuine network recovery remain unobserved (G1–G5 GAP). No publicly reachable TURN endpoint was available (T3/T4 GAP; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D automated browser evidence remains two browser contexts on one development machine.
 
-Phase 3 — Local Sync Mode: **IN PROGRESS**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED**. Phase 3C — Heartbeat, Drift Detection & Correction: **NEXT — NOT STARTED**. Phase 3D — Qualification & Closure: **NOT STARTED**. Phase 3 exit gate: **NOT PASSED**.
+Phase 3 — Local Sync Mode: **IN PROGRESS**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED**. Phase 3D — Qualification & Closure: **NEXT — NOT STARTED**. Phase 3 exit gate: **NOT PASSED**.
 
 ### Implementation and qualification policy
 
@@ -69,7 +69,7 @@ The initial local repository structure exists:
 - `docs/planning/`
 - `spikes/phase0/`
 
-The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. Phase 2D added connection diagnostics, the runtime ICE configuration, and the TURN credential boundary (no TURN server is part of the repository). Phase 3A initializes `packages/sync-engine/` for bounded media identity and pure readiness state. Host playback command synchronization is implemented through Phase 3B. Continuous drift correction, transfer engine, production cache, production transfer protocol, and Progressive Watch remain unimplemented; `packages/transfer-engine/` remains empty.
+The master planning document exists at `docs/planning/Driftless_Master_Project_Plan_v0.1.docx`. The Phase 0 experiment framework and isolated Spike 0.1 through Spike 0.7 browser experiments now exist under `spikes/phase0/`. The Spike 0.3 synthetic binary-transfer, Spike 0.4 synthetic OPFS storage, Spike 0.5 MP4 parsing/segmentation, Spike 0.6 MSE progressive-playback, and Spike 0.7 integrated P2P playback experiments are laboratory code only. Spike 0.7 adds no dependency; it imports the Spike 0.5/0.6 modules and pinned MP4Box.js. Spike 0.5 pins MP4Box.js 2.4.1 as a spike-local dependency (`spikes/phase0/spike-05-mp4-segmentation/package.json`); it is not an approved production dependency. The production web client foundation exists under `apps/web/` (see Phase 1 below). The shared protocol package exists under `packages/protocol/`, the signaling service under `services/signaling/`, and the browser room and WebRTC client under `apps/web/src/features/room/` (see Phase 2 below). The repository is a root npm workspace (`apps/*`, `packages/*`, `services/*`) with one root `package-lock.json`. Phase 2D added connection diagnostics, the runtime ICE configuration, and the TURN credential boundary (no TURN server is part of the repository). Phase 3A initializes `packages/sync-engine/` for bounded media identity and pure readiness state. Host playback command synchronization is implemented through Phase 3B. Phase 3C adds host heartbeat, bounded monotonic clock estimation and guest drift correction. Transfer engine, production cache, production transfer protocol, and Progressive Watch remain unimplemented; `packages/transfer-engine/` remains empty.
 
 ## Accepted Architecture
 
@@ -413,15 +413,15 @@ Independent review correction **3A-01** adds a receiver-local inbound applicatio
 
 ## Phase 3B — Host-Authoritative Playback Controls
 
-**IMPLEMENTED — independent GitHub review pending.** Starts from approved Phase 3A head `7ce7aba332c9941a7ed5c87b2fa0d3b0cc495fd3`; both Phase 3A commits are preserved.
+**IMPLEMENTED / REVIEW PASS**, approved through `9ace3833eccc560a0cecd3075c49edbf01e4f3f5`. Starts from approved Phase 3A head `7ce7aba332c9941a7ed5c87b2fa0d3b0cc495fd3`; both Phase 3A commits are preserved.
 
 The pure sync-engine owns paused activation, media-pair and readiness-generation binding, logical revisions, playing/paused authority and stale rejection. The browser playback controller prepares the current video on Ready, preserves position, applies commands safely, and pauses on readiness loss. PeerSession enforces host-only PLAY/PAUSE/SEEK at the peer transport boundary using the same context, sequence and burst-32/refill-8/s application bucket as setup messages. No signaling production changes or media transfer.
 
-Both-ready creates a PAUSE revision-1 baseline at the host current position. Explicit host Play/Pause/committed Seek increment revisions; SEEK preserves mode. The guest has no authoritative transport controls. Active playback remains 1×. Positions are nonnegative safe integer milliseconds, locally duration-clamped, with no peer timestamp compensation. Play failure withdraws readiness as PLAYBACK_UNAVAILABLE without discarding matching identity. Fresh peer recovery pauses and requires explicit Ready plus a new baseline; signaling-only recovery preserves a healthy channel's authority. State and preparation are memory-only; no command queue or replay.
+Both-ready creates a PAUSE revision-1 baseline at the host current position. Explicit host Play/Pause/committed Seek increment revisions; SEEK preserves mode. The guest has no authoritative transport controls. Phase 3B discrete playback uses 1×; Phase 3C permits temporary guest-only correction rates. Positions are nonnegative safe integer milliseconds, locally duration-clamped, with no peer timestamp compensation. Play failure withdraws readiness as PLAYBACK_UNAVAILABLE without discarding matching identity. Fresh peer recovery pauses and requires explicit Ready plus a new baseline; signaling-only recovery preserves a healthy channel's authority. State and preparation are memory-only; no command queue or replay.
 
-Independent review correction **3B-01** binds READY to a fresh participant-local 128-bit ReadinessId and PLAY/PAUSE/SEEK to both current Ready intents as well as selections. IDs are generated once after successful explicit preparation, cleared with invalidated readiness, and never persisted/displayed/logged or sent through signaling. Old same-media/revision-1 baselines cannot activate a new Ready cycle; revision reset to 1 is safe inside a fresh readiness pair. The exact opposite-direction 2 s stale baseline / 6 s genuine baseline and PLAYBACK_UNAVAILABLE regressions pass. Protocol version, host role enforcement, transport sequences, message bound and burst-32/refill-8/s limiter remain unchanged. **3B — IMPLEMENTED; independent re-review pending.**
+Independent review correction **3B-01** binds READY to a fresh participant-local 128-bit ReadinessId and PLAY/PAUSE/SEEK to both current Ready intents as well as selections. IDs are generated once after successful explicit preparation, cleared with invalidated readiness, and never persisted/displayed/logged or sent through signaling. Old same-media/revision-1 baselines cannot activate a new Ready cycle; revision reset to 1 is safe inside a fresh readiness pair. The exact opposite-direction 2 s stale baseline / 6 s genuine baseline and PLAYBACK_UNAVAILABLE regressions pass. Protocol version, host role enforcement, transport sequences, message bound and burst-32/refill-8/s limiter remain unchanged. **3B — IMPLEMENTED / REVIEW PASS.**
 
-Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMENTATION.md). **No heartbeat/drift correction.** Phase 3C is **NEXT — NOT STARTED**; 3D is **NOT STARTED**; Phase 3 remains **IN PROGRESS**, exit gate **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**.
+Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMENTATION.md). That historical 3B evidence introduces no heartbeat/drift correction. Phase 3C is now **IMPLEMENTED** (separate evidence); 3D is **NEXT — NOT STARTED**; Phase 3 remains **IN PROGRESS**, exit gate **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**.
 
 ## Open Deferred Qualification
 
@@ -430,7 +430,7 @@ Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMEN
 
 ## Not Started
 
-- Phase 3C — Heartbeat, Drift Detection & Correction: **NEXT — NOT STARTED**. Phase 3D remains **NOT STARTED**; deferred physical/network qualification remains an open release-level gate.
+- Phase 3D — Qualification & Closure: **NEXT — NOT STARTED**; deferred physical/network qualification remains an open release-level gate.
 - Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
@@ -547,7 +547,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent GitHub review of the exact pushed Phase 3B commit. Do not begin Phase 3C before review PASS. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
+Independent GitHub review of the exact pushed Phase 3C commit. Do not begin Phase 3D before review PASS. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -570,4 +570,22 @@ Changes to these decisions require a superseding ADR and corresponding documenta
 
 ## Last Updated
 
-2026-10-04
+2026-10-07
+
+## Phase 3C implementation handoff
+
+Approved Phase 3B head: `9ace3833eccc560a0cecd3075c49edbf01e4f3f5` (`fix: bind playback to readiness cycles`), local/remote verified clean before editing. User authorizes 3A/3B REVIEW PASS. Phase 3C adds SYNC HEARTBEAT/OBSERVATION, bounded monotonic timing and guest-only rate/seek correction without changing host authority or readiness-cycle boundaries. See [PHASE3C_IMPLEMENTATION.md](docs/PHASE3C_IMPLEMENTATION.md) for exact implementation constants, tests, browser evidence and audit status.
+
+3A — IMPLEMENTED / REVIEW PASS
+
+3B — IMPLEMENTED / REVIEW PASS
+
+3C — IMPLEMENTED (independent review pending)
+
+3D — NEXT / NOT STARTED
+
+Phase 3 exit gate — NOT PASSED
+
+Phase 2 physical/network qualification — DEFERRED / NOT CLOSED
+
+Independent GitHub review of the exact pushed Phase 3C commit. Do not begin Phase 3D before review PASS. No milestone PR, merge or qualification performed.

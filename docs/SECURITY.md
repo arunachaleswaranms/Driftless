@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines design requirements. Except for the controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a), [Implemented in Phase 2B](#implemented-in-phase-2b), [Implemented in Phase 2C](#implemented-in-phase-2c), [Implemented in Phase 2D](#implemented-in-phase-2d), and [Implemented in Phase 3A](#implemented-in-phase-3a), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
+This document defines design requirements. Except for the controls listed under [Implemented in Phase 2A](#implemented-in-phase-2a), [Implemented in Phase 2B](#implemented-in-phase-2b), [Implemented in Phase 2C](#implemented-in-phase-2c), [Implemented in Phase 2D](#implemented-in-phase-2d), [Implemented in Phase 3A](#implemented-in-phase-3a), [Implemented in Phase 3B](#implemented-in-phase-3b), and [Implemented in Phase 3C](#implemented-in-phase-3c), it does not claim that controls have been implemented, audited, or tested. Nothing here has been independently security-audited. Security issues and reporting channels will be documented before public testing.
 
 ## Implemented in Phase 2A
 
@@ -96,13 +96,24 @@ An authorized malicious peer can lie about its selected media or whether it play
 - Host-only PLAY/PAUSE/SEEK authority is checked at PeerSession in both directions. Guest outbound attempts return false without a send; host receipt of a guest command fails closed as peer_protocol before application dispatch.
 - Commands bind the authenticated session/negotiation/participants and current sender-local/receiver-local media selections **and both current readiness generations**, checked before playback revision. Inactive or stale pairs do not apply or restore readiness. Monotonic logical revisions reject stale domain authority; transport sequence remains independent.
 - Revision is a positive safe integer; positionMs is a nonnegative safe integer. The browser converts milliseconds and clamps to a finite nonnegative local duration before assigning currentTime. DOM assignment failure and play rejection withdraw readiness safely with fixed sanitized messages; matching identity is preserved for PLAYBACK_UNAVAILABLE.
-- All eight application types share the unchanged 1024-byte UTF-8 message bound and per-session token bucket (burst 32, refill 8/s). No separate playback allowance, outbound scheduler, or unbounded history.
+- All nine application families share the unchanged 1024-byte UTF-8 message bound and per-session token bucket (burst 32, refill 8/s). No separate playback allowance or unbounded history; Phase 3C owns one bounded heartbeat scheduler.
 - Each successful explicit Ready gets a fresh 128-bit random ReadinessId through `crypto.getRandomValues` after preparation succeeds. Earlier Ready-cycle commands cannot control a later cycle, even for the same media and revision. No timing assumptions are used. These IDs are ephemeral and memory-only: never persisted, logged, displayed, placed in URLs, or sent through signaling; they cross only the authenticated peer control channel. Readiness IDs provide cycle identity, not cryptographic authentication; transport authentication/context still comes from PeerSession.
 - Ready prepares playback through explicit user activation, leaving the element paused at its saved position. Preparation failure sends no READY; volume/mute are not modified. Internal browser events do not create duplicate authority commands and guest events never echo commands.
-- No peer clock or sentAt is trusted for playback. No latency compensation, clock offset, or synchronization accuracy claim. Active playback uses 1× only.
+- No peer clock or sentAt is trusted for playback. No latency compensation, clock offset, or synchronization accuracy claim. Host playback uses 1×; Phase 3C permits only guest-local temporary correction.
 - No command/preparation/Ready/revision/position persistence, queue, acknowledgement, retry loop or replay. New peer channels require explicit Ready and PAUSE revision 1; healthy channels survive signaling reconnect without reset. No media bytes, filenames/paths, MIME, duration, browser error, object URL or digest metadata in playback messages.
 
 An authorized host can intentionally play, pause, or seek disruptively. Clamping bounds local application; it does not make a malicious host trustworthy. Matching identity is cooperative evidence, not attestation.
+
+## Implemented in Phase 3C
+
+- PeerSession enforces host-only HEARTBEAT and guest-only OBSERVATION inbound/outbound before dispatch. No transport context is exposed upward or forgeable by controllers. Both phases share existing 1024-byte and burst 32/refill 8/s bounds, no bypass bucket; normal 2 Hz adds about two inbound messages/second per peer.
+- Exact media selections and both readiness IDs bind every sample to the current activation. Revision/mode equality permits guest correction only after discrete authority is applied. SYNC does not create/advance/repair playback authority. Old activation samples and captured timer callbacks cannot cross cycles/negotiations.
+- Injected local monotonic clocks, never wall clock or envelope sentAt. Timestamps bounded to 1e12 ms keep subtraction/addition safe; unsafe/nonfinite projection is ignored. No wall-clock date disclosure.
+- At most one host timeout, eight pending sequence/t1 probes, eight valid offset/RTT samples and one current correction/diagnostic state. Invalid, duplicate, missing, pruned or high-RTT (>4000 ms) observations are ignored; prior valid current-cycle estimate survives. Bad samples do not withdraw Ready or fail the peer.
+- Observations are cooperative synchronization data, not authentication/attestation. An authorized malicious guest can lie about timestamps and sabotage its own returned estimate/correction. OBSERVATION cannot seek, play, pause, change rate/revision or alter Ready on the authoritative host. Guest corrections emit no authoritative command and do not change host playback.
+- Every new command resets temporary guest rate; lifecycle loss restores 1× and clears timing state. Signaling-only reconnect retains healthy synchronization. No raw timing history/log, timing persistence, URL state, media byte/filename/path/MIME/object URL/fingerprint/root/digest or browser exception in SYNC. UI exposes no raw timing identifiers and no rapid live-region updates.
+
+These controls establish implementation and controlled automated evidence only; physical/network and long-duration qualification remains pending.
 
 ## Threat Model Scope
 

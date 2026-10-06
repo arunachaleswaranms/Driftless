@@ -3,6 +3,7 @@ import type {
   MediaSelectionId,
   ParticipantRole,
   PlaybackBody,
+  SyncBody,
 } from '@driftless/protocol';
 import {
   guestPlayback,
@@ -11,9 +12,10 @@ import {
   playbackReadiness,
   readinessBlock,
 } from '@driftless/sync-engine';
+import { ContinuousSyncController, type SyncAdapters } from './continuousSyncController.ts';
 import type { LocalSyncController } from './localSyncController.ts';
 
-/** Focused adapter: no File, object URL, transport context, clocks or polling. */
+/** Focused adapter: no File, object URL or transport context. */
 export interface PlaybackMedia extends EventTarget {
   currentTime: number;
   readonly duration: number;
@@ -53,11 +55,29 @@ export class PlaybackSyncController {
   #readyContext = '';
   readonly #listeners = new Set<() => void>();
   readonly #unsubscribe: () => void;
+  readonly continuous: ContinuousSyncController;
   readonly readiness: LocalSyncController;
   readonly send: (body: ApplicationBody) => boolean;
-  constructor(readiness: LocalSyncController, send: (body: ApplicationBody) => boolean) {
+  constructor(
+    readiness: LocalSyncController,
+    send: (body: ApplicationBody) => boolean,
+    syncAdapters?: SyncAdapters,
+  ) {
     this.readiness = readiness;
     this.send = send;
+    this.continuous = new ContinuousSyncController(
+      () => ({ authority: this.#state.authority, role: this.#state.role, video: this.#video }),
+      (body) => {
+        const sent = this.send(body);
+        if (!sent) this.readiness.setChannel(undefined);
+        return sent;
+      },
+      (position) => this.#seek(position),
+      () => {
+        this.#unavailable();
+      },
+      syncAdapters,
+    );
     this.#unsubscribe = readiness.subscribe(() => {
       this.#reconcile();
     });
@@ -70,6 +90,7 @@ export class PlaybackSyncController {
     };
   };
   #notify(): void {
+    this.continuous.update();
     for (const listener of [...this.#listeners]) listener();
   }
   setRole(role: ParticipantRole | null): void {
@@ -80,6 +101,7 @@ export class PlaybackSyncController {
     if (video === null && selectionId !== this.#selectionId) return;
     if (video && selectionId !== this.readiness.getState().local?.selectionId) return;
     if (video === this.#video && selectionId === this.#selectionId) return;
+    this.continuous.reset();
     this.#detach?.();
     this.#generation++;
     this.#pause();
@@ -102,7 +124,8 @@ export class PlaybackSyncController {
         }
         if (!this.#state.authority.active || this.#state.preparing || this.#operating) return;
         if (event.type === 'ratechange') {
-          this.#normalRate();
+          if (this.#state.role === 'host') this.#normalRate();
+          else this.continuous.enforceRate();
           return;
         }
         if (this.#state.role !== 'host') return;
@@ -181,10 +204,14 @@ export class PlaybackSyncController {
     if (this.#seek(positionMs)) this.#commit('SEEK');
     else this.#unavailable();
   }
+  receiveSync(body: SyncBody): void {
+    this.continuous.receive(body);
+  }
   receive(body: PlaybackBody): void {
     if (this.#state.role !== 'guest' || !this.#video) return;
     const next = guestPlayback(this.#state.authority, body);
     if (next === this.#state.authority) return;
+    this.continuous.resetCorrection();
     this.#state = { ...this.#state, authority: next, error: null };
     this.#video.controls = false;
     this.#normalRate();
@@ -229,7 +256,7 @@ export class PlaybackSyncController {
     };
     if (next.pair !== previous.pair && previous.pair) this.#pause();
     if (this.#video) this.#video.controls = next.pair === null;
-    if (next.active) this.#normalRate();
+    if (next.active && this.#state.role === 'host') this.#normalRate();
     if (next.pair && !next.active && this.#state.role === 'host') {
       this.#pause();
       this.#commit('PAUSE');
@@ -317,6 +344,7 @@ export class PlaybackSyncController {
     this.#error(PLAY_ERROR);
   }
   shutdown(): void {
+    this.continuous.reset();
     this.#unsubscribe();
     this.#detach?.();
     this.#generation++;

@@ -482,21 +482,51 @@ export type PlaybackBody = {
   readonly type: PlaybackMessage['type'];
   readonly payload: PlaybackPayload;
 };
+/** Arithmetic/resource bound, not a product session lifetime. */
+export const MAX_SYNC_CLOCK_MS = 1_000_000_000_000;
+export interface SyncActivation {
+  readonly localSelectionId: MediaSelectionId;
+  readonly remoteSelectionId: MediaSelectionId;
+  readonly localReadinessId: ReadinessId;
+  readonly remoteReadinessId: ReadinessId;
+  readonly syncSequence: number;
+}
+export type SyncHeartbeat = SyncActivation & {
+  readonly phase: 'HEARTBEAT';
+  readonly revision: number;
+  readonly mode: 'playing' | 'paused';
+  readonly positionMs: number;
+  readonly capturedAtMs: number;
+} & (
+    | { readonly clockOffsetMs: null; readonly roundTripMs: null }
+    | { readonly clockOffsetMs: number; readonly roundTripMs: number }
+  );
+export interface SyncObservation extends SyncActivation {
+  readonly phase: 'OBSERVATION';
+  readonly guestReceivedAtMs: number;
+  readonly guestSentAtMs: number;
+}
+export type SyncPayload = SyncHeartbeat | SyncObservation;
+export type SyncMessage = Envelope<'SYNC', PeerHandshakePayload & SyncPayload>;
+export type SyncBody = { readonly type: 'SYNC'; readonly payload: SyncPayload };
 export type ApplicationMessage =
   | MediaInfoMessage
   | MediaMatchMessage
   | MediaMismatchMessage
   | ReadyMessage
   | NotReadyMessage
-  | PlaybackMessage;
+  | PlaybackMessage
+  | SyncMessage;
 /** Context-free body; the transport supplies the authenticated peer context. */
 export type ApplicationBody = ApplicationMessage extends infer Message
-  ? Message extends ApplicationMessage
-    ? {
-        readonly type: Message['type'];
-        readonly payload: Omit<Message['payload'], keyof PeerHandshakePayload>;
-      }
-    : never
+  ? Message extends SyncMessage
+    ? SyncBody
+    : Message extends ApplicationMessage
+      ? {
+          readonly type: Message['type'];
+          readonly payload: Omit<Message['payload'], keyof PeerHandshakePayload>;
+        }
+      : never
   : never;
 export type PeerMessage = PeerHelloMessage | PeerReadyMessage | ApplicationMessage;
 export type PeerMessageType = PeerMessage['type'];
@@ -512,4 +542,5 @@ export const PEER_MESSAGE_TYPES = [
   'PLAY',
   'PAUSE',
   'SEEK',
+  'SYNC',
 ] as const satisfies readonly PeerMessage['type'][];

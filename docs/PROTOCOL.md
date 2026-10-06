@@ -1,4 +1,4 @@
-# Conceptual Protocol
+# Protocol
 
 ## Status
 
@@ -7,7 +7,8 @@ This is the design specification for `protocolVersion: 1`.
 - **Implemented through Phase 2D:** the common JSON envelope; the client ↔ signaling-service room lifecycle messages (Phase 2A); the negotiation ID and the relayed WebRTC negotiation messages `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, and `ICE_COMPLETE`, and a two-message peer connection handshake on the data channel (Phase 2B); and the room session ID, the per-participant resume credential, challenge-response session resume (`SESSION_RESUME_BEGIN`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUME_PROVE`, `SESSION_RESUMED`), signaling presence (`ROOM_PARTICIPANT_CONNECTION`), the reconnect grace period, and fresh-negotiation peer recovery (`RTC_RECOVERY_REQUEST`, `RTC_RECOVER`) (Phase 2C); and the ICE server configuration request and answer, `RTC_CONFIG_REQUEST` and `RTC_CONFIG`, which carry short-lived TURN credentials to an authenticated room member (Phase 2D). All are strictly validated in [`packages/protocol/`](../packages/protocol/), specified exactly in [Implemented through Phase 2D](#implemented-through-phase-2d-signaling-rooms-negotiation-recovery-and-ice-configuration) below, and used by [`services/signaling/`](../services/signaling/) and the web client.
 - **Implemented in Phase 3A:** the peer-only MEDIA_INFO, MEDIA_MATCH, MEDIA_MISMATCH, READY and NOT_READY messages; media selection IDs, session-scoped fingerprint version 1, current-pair readiness and fresh-peer recovery semantics.
 - **Implemented in Phase 3B:** peer-only PLAY, PAUSE and SEEK with current-pair binding, logical revisions and integer milliseconds; host-only authority at PeerSession.
-- **Still conceptual:** heartbeat/drift synchronization, social, transfer, Progressive Watch, and connection diagnostics (`CONNECTION_STATUS`) — and binary framing. Phase 2D connection diagnostics are browser-local and use no message: no diagnostic, statistic, candidate type, or path classification is ever sent to the service or the peer. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size, buffering thresholds, playback heartbeat intervals, and drift thresholds, remain undecided. The Phase 2C reconnect and recovery values below are provisional implementation bounds, not tuned network settings.
+- **Implemented in Phase 3C:** peer-only SYNC / HEARTBEAT and SYNC / OBSERVATION, bounded monotonic clock estimation and guest-only drift correction.
+- **Still conceptual:** social, transfer, Progressive Watch, and connection diagnostics (`CONNECTION_STATUS`) — and binary framing. Phase 2D connection diagnostics are browser-local and use no message: no diagnostic, statistic, candidate type, or path classification is ever sent to the service or the peer. Their wire representations are not frozen. Values that depend on benchmarking, including transport chunk size and future buffering thresholds, remain undecided. Phase 3C heartbeat and drift constants are provisional implementation choices, separate from 3D acceptance thresholds. The Phase 2C reconnect and recovery values below are provisional implementation bounds, not tuned network settings.
 
 Implementing one subset does not freeze the rest of this conceptual protocol.
 
@@ -37,7 +38,7 @@ Conceptually, every control message contains:
 - `protocolVersion` identifies the contract version and is exactly `1` for this baseline.
 - `type` selects one known message schema.
 - `sequence` supports ordering, duplicate detection, and replay defense within a defined session scope.
-- `sentAt` is diagnostic only through Phase 3B; future clock observation belongs to Phase 3C. It is not trusted as authorization or proof of freshness on its own.
+- `sentAt` remains diagnostic only through Phase 3C; synchronization uses separate local monotonic timestamps. It is not trusted as authorization or proof of freshness on its own.
 - `payload` contains only fields allowed by the selected message type.
 
 Session, participant, correlation, and media identifiers are expected where needed, but their exact placement and representation are not yet frozen. Binary media data may use a compact frame separate from JSON control messages while retaining equivalent version, type, transfer, ordering, and integrity context.
@@ -375,7 +376,7 @@ PeerSession injects the four authenticated context fields; application callers a
 
 Revision is a positive safe integer (1–9,007,199,254,740,991). PositionMs is a nonnegative safe integer (0–9,007,199,254,740,991), generated with Math.round(currentTime * 1000), never raw floating seconds. Every field is mandatory, extra/prototype fields fail, and the unchanged MAX_PEER_MESSAGE_BYTES is 1024 UTF-8 bytes. No filename/path, MIME, duration, object URL, digest, media byte, browser error or clock observation is included.
 
-Only a host PeerSession may send these types; guest outbound attempts return false with no wire send. Guest inbound host commands are context/sequence checked, rate admitted, then projected. A host receiving a valid guest playback command fails the current peer as peer_protocol before application dispatch. All eight implemented application types share burst 32/refill 8/s; no separate playback allowance. Peer envelope sequence orders transport traffic independently from playback revision.
+Only a host PeerSession may send these types; guest outbound attempts return false with no wire send. Guest inbound host commands are context/sequence checked, rate admitted, then projected. A host receiving a valid guest playback command fails the current peer as peer_protocol before application dispatch. All nine implemented application families share burst 32/refill 8/s; no separate playback allowance. Peer envelope sequence orders transport traffic independently from playback revision.
 
 Activation requires bothReady for the current matching media pair and both current Ready intents. The bounded activation context stores exactly these four IDs, with no history. The host pauses first, preserves current position and establishes PAUSE revision 1. The guest waits for that exact initial PAUSE, then pauses/seeks and marks authority active. Becoming Ready never starts synchronized playback. Host Play/Pause/committed Seek each increment revision once; SEEK preserves authoritative mode. End-of-media may emit a single newer PAUSE. Internal preparation/baseline/application events do not generate duplicate commands; guest events never echo.
 
@@ -389,7 +390,63 @@ NOT_READY's payload remains unchanged. Same-direction ordered reliable delivery 
 
 PROTOCOL_VERSION remains 1: this pre-release coordinated strict shape extension ships both endpoints together, consistent with Phase 3. Older READY/playback shapes are rejected; no fallback silently accepts missing readiness IDs. Fresh peers reset both Ready choices and exchange current media again, then require the same baseline. Signaling-only recovery keeps a healthy channel's readiness, revision and playback without duplicate commands or preparation. All playback/Ready/preparation state remains memory-only; reload begins setup again.
 
-Phase 3B is event-driven command synchronization only, at 1× playback rate. No sentAt compensation, heartbeat, periodic messages, clock/RTT/delay estimation, drift observation/correction or sync loop. SYNC remains conceptual Phase 3C.
+Phase 3B is event-driven command synchronization only, at 1× playback rate. No sentAt compensation, heartbeat, periodic messages, clock/RTT/delay estimation, drift observation/correction or sync loop. Phase 3C adds continuous observations separately below.
+
+## Implemented through Phase 3C: Heartbeat, Clock Estimation and Guest Correction
+
+One wire type `SYNC` has exactly two discriminated phases. Both use the existing peer envelope and include PeerSession-owned `sessionId`, `negotiationId`, `senderId`, `recipientId`. Upward callbacks contain only domain fields. No new signaling message or protocol version.
+
+Host → guest payload:
+
+```text
+{
+  sessionId, negotiationId, senderId, recipientId,
+  phase: "HEARTBEAT",
+  localSelectionId, remoteSelectionId, localReadinessId, remoteReadinessId,
+  syncSequence, revision, mode, positionMs, capturedAtMs,
+  clockOffsetMs, roundTripMs
+}
+```
+
+Guest → host payload:
+
+```text
+{
+  sessionId, negotiationId, senderId, recipientId,
+  phase: "OBSERVATION",
+  localSelectionId, remoteSelectionId, localReadinessId, remoteReadinessId,
+  syncSequence, guestReceivedAtMs, guestSentAtMs
+}
+```
+
+Sender-local orientation matches playback commands; all four selection/readiness IDs must match the current reversed activation before timing/revision logic. Phase-specific fields are exact: opposite-phase fields, missing, extra and prototype keys fail strict parsing. Unknown/conceptual SYNC shapes and SYNC_ACK/SYNC_RESULT/CLOCK_REQUEST/CLOCK_RESPONSE fail. Guest outbound HEARTBEAT and host outbound OBSERVATION return false; receiving a role violation fails `peer_protocol` before application dispatch. All nine application families share the existing 1024-byte bound and burst 32/refill 8/s bucket; both SYNC phases cost one token. Largest legal encoded envelopes are HEARTBEAT **648 B**, OBSERVATION **545 B**, including maximal legal numeric fields and envelope counters.
+
+`syncSequence` is a positive safe integer, begins at 1 per activation, and correlates timing only. It is independent of transport sequence, readiness IDs and playback revision. Revision is positive safe, position nonnegative safe, mode exactly playing/paused. Clock offset is a signed safe integer and RTT nonnegative safe integer, either both numbers or both null. Every synchronization timestamp is an integer in `[0, MAX_SYNC_CLOCK_MS = 1_000_000_000_000]`: an arithmetic/resource bound, not a product session lifetime. Browser timestamps use injected `Math.round(performance.now())`; envelope sentAt, wall-clock dates, timezone and system time are never used in sync math.
+
+The host owns exactly zero or one recursive timeout, interval **500 ms** (2 Hz). It starts after the active revision-1 paused baseline and continues playing or paused. Capture reads one current authority snapshot and the host element position at the local monotonic capture time. Heartbeats carry the current revision without incrementing it. The guest requires already-active authority; only equal revision and mode allow correction. Older/future revision or opposite mode cannot substitute for a missing command or change authority; current-cycle heartbeat timing can still be observed/responded to without correction. Stale-cycle heartbeats get no response; repeated sample IDs are ignored. No observation loop: host observation processing sends no immediate response; the next scheduled heartbeat carries the estimate.
+
+Two-message NTP-style timing:
+
+```text
+t1 = host HEARTBEAT capturedAtMs
+t2 = guest HEARTBEAT receive monotonic time
+t3 = guest OBSERVATION send monotonic time
+t4 = host OBSERVATION receive monotonic time
+
+guestMinusHostOffsetMs = round(((t2 - t1) + (t3 - t4)) / 2)
+roundTripMs = round((t4 - t1) - (t3 - t2))
+guestClock ≈ hostClock + guestMinusHostOffsetMs
+```
+
+OBSERVATION must name a current activation and pending syncSequence. Require bounded integer timestamps, t3 ≥ t2, t4 ≥ t1, safe/finite arithmetic and RTT in `[0, 4000]`. Consume each pending probe once; unknown, pruned, duplicate, stale or invalid/high-RTT observations are powerless and do not fail the peer or withdraw Ready. Pending records hold only sequence/t1 and cap at **8**, pruning oldest. Valid sample window holds at most **8** offset/RTT pairs, evicting oldest. Choose the **lowest RTT** sample in the current window, a provisional symmetric-delay estimator. Bad samples retain the prior current-cycle estimate. First heartbeat has both estimate fields null; later heartbeats include the best previously completed sample.
+
+Paused expected position is positionMs. Playing projection converts capture into the guest clock: `capturedInGuestClock = capturedAtMs + clockOffsetMs`; `elapsedMs = guestReceivedAtMs - capturedInGuestClock`; `expectedPositionMs = positionMs + elapsedMs`. Require safe arithmetic and elapsed in `[0, 4000]`, then clamp to local finite duration. Missing estimate, negative/excess elapsed or unsafe arithmetic means observe/respond without correction. No guessing from sentAt or RTT/2.
+
+`driftMs = guestActualPositionMs - expectedAuthoritativePositionMs`: negative is behind, positive ahead. Playing settles to 1× at absolute drift ≤75 ms; normal-rate drift ≥150 ms starts 1.05× behind or 0.95× ahead; absolute drift ≥750 ms hard seeks locally and returns to 1×. An existing rate correction continues until ≤75 ms, opposite sign (normalize first; reconsider opposite rate on a later heartbeat), or hard seek. Paused absolute drift ≥100 ms seeks locally while remaining paused; smaller drift makes no position change. These are implementation thresholds, **not Phase 3 acceptance thresholds**.
+
+Host always stays at 1×. Guest correction emits no PLAY/PAUSE/SEEK, changes no revision/Ready choice or authoritative mode, and uses existing internal seek suppression. New authority commands immediately restore 1×. Ready loss, media replacement/clear/mismatch/error, playback unavailable, peer loss, room end/shutdown or activation replacement stop the scheduler, clear pending/window/estimate/drift/sequence and restore 1×. Stale timer/element/async work is generation-owned and powerless. Fresh peers require new Ready, new paused baseline, sequence 1 and rebuilt estimate. Signaling-only reconnect preserves the same healthy channel, IDs, timer, sequence, samples, estimate, revision and correction.
+
+Monotonic observations are cooperative data, not authentication. A guest may falsify timestamps and sabotage only its own returned estimate/correction; observations never change host position, play/pause, rate, revision or readiness. No filenames, paths, MIME, object URLs, fingerprint/root/digest, media bytes, wall-clock date or browser errors in SYNC. All timing/correction state is bounded, memory-only, unlogged and unpersisted. Phase 3D qualification is NOT STARTED and the Phase 3 exit gate is NOT PASSED.
 
 ## Message Families
 
@@ -420,7 +477,7 @@ Local filesystem paths and filenames are never exchanged. The exact Phase 3A ide
 
 ### Playback
 
-PLAY/PAUSE/SEEK are implemented through 3B as specified above. SYNC is conceptual Phase 3C and is rejected by the current parser.
+PLAY/PAUSE/SEEK and SYNC are implemented through 3C as specified above.
 
 | Type | Purpose |
 | --- | --- |
@@ -499,4 +556,4 @@ Peers exchange capabilities before mode activation. A peer that cannot safely in
 
 Phase 2A settled, for signaling only: hand-written strict validation in `packages/protocol` rather than a schema library, the room ID, invite secret, and participant ID encodings, and the signaling error codes. Phase 2B settled the negotiation message shapes and the negotiation ID, the provisional negotiation bounds, and the control channel's label and settings and its connection handshake. Phase 2C settled the session ID, the resume secret, challenge, and proof formats, the resume flow and its sequence reset, signaling presence, the connection-ending classification, and the recovery messages and negotiation bound; its timing values remain provisional. Phase 2D settled the ICE server configuration messages, their bounds, and the TURN credential derivation.
 
-Phase 3A settles media selection IDs, fingerprint version/format and bounded identity chunking, the five setup messages, and readiness invalidation/recovery. Phase 3B settles PLAY/PAUSE/SEEK payloads, logical revisions, paused activation, host roles, integer milliseconds and playback-unavailability withdrawal. The following remain open: SYNC/heartbeat/clock/drift and social peer messages, binary framing, further channels, transfer identifiers and transport chunk size, acknowledgement strategy, future peer error vocabulary, timing intervals, and correction thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.
+Phase 3A settles media selection IDs, fingerprint version/format and bounded identity chunking, the five setup messages, and readiness invalidation/recovery. Phase 3B settles PLAY/PAUSE/SEEK payloads, logical revisions, paused activation, host roles, integer milliseconds and playback-unavailability withdrawal. Phase 3C settles the two-phase SYNC shape, bounded clock math and provisional correction policy. The following remain open: Phase 3D acceptance thresholds and qualification, social peer messages, binary framing, further channels, transfer identifiers and transport chunk size, acknowledgement strategy, future peer error vocabulary and product acceptance thresholds. Phase 0 evidence informs these decisions; later subsystem design and target-device/network qualification must settle them. Spike 0.7's laboratory wire format and one-part acknowledgement loop are not the production protocol.

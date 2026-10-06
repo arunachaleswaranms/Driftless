@@ -1,3 +1,4 @@
+import type { SyncAdapters } from './continuousSyncController.ts';
 import { PlaybackSyncController, type PlaybackMedia } from './playbackSyncController.ts';
 import { isPlaybackBody } from '@driftless/sync-engine';
 import {
@@ -53,9 +54,13 @@ export class LocalSyncController {
   #send: ((body: ApplicationBody) => boolean) | undefined;
   readonly adapters: LocalSyncAdapters;
   #playback: LocalMediaSelection['status'] = 'loading';
-  constructor(adapters: LocalSyncAdapters = browserAdapters) {
+  constructor(adapters: LocalSyncAdapters = browserAdapters, syncAdapters?: SyncAdapters) {
     this.adapters = adapters;
-    this.playback = new PlaybackSyncController(this, (body) => this.#send?.(body) === true);
+    this.playback = new PlaybackSyncController(
+      this,
+      (body) => this.#send?.(body) === true,
+      syncAdapters,
+    );
   }
   getState = () => this.#state;
   subscribe = (listener: () => void) => {
@@ -140,7 +145,8 @@ export class LocalSyncController {
     this.dispatch({ type: 'channel', connected: send !== undefined });
   }
   receive(body: ApplicationBody): void {
-    if (isPlaybackBody(body)) this.playback.receive(body);
+    if (body.type === 'SYNC') this.playback.receiveSync(body);
+    else if (isPlaybackBody(body)) this.playback.receive(body);
     else this.dispatch({ type: 'receive', body });
   }
   shutdown(): void {

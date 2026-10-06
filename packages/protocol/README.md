@@ -1,25 +1,25 @@
 # @driftless/protocol
 
-The shared, transport-neutral Driftless protocol contract: the versioned message envelope, the signaling room messages (Phase 2A), the WebRTC negotiation messages and the data-channel connection handshake (Phase 2B), session resume, signaling presence, and peer recovery (Phase 2C), the ICE server configuration messages (Phase 2D), Local Sync identity/readiness messages (Phase 3A), host PLAY/PAUSE/SEEK (Phase 3B), identifier and credential formats, size bounds, the error vocabulary, and strict parsing.
+The shared, transport-neutral Driftless protocol contract: the versioned message envelope, the signaling room messages (Phase 2A), the WebRTC negotiation messages and the data-channel connection handshake (Phase 2B), session resume, signaling presence, and peer recovery (Phase 2C), the ICE server configuration messages (Phase 2D), Local Sync identity/readiness messages (Phase 3A), host PLAY/PAUSE/SEEK (Phase 3B), SYNC HEARTBEAT/OBSERVATION (Phase 3C), identifier and credential formats, size bounds, the error vocabulary, and strict parsing.
 
 It has no runtime dependencies and uses no Node-only or browser-only API, so the same validation runs in the signaling service and in the web client. The protocol is specified in [docs/PROTOCOL.md](../../docs/PROTOCOL.md); this README describes the package.
 
 ## Scope
 
-Phases 2A–3B freeze only what they implement:
+Phases 2A–3C freeze only what they implement:
 
 - the common envelope, `protocolVersion: 1`;
 - client → server: `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`, `SESSION_RESUME_BEGIN`, `SESSION_RESUME_PROVE`, `RTC_CONFIG_REQUEST`;
 - server → client: `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ROOM_PARTICIPANT_CONNECTION`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUMED`, `RTC_CONFIG`, `ERROR`;
 - the ICE server entry `{ urls, username, credential }` of `RTC_CONFIG` (`src/rtcConfig.ts`): `stun:`/`stuns:`/`turn:`/`turns:` URLs only, credentials exactly on TURN entries, and the bounds `MAX_RTC_ICE_SERVERS` (4), `MAX_RTC_ICE_SERVER_URLS` (4), `MAX_ICE_SERVER_URL_BYTES` (300), `MAX_ICE_SERVER_USERNAME_BYTES` (128), `MAX_ICE_SERVER_CREDENTIAL_BYTES` (128), and `MAX_RTC_CONFIG_TTL_MS` (one day). The package carries derived TURN credentials; it knows nothing of how they are derived, and no secret is part of it;
 - both directions, relayed by the service: `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, `ICE_COMPLETE`, `RTC_RECOVERY_REQUEST`, `RTC_RECOVER`;
-- peer → peer on `driftless-control`: `PEER_HELLO`, `PEER_READY`, `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, `NOT_READY`, `PLAY`, `PAUSE`, and `SEEK`, bound to session, negotiation, sender, and recipient;
+- peer → peer on `driftless-control`: `PEER_HELLO`, `PEER_READY`, `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, `NOT_READY`, `PLAY`, `PAUSE`, `SEEK`, and `SYNC`, bound to session, negotiation, sender, and recipient;
 - room ID, invite secret, participant ID, negotiation ID, session ID, resume secret, resume challenge, and resume proof formats;
 - the canonical resume proof input, `resumeProofInput` (76 bytes; see `src/resume.ts`). The package computes no hash: endpoints use their own platform cryptography over exactly these bytes;
 - the bounds `MAX_SIGNALING_MESSAGE_BYTES` (32,768), `MAX_SDP_BYTES` (16,384), `MAX_ICE_CANDIDATE_BYTES` (1024), `MAX_SDP_MID_BYTES` (64), `MAX_SDP_MLINE_INDEX` (63), `MAX_USERNAME_FRAGMENT_BYTES` (256), `MAX_ICE_CANDIDATES_PER_NEGOTIATION` (32), `MAX_NEGOTIATIONS_PER_MEMBERSHIP` (4), and `MAX_PEER_MESSAGE_BYTES` (1024). They are provisional implementation and security bounds, not WebRTC limits;
 - the error codes `INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `INVALID_STATE`, `ROOM_UNAVAILABLE`, `ROOM_FULL`, `RATE_LIMITED`, `SERVER_ERROR`, `SESSION_UNAVAILABLE`.
 
-Heartbeat/drift synchronization, social, transfer, connection diagnostics (which are browser-local and use no message), and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`. Phase 3A setup is implemented as specified below.
+Social, transfer, connection diagnostics (which are browser-local and use no message), and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`. Phase 3A setup is implemented as specified below.
 
 ## Phase 3A peer setup
 
@@ -82,10 +82,14 @@ Run from this directory, or from the repository root with `-w @driftless/protoco
 | `npm run smoke:dist`   | Imports the built package by name through its `exports` map and checks its behavior. |
 | `npm run check`        | `typecheck`, `lint`, `format:check`, `test`, `build`, and `smoke:dist` in sequence.  |
 
-`npm test` runs 288 Vitest tests, including 54 Local Sync identity/readiness/playback contract tests in `local-sync.test.ts`: `parse.test.ts` (82: envelope, version, fields, sequence, room payloads, untrusted JSON, serialization), `rtcConfig.test.ts` (14: the configuration bounds, accepted and refused STUN and TURN URLs and schemes, credentials exactly on TURN entries, mixed, duplicate, and too many URLs, username and credential bounds, unknown and prototype fields, direction, and no credential echoed in a failure), `negotiation.test.ts` (65: negotiation and recovery messages in both directions, SDP and candidate bounds at and over each bound, multi-byte SDP, extra fields, malformed IDs, the peer handshake, and no echo of SDP or candidate text), `resume.test.ts` (28: the base64url codec against Node, the fixed resume proof vector — computed independently in Python and reproduced with Node's crypto and Web Crypto — binding of every input, the resume, presence, and snapshot messages, recovery messages, direction restrictions, and the session-bound handshake), `encoding.test.ts` (24: UTF-8 counting against `TextEncoder` for every code unit, lone surrogates, and the byte bound with multi-byte text), and `identifiers.test.ts` (21).
+`npm test` runs **305 Vitest tests**, covering the versioned envelope, signaling and negotiation contracts, ICE configuration, credentials and identifiers, UTF-8 size bounds, media identity/readiness, host playback and strict discriminated SYNC phases. The new `sync.test.ts` covers exact shapes, timestamp/estimate bounds, direction exclusion from signaling and maximal encoded sizes; [Phase 3C evidence](../../docs/PHASE3C_IMPLEMENTATION.md) records current results.
 
 `dist/` is generated and not committed. Consumers import the built output through the `exports` map; the signaling service's TypeScript build references this project, so `tsc -b` there builds it first.
 
 ## Phase 3B peer playback
 
-`PlaybackPayload` is exactly `{ localSelectionId, remoteSelectionId, revision, positionMs }`; `PlaybackMessage` adds the envelope and authenticated context, and `PlaybackBody` omits that context. Revision is a positive safe integer; positionMs is a nonnegative safe integer. PLAY/PAUSE/SEEK remain below 1024 UTF-8 bytes and are excluded from signaling parsers. PeerSession enforces host roles; sync-engine enforces active pair/revision rules. NOT_READY adds PLAYBACK_UNAVAILABLE, withdrawing readiness while preserving identity. SYNC remains conceptual and unknown. Exact contracts are in [PROTOCOL.md](../../docs/PROTOCOL.md#implemented-through-phase-3b-host-authoritative-playback).
+`PlaybackPayload` is exactly `{ localSelectionId, remoteSelectionId, localReadinessId, remoteReadinessId, revision, positionMs }`; `PlaybackMessage` adds the envelope and authenticated context, and `PlaybackBody` omits that context. Revision is a positive safe integer; positionMs is a nonnegative safe integer. PLAY/PAUSE/SEEK remain below 1024 UTF-8 bytes and are excluded from signaling parsers. PeerSession enforces host roles; sync-engine enforces active pair/revision rules. NOT_READY adds PLAYBACK_UNAVAILABLE, withdrawing readiness while preserving identity. Phase 3C SYNC contracts are implemented separately. Exact contracts are in [PROTOCOL.md](../../docs/PROTOCOL.md#implemented-through-phase-3b-host-authoritative-playback).
+
+## Phase 3C peer synchronization
+
+`SyncPayload` discriminates exact HEARTBEAT and OBSERVATION shapes under one SYNC type. `SyncBody` is context-free; `SyncMessage` adds the peer envelope/context. MAX_SYNC_CLOCK_MS = 1e12 is an arithmetic/resource bound for monotonic timestamps; estimates are paired nullable values. Parser tests cover exact shapes and largest legal envelopes (648/545 B). Direction is enforced by PeerSession, activation/revision by sync-engine/web adapters. Full contracts and timing sign are in [PROTOCOL.md](../../docs/PROTOCOL.md#implemented-through-phase-3c-heartbeat-clock-estimation-and-guest-correction).

@@ -1184,7 +1184,7 @@ describe('host-only playback transport boundary', () => {
       expect(h.states.at(-1)?.failure).toBe('peer_protocol');
     },
   );
-  it('all eight applications share one bucket, handshake excluded', async () => {
+  it('all nine applications share one bucket, handshake excluded', async () => {
     const h = await appGuest({ clock: () => 0 });
     const bodies = [
       [
@@ -1225,9 +1225,10 @@ describe('host-only playback transport boundary', () => {
       ['PLAY', playbackPayload],
       ['PAUSE', playbackPayload],
       ['SEEK', playbackPayload],
+      ['SYNC', syncHeartbeat],
     ] as const;
     for (let i = 0; i < 32; i++) {
-      const body = bodies[i % 8];
+      const body = bodies[i % 9];
       if (body) h.channel.receive(incomingApp(i + 2, h.context, body[0], body[1]));
     }
     expect(h.received).toHaveLength(32);
@@ -1250,4 +1251,115 @@ describe('host-only playback transport boundary', () => {
     expect(h.states.at(-1)?.failure).toBe('peer_protocol');
     expect(h.received).toEqual([]);
   });
+});
+
+const syncPair = {
+  localSelectionId: playbackPayload.localSelectionId,
+  remoteSelectionId: playbackPayload.remoteSelectionId,
+  localReadinessId: playbackPayload.localReadinessId,
+  remoteReadinessId: playbackPayload.remoteReadinessId,
+  syncSequence: 1,
+};
+const syncHeartbeat = {
+  ...syncPair,
+  phase: 'HEARTBEAT',
+  revision: 1,
+  mode: 'paused',
+  positionMs: 2500,
+  capturedAtMs: 1000,
+  clockOffsetMs: null,
+  roundTripMs: null,
+} as const;
+const syncObservation = {
+  ...syncPair,
+  phase: 'OBSERVATION',
+  guestReceivedAtMs: 1000,
+  guestSentAtMs: 1000,
+} as const;
+describe('SYNC transport roles and shared rate budget', () => {
+  it.each(['host', 'guest'] as const)(
+    '%s sends only its authorized phase and receives only opposite phase without context',
+    async (role) => {
+      const h = role === 'host' ? await appHost() : await appGuest();
+      const outgoing = role === 'host' ? syncHeartbeat : syncObservation;
+      const incoming = role === 'host' ? syncObservation : syncHeartbeat;
+      const context = role === 'host' ? {} : { senderId: HOST_ID, recipientId: GUEST_ID };
+      expect(
+        h.session.sendApplicationMessage({ type: 'SYNC', payload: outgoing } as ApplicationBody),
+      ).toBe(true);
+      const before = h.channel.sent.length;
+      expect(
+        h.session.sendApplicationMessage({ type: 'SYNC', payload: incoming } as ApplicationBody),
+      ).toBe(false);
+      expect(h.channel.sent.length).toBe(before);
+      h.channel.receive(incomingApp(2, context, 'SYNC', incoming));
+      expect(h.received).toEqual([{ type: 'SYNC', payload: incoming }]);
+      const callback = h.channel.onmessage;
+      h.session.close();
+      callback?.call(
+        h.channel.asChannel(),
+        new MessageEvent('message', { data: incomingApp(3, context, 'SYNC', incoming) }),
+      );
+      expect(h.received).toHaveLength(1);
+    },
+  );
+  it.each(['host', 'guest'] as const)(
+    '%s inbound wrong phase fails peer_protocol before dispatch',
+    async (role) => {
+      const h = role === 'host' ? await appHost() : await appGuest();
+      h.channel.receive(
+        incomingApp(
+          2,
+          role === 'host' ? {} : { senderId: HOST_ID, recipientId: GUEST_ID },
+          'SYNC',
+          role === 'host' ? syncHeartbeat : syncObservation,
+        ),
+      );
+      expect(h.received).toEqual([]);
+      expect(h.states.at(-1)?.failure).toBe('peer_protocol');
+    },
+  );
+  it.each(['host', 'guest'] as const)(
+    '%s SYNC consumes bucket; first valid over-limit terminates without dispatch',
+    async (role) => {
+      const h = role === 'host' ? await appHost() : await appGuest();
+      const context = role === 'host' ? {} : { senderId: HOST_ID, recipientId: GUEST_ID };
+      // Interleave setup and SYNC, proving no separate bypass bucket for either phase.
+      for (let i = 0; i < 32; i++)
+        h.channel.receive(
+          incomingApp(
+            i + 2,
+            context,
+            i % 2 ? 'SYNC' : 'NOT_READY',
+            i % 2 ? (role === 'host' ? syncObservation : syncHeartbeat) : appBody.payload,
+          ),
+        );
+      expect(h.received).toHaveLength(32);
+      h.channel.receive(
+        incomingApp(34, context, 'SYNC', role === 'host' ? syncObservation : syncHeartbeat),
+      );
+      expect(h.received).toHaveLength(32);
+      expect(h.states.at(-1)?.failure).toBe('application_rate_limit');
+    },
+  );
+  it.each(['host', 'guest'] as const)(
+    '%s legitimate 2Hz SYNC remains under sustained 8/s budget for simulated ten minutes',
+    async (role) => {
+      let now = 0;
+      const h =
+        role === 'host'
+          ? await appHost(true, { clock: () => now })
+          : await appGuest({ clock: () => now });
+      const context = role === 'host' ? {} : { senderId: HOST_ID, recipientId: GUEST_ID };
+      for (let i = 0; i < 1200; i++) {
+        now += 500;
+        h.channel.receive(
+          incomingApp(i + 2, context, 'SYNC', role === 'host' ? syncObservation : syncHeartbeat),
+        );
+      }
+      expect(h.received).toHaveLength(1200);
+      expect(h.session.state).toBe('connected');
+      h.session.close();
+    },
+  );
 });

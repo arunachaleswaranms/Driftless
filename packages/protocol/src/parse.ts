@@ -16,6 +16,7 @@ import {
 } from './identifiers.js';
 import {
   MAX_MEDIA_FINGERPRINT_BYTES,
+  MAX_SYNC_CLOCK_MS,
   MEDIA_FINGERPRINT_VERSION,
   NOT_READY_REASONS,
   MAX_PEER_MESSAGE_BYTES,
@@ -381,6 +382,7 @@ const PEER_DECODERS: DecoderTable<PeerMessage> = {
       }
     );
   },
+  SYNC: decodeSync,
   PLAY: decodePlayback,
   PAUSE: decodePlayback,
   SEEK: decodePlayback,
@@ -709,4 +711,81 @@ function decodePlayback(
       positionMs: p.positionMs,
     }
   );
+}
+
+function syncTimestamp(value: unknown): value is number {
+  return isWireInteger(value) && value <= MAX_SYNC_CLOCK_MS;
+}
+function decodeSync(value: unknown): import('./messages.js').SyncMessage['payload'] | undefined {
+  if (!isJsonObject(value)) return undefined;
+  const fields =
+    value.phase === 'HEARTBEAT'
+      ? ['revision', 'mode', 'positionMs', 'capturedAtMs', 'clockOffsetMs', 'roundTripMs']
+      : value.phase === 'OBSERVATION'
+        ? ['guestReceivedAtMs', 'guestSentAtMs']
+        : null;
+  if (!fields) return undefined;
+  const p = applicationObject(value, [
+    'phase',
+    'localSelectionId',
+    'remoteSelectionId',
+    'localReadinessId',
+    'remoteReadinessId',
+    'syncSequence',
+    ...fields,
+  ]);
+  if (
+    !p ||
+    !isMediaSelectionId(p.localSelectionId) ||
+    !isMediaSelectionId(p.remoteSelectionId) ||
+    !isReadinessId(p.localReadinessId) ||
+    !isReadinessId(p.remoteReadinessId) ||
+    !isWireInteger(p.syncSequence) ||
+    p.syncSequence === 0
+  )
+    return undefined;
+  const context = peerContext(p);
+  if (!context) return undefined;
+  const common = {
+    ...context,
+    localSelectionId: p.localSelectionId,
+    remoteSelectionId: p.remoteSelectionId,
+    localReadinessId: p.localReadinessId,
+    remoteReadinessId: p.remoteReadinessId,
+    syncSequence: p.syncSequence,
+  };
+  if (p.phase === 'OBSERVATION') {
+    if (!syncTimestamp(p.guestReceivedAtMs) || !syncTimestamp(p.guestSentAtMs)) return undefined;
+    return {
+      ...common,
+      phase: 'OBSERVATION',
+      guestReceivedAtMs: p.guestReceivedAtMs,
+      guestSentAtMs: p.guestSentAtMs,
+    };
+  }
+  if (
+    !isWireInteger(p.revision) ||
+    p.revision === 0 ||
+    !isWireInteger(p.positionMs) ||
+    !syncTimestamp(p.capturedAtMs) ||
+    (p.mode !== 'playing' && p.mode !== 'paused')
+  )
+    return undefined;
+  const snapshot = {
+    ...common,
+    phase: 'HEARTBEAT' as const,
+    revision: p.revision,
+    positionMs: p.positionMs,
+    capturedAtMs: p.capturedAtMs,
+    mode: p.mode === 'playing' ? ('playing' as const) : ('paused' as const),
+  };
+  if (p.clockOffsetMs === null && p.roundTripMs === null)
+    return { ...snapshot, clockOffsetMs: null, roundTripMs: null };
+  if (
+    typeof p.clockOffsetMs !== 'number' ||
+    !Number.isSafeInteger(p.clockOffsetMs) ||
+    !isWireInteger(p.roundTripMs)
+  )
+    return undefined;
+  return { ...snapshot, clockOffsetMs: p.clockOffsetMs, roundTripMs: p.roundTripMs };
 }

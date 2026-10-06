@@ -76,7 +76,8 @@ export function RoomPanel({ controller: provided }: RoomPanelProps) {
           Connect this browser directly to one other person&apos;s browser in a private two-person
           room. The signaling service only helps the two browsers find each other. Local Sync
           exchanges private identity evidence and explicit readiness, then follows host Play, Pause,
-          and Seek commands. Continuous drift correction is not implemented yet.
+          and Seek commands with automatic guest drift correction. Physical, long-duration and
+          real-network synchronization qualification remains pending.
         </p>
       </div>
 

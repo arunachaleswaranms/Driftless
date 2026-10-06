@@ -100,8 +100,8 @@ export function LocalSyncPanel({ controller }: { controller: LocalSyncController
         </p>
       ) : null}
       <p>
-        Local Sync follows host Play, Pause, and Seek commands. Continuous drift correction is not
-        implemented yet.
+        Local Sync includes host-authoritative playback and automatic guest drift correction.
+        Physical, long-duration and real-network synchronization qualification remains pending.
       </p>
     </section>
   );

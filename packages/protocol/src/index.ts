@@ -165,3 +165,13 @@ export {
 } from './messages.js';
 
 export type { PlaybackPayload, PlaybackMessage, PlaybackBody } from './messages.js';
+
+export {
+  MAX_SYNC_CLOCK_MS,
+  type SyncActivation,
+  type SyncHeartbeat,
+  type SyncObservation,
+  type SyncPayload,
+  type SyncMessage,
+  type SyncBody,
+} from './messages.js';

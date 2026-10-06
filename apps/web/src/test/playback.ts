@@ -6,6 +6,7 @@ import type {
   ReadinessId,
 } from '@driftless/protocol';
 import { LocalSyncController } from '../features/local-sync/localSyncController.ts';
+import type { SyncAdapters } from '../features/local-sync/continuousSyncController.ts';
 import type { PlaybackMedia } from '../features/local-sync/playbackSyncController.ts';
 export const localId = 'A'.repeat(22) as MediaSelectionId;
 export const remoteId = ('B'.repeat(21) + 'A') as MediaSelectionId;
@@ -38,13 +39,23 @@ export class FakePlaybackMedia extends EventTarget implements PlaybackMedia {
     this.dispatchEvent(new Event(type));
   }
 }
-export function playbackHarness(role: 'host' | 'guest' = 'host') {
+export function playbackHarness(
+  role: 'host' | 'guest' = 'host',
+  syncAdapters: SyncAdapters = {
+    monotonicMs: () => 0,
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+  },
+) {
   let generations = 0;
-  const c = new LocalSyncController({
-    selectionId: () => localId,
-    readinessId: () => readinessId(++generations),
-    sha256: () => Promise.resolve(new Uint8Array(32)),
-  });
+  const c = new LocalSyncController(
+    {
+      selectionId: () => localId,
+      readinessId: () => readinessId(++generations),
+      sha256: () => Promise.resolve(new Uint8Array(32)),
+    },
+    syncAdapters,
+  );
   const video = new FakePlaybackMedia();
   const sends: ApplicationBody[] = [];
   c.playback.setRole(role);

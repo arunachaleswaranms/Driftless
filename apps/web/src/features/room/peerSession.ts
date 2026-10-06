@@ -203,6 +203,13 @@ export class PeerSession {
   sendApplicationMessage(body: ApplicationBody): boolean {
     if (this.#options.role !== 'host' && ['PLAY', 'PAUSE', 'SEEK'].includes(body.type))
       return false;
+    if (
+      body.type === 'SYNC' &&
+      (body.payload.phase === 'HEARTBEAT'
+        ? this.#options.role !== 'host'
+        : this.#options.role !== 'guest')
+    )
+      return false;
     if (this.#state !== 'connected' || this.#channel?.readyState !== 'open') return false;
     const message = {
       protocolVersion: PROTOCOL_VERSION,
@@ -626,6 +633,15 @@ export class PeerSession {
         this.#fail('peer_protocol');
         return;
       }
+      if (
+        message.type === 'SYNC' &&
+        (message.payload.phase === 'HEARTBEAT'
+          ? this.#options.role !== 'guest'
+          : this.#options.role !== 'host')
+      ) {
+        this.#fail('peer_protocol');
+        return;
+      }
       if (!this.#admitApplicationMessage()) {
         this.#fail('application_rate_limit');
         return;
@@ -633,6 +649,37 @@ export class PeerSession {
       // The context is checked above; upward consumers receive only domain fields.
       // Explicit projection keeps the application API context-free.
       switch (message.type) {
+        case 'SYNC': {
+          const p = message.payload;
+          const common = {
+            localSelectionId: p.localSelectionId,
+            remoteSelectionId: p.remoteSelectionId,
+            localReadinessId: p.localReadinessId,
+            remoteReadinessId: p.remoteReadinessId,
+            syncSequence: p.syncSequence,
+          };
+          const payload =
+            p.phase === 'OBSERVATION'
+              ? {
+                  ...common,
+                  phase: 'OBSERVATION' as const,
+                  guestReceivedAtMs: p.guestReceivedAtMs,
+                  guestSentAtMs: p.guestSentAtMs,
+                }
+              : {
+                  ...common,
+                  phase: 'HEARTBEAT' as const,
+                  revision: p.revision,
+                  mode: p.mode,
+                  positionMs: p.positionMs,
+                  capturedAtMs: p.capturedAtMs,
+                  ...(p.clockOffsetMs === null
+                    ? { clockOffsetMs: null, roundTripMs: null }
+                    : { clockOffsetMs: p.clockOffsetMs, roundTripMs: p.roundTripMs }),
+                };
+          this.#applicationCallback?.({ type: 'SYNC', payload });
+          break;
+        }
         case 'PLAY':
         case 'PAUSE':
         case 'SEEK':

@@ -1,6 +1,6 @@
 # @driftless/sync-engine
 
-Platform-neutral Local Sync identity, readiness and playback-authority package through Phase 3B. Its only runtime dependency is the internal `@driftless/protocol` workspace. No React, DOM, WebRTC, WebSocket, filesystem, persistence, or external runtime package. Phase 3B adds pure playback authority; no clock/drift logic or media transfer.
+Platform-neutral Local Sync identity, readiness and playback-authority package through Phase 3C. Its only runtime dependency is the internal `@driftless/protocol` workspace. No React, DOM, WebRTC, WebSocket, filesystem, persistence, or external runtime package. Phase 3B adds pure playback authority; Phase 3C adds bounded clock estimation, projection and drift policy. No media transfer.
 
 `src/fingerprint.ts` orchestrates bounded random-access source reads and injected SHA-256; `src/readiness.ts` owns deterministic state/effects; `src/index.ts` exports the public API. `test/` has pure state tests and independent fixed vectors; `scripts/generate-vectors.mjs` is a separate Node crypto oracle, and `scripts/smoke-dist.mjs` checks built exports and garbage collection of source buffers.
 
@@ -23,4 +23,8 @@ The check covers typecheck, strict lint, formatting, unit tests, build, and buil
 
 ## Phase 3B playback authority
 
-`playback.ts` models inactive, waiting-for-baseline and active authority with one current pair, logical revision, mode and referenced position. `playbackReadiness` requires bothReady; `hostPlayback` emits the revision-1 PAUSE baseline or a newer PLAY/PAUSE/SEEK; `guestPlayback` applies only the current reversed pair and fresh revision, beginning with PAUSE revision 1. SEEK preserves mode. Readiness/fresh-peer loss resets authority; the same healthy channel retains it. No clock, timer, heartbeat, history, acknowledgement or gap repair. Browser preparation, clamping and element events stay in the web adapter. See [3B evidence](../../docs/PHASE3B_IMPLEMENTATION.md).
+`playback.ts` models inactive, waiting-for-baseline and active authority with one current pair, logical revision, mode and referenced position. `playbackReadiness` requires bothReady; `hostPlayback` emits the revision-1 PAUSE baseline or a newer PLAY/PAUSE/SEEK; `guestPlayback` applies only the current reversed pair and fresh revision, beginning with PAUSE revision 1. SEEK preserves mode. Readiness/fresh-peer loss resets authority; the same healthy channel retains it. This discrete module owns no clock, timer, heartbeat, history, acknowledgement or gap repair. Browser preparation, clamping and element events stay in the web adapter. See [3B evidence](../../docs/PHASE3B_IMPLEMENTATION.md).
+
+## Phase 3C clock and drift
+
+`clock.ts` accepts numeric monotonic timestamps for independent NTP-style samples, bounded pending/window state (eight each), lowest-RTT estimation and guest projection. `drift.ts` is a pure correction policy with settled/start/hard-seek/paused-seek thresholds 75/150/750/100 ms and guest rates 1.05/0.95. Clock offset means guestClock ≈ hostClock + offset; drift means guestActual − expectedHost. These provisional implementation constants do not define acceptance quality. The web adapter owns the host's one 500 ms timeout, media correction and lifecycle cleanup. See [3C evidence](../../docs/PHASE3C_IMPLEMENTATION.md).

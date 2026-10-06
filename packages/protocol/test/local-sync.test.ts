@@ -207,7 +207,7 @@ describe('playback numeric contracts', () => {
       ).toBe(false);
     },
   );
-  it('SYNC remains unknown', () => {
+  it('old conceptual SYNC shape is rejected', () => {
     expect(parsePeerMessage(envelope('SYNC', { ...context, ...bodies.PLAY })).ok).toBe(false);
   });
 });

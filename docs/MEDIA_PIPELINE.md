@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the intended media-flow boundaries for Driftless. Phase 1 local playback and Local Sync identity/readiness plus host command synchronization through Phase 3B are implemented; continuous drift correction and the production Progressive Watch pipeline remain future work. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5, 0.6, and 0.7 are recorded separately below. They do not change the planned behavior below.
+This document defines the intended media-flow boundaries for Driftless. Phase 1 local playback and Local Sync identity/readiness plus host command synchronization through Phase 3C include heartbeat, clock observation, drift detection and guest correction. The production Progressive Watch pipeline remains future work. MP4Box.js, Media Source Extensions (MSE), and Origin Private File System (OPFS) are Phase 0 and Phase 5 feasibility items rather than proven implementation choices. Laboratory observations from Spikes 0.5, 0.6, and 0.7 are recorded separately below. They do not change the planned behavior below.
 
 ## Mode A - Local Sync
 
@@ -14,17 +14,18 @@ Host local file  --> host HTML5 video ----+
 Guest local file --> guest HTML5 video ---+    (state and controls only)
 ```
 
-Implemented through Phase 3B:
+Implemented through Phase 3C:
 
 1. Select a local file using the existing player/input; wait for successful browser metadata loading.
 2. Generate a fresh random selection ID and hash **every byte** sequentially with one 4 MiB slice/read/digest active at a time. Refuse empty files and files above 4096 chunks (16 GiB, provisional).
 3. Derive a session-scoped fingerprint using the canonical algorithm in [PROTOCOL.md](PROTOCOL.md#implemented-through-phase-3a-local-sync-setup). Exchange only bounded identity evidence on the sync plane: no media bytes, filename, MIME, path, object URL, private root, or chunk digests.
 4. Compare fingerprints and byte lengths, confirm the current media pair, and require an explicit Ready choice from each user. Ready prepares the element without moving its saved position or starting synchronized playback. Both-ready begins a paused host-position baseline at revision 1.
-5. Cancel obsolete identity work and invalidate readiness on replacement, clear, errors, remote changes, or fresh peer recovery. Reannounce current truth after a fresh handshake; both users must Ready again. Signaling-only reconnect preserves a healthy channel's setup state.
+5. Apply host Play/Pause/Seek; periodic SYNC reports current authority without advancing revision. Guest projection/correction follows the exact readiness pair and applied revision/mode.
+6. Cancel obsolete identity work and invalidate readiness on replacement, clear, errors, remote changes, or fresh peer recovery. Reannounce current truth after a fresh handshake; both users must Ready again. Signaling-only reconnect preserves a healthy channel's setup state.
 
 Phase 1 playback itself binds File → object URL → native video and performs no application-level whole-file read. Phase 3A identity intentionally adds a bounded sequential full-file read; it never materializes or uploads the entire file. Progress stays local, errors are fixed categories, and no identity/readiness state is persisted.
 
-Phase 3B applies host Play, Pause, and committed Seek with current-pair binding and monotonic revisions. Position is integer milliseconds, safely clamped to local finite duration. No media transfer or clock compensation. Readiness loss pauses; fresh peer recovery requires new Ready choices and a fresh paused baseline; signaling-only recovery preserves active playback. Future 3C: clock observation, heartbeat, drift detection/correction. Future 3D: physical/network qualification with thresholds documented before evaluation. Drift algorithms remain open. Local Sync must work independently of transfer-engine, MSE, segmentation, and cache support.
+Phase 3B applies host Play, Pause, and committed Seek with current-pair binding and monotonic revisions. Position is integer milliseconds, safely clamped to local finite duration. Phase 3C adds monotonic clock estimation and guest-only compensation; no media transfer. Readiness loss pauses; fresh peer recovery requires new Ready choices and a fresh paused baseline; signaling-only recovery preserves active playback. An active cycle emits host heartbeats every 500 ms, returns guest observations, estimates clock offset from a bounded lowest-RTT window, detects drift and applies temporary guest rate correction or local hard seek. Future 3D: define acceptance thresholds, long-duration tests, network-condition and physical-device qualification before evaluation. Provisional implementation thresholds do not pass acceptance gates. Local Sync must work independently of transfer-engine, MSE, segmentation, and cache support.
 
 ## Mode B - Progressive Watch
 

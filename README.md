@@ -6,11 +6,11 @@ Driftless is an experimental, private, peer-to-peer application for synchronized
 >
 > Physical Android / different-network / real-recovery / public-TURN qualification is **DEFERRED / NOT CLOSED**. The literal Phase 2 physical exit gate is **NOT PASSED**; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
 >
-> **Phase 3 — Local Sync Mode: IN PROGRESS**. 3A is IMPLEMENTED / REVIEW PASS; 3B host playback controls are IMPLEMENTED; 3C is NEXT / NOT STARTED; 3D is NOT STARTED. Phase 3 exit gate: **NOT PASSED**.
+> **Phase 3 — Local Sync Mode: IN PROGRESS**. 3A is IMPLEMENTED / REVIEW PASS; 3B host playback controls are IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED; 3D is NEXT / NOT STARTED. Phase 3 exit gate: **NOT PASSED**.
 
 Phase 2 provides private two-person rooms, signaling, WebRTC negotiation and a data-channel handshake, authenticated signaling resume, bounded fresh-peer recovery, safe connection diagnostics, runtime ICE configuration, and short-lived TURN credential issuance. Its automated browser evidence uses two contexts on one development machine; it does not qualify Internet connectivity or public TURN operation.
 
-Phase 0 software feasibility and Phase 1 application foundation are closed. The web client provides an application shell, PWA foundation, local video playback, and a local report of observable browser APIs. Local Sync follows host Play, Pause, and Seek commands. Continuous drift correction and media transfer remain unimplemented. Compatibility statuses are unchanged.
+Phase 0 software feasibility and Phase 1 application foundation are closed. The web client provides an application shell, PWA foundation, local video playback, and a local report of observable browser APIs. Local Sync includes host-authoritative playback and automatic guest drift correction. Physical, long-duration and real-network synchronization qualification remains pending. Media transfer remains unimplemented. Compatibility statuses are unchanged.
 
 Physical Android, real-network recovery, and public TURN remain project-level qualification debt. Phase 3 implementation may proceed after the Phase 2 implementation merge, but final product/release closure must revisit that debt and must not infer the deferred gates as passed.
 
@@ -27,11 +27,11 @@ Physical Android, real-network recovery, and public TURN remain project-level qu
 
 ### Mode A - Local Sync
 
-Each participant selects a local copy of the same video. Local Sync exchanges media identity, readiness, and host playback commands; no media file is transferred. Continuous clock observation, heartbeat and drift correction remain future work. Chat and reactions remain later work.
+Each participant selects a local copy of the same video. Local Sync exchanges media identity, readiness, and host playback commands; no media file is transferred. Monotonic clock observation, heartbeat and guest drift correction are implemented through Phase 3C. Chat and reactions remain later work.
 
-**Implemented through Phase 3B:** independent local selection, bounded full-file identity, session-scoped identity exchange, match/mismatch, explicit readiness, host Play/Pause/Seek, and authoritative revisions. Both-ready establishes a paused host-position baseline.
+**Implemented through Phase 3C:** independent local selection, bounded full-file identity, session-scoped identity exchange, match/mismatch, explicit readiness, host Play/Pause/Seek, and authoritative revisions. Both-ready establishes a paused host-position baseline; host heartbeats report authority and clock estimates for automatic guest drift correction.
 
-**Future:** heartbeat and drift management, chat, and reactions.
+**Future:** Phase 3D acceptance/qualification, chat, and reactions.
 
 ### Mode B - Progressive Watch
 
@@ -72,7 +72,7 @@ The project version is `0.0.0-planning`. Phase 0 software feasibility closed aft
 
 Phase 1 — Application Foundation is **CLOSED / PASS**. Its exit gate passed at revision `4bf6e31`; see the [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md).
 
-Phase 2 — Internet P2P Foundation is **MERGED / COMPLETE**; Phases 2A–2D are implemented and review pass. Physical/network qualification is **DEFERRED / NOT CLOSED**, and the literal physical exit gate is **NOT PASSED**. The physical OnePlus Nord 5 was identified, but cellular / Wi-Fi-off establishment, real recovery, and selected-path evidence were not obtained; no public TURN service was available. Phase 3 — Local Sync Mode is **IN PROGRESS**, on `phase/3-local-sync`. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED; 3C is NEXT / NOT STARTED; 3D is NOT STARTED. The overall Phase 3 gate is not passed.
+Phase 2 — Internet P2P Foundation is **MERGED / COMPLETE**; Phases 2A–2D are implemented and review pass. Physical/network qualification is **DEFERRED / NOT CLOSED**, and the literal physical exit gate is **NOT PASSED**. The physical OnePlus Nord 5 was identified, but cellular / Wi-Fi-off establishment, real recovery, and selected-path evidence were not obtained; no public TURN service was available. Phase 3 — Local Sync Mode is **IN PROGRESS**, on `phase/3-local-sync`. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED; 3D is NEXT / NOT STARTED. The overall Phase 3 gate is not passed.
 
 - **Phase 1A — implemented:** the React/TypeScript/Vite web client in [`apps/web/`](apps/web/), with an application shell, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser tests.
 - **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. Phase 1 playback itself uses no application-level whole-file read or upload. Phase 3A identity intentionally reads the file sequentially in bounded chunks, never materializing or uploading the entire file.
@@ -86,11 +86,11 @@ Phase 2 — Internet P2P Foundation is **MERGED / COMPLETE**; Phases 2A–2D are
 
 Automated Chromium results are development evidence, not browser support claims. Node and loopback signaling tests, and same-host two-context WebRTC tests, are not device, NAT-traversal, TURN, or real-network evidence. Physical-device and real-network qualification remains deferred.
 
-## Local Sync through Phase 3B
+## Local Sync through Phase 3C
 
 Choose a local video in each connected browser. Identity checking reads every local byte through one 4 MiB slice at a time. Matching files may have different filenames. After metadata loads and both peers confirm a match, each user chooses **I'm ready**; **Not ready** withdraws that choice. Replacing/clearing a file or a playback error invalidates readiness. Fresh peer recovery reannounces media and requires new Ready choices; signaling-only reconnect preserves a healthy channel's readiness. Ready prepares the local video during the user gesture, preserving its position and leaving it paused. Both-ready establishes PAUSE revision 1 at the host position. The host then has Play, Pause, and a labelled seek slider plus a separate Seek button. Native transport controls are hidden during authority; the guest sees “The host controls playback.” Loss of readiness pauses both players; re-ready begins a new paused baseline. Volume/mute remain local and have no dedicated UI while native controls are hidden. No media is transferred. Identity evidence is kept only in memory and never shown in the normal UI. The provisional identity bound is 4096 chunks / 16 GiB; this is not a final product maximum.
 
-See [sync-engine](packages/sync-engine/README.md), [3A evidence](docs/PHASE3A_IMPLEMENTATION.md), and [3B evidence](docs/PHASE3B_IMPLEMENTATION.md). Command application is automated same-host browser evidence only; no physical or continuous synchronization gate is evaluated.
+See [sync-engine](packages/sync-engine/README.md), [3A evidence](docs/PHASE3A_IMPLEMENTATION.md), [3B evidence](docs/PHASE3B_IMPLEMENTATION.md), and [3C evidence](docs/PHASE3C_IMPLEMENTATION.md). Command application and drift correction have automated same-host browser evidence only; no physical or continuous synchronization gate is evaluated.
 
 ## Development
 
@@ -113,7 +113,7 @@ Package details: [web client](apps/web/README.md), [protocol](packages/protocol/
 
 - [Project charter](docs/PROJECT_CHARTER.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [Protocol (implemented through Phase 3B; future families conceptual)](docs/PROTOCOL.md)
+- [Protocol (implemented through Phase 3C; future families conceptual)](docs/PROTOCOL.md)
 - [Deployment boundary](docs/DEPLOYMENT.md)
 - [Media pipeline](docs/MEDIA_PIPELINE.md)
 - [Roadmap and phase gates](docs/ROADMAP.md)

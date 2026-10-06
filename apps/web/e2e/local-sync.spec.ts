@@ -271,7 +271,9 @@ test('Local Sync signaling-only reconnect preserves channel, identity and both-r
 }) => {
   const { host, guest } = await readyPair(browser, baseURL, pageProblems);
   const before = await guest.page.evaluate(() => ({
-    sends: window.rtcProbe.controlSends.length,
+    sends: window.rtcProbe.controlSends.filter(
+      (s) => (JSON.parse(s.text) as { type: string }).type !== 'SYNC',
+    ).length,
     reads: window.rtcProbe.slices.length,
   }));
   await dropSignaling(guest);
@@ -285,7 +287,9 @@ test('Local Sync signaling-only reconnect preserves channel, identity and both-r
   }
   expect(
     await guest.page.evaluate(() => ({
-      sends: window.rtcProbe.controlSends.length,
+      sends: window.rtcProbe.controlSends.filter(
+        (s) => (JSON.parse(s.text) as { type: string }).type !== 'SYNC',
+      ).length,
       reads: window.rtcProbe.slices.length,
     })),
   ).toEqual(before);
