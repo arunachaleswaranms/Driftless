@@ -13,10 +13,11 @@
     "apps/*"
   ],
   "scripts": {
-    "check": "npm run check -w @driftless/protocol && npm run check -w @driftless/sync-engine && npm run check -w @driftless/signaling && npm run check -w @driftless/web",
+    "check": "npm run check -w @driftless/protocol && npm run check -w @driftless/sync-engine && npm run check -w @driftless/signaling && npm run check -w @driftless/web && npm run test:qualification",
     "test": "npm run test -w @driftless/protocol && npm run test -w @driftless/sync-engine && npm run test -w @driftless/signaling && npm run test -w @driftless/web",
     "test:e2e": "npm run test:e2e -w @driftless/web --",
     "build": "npm run build -w @driftless/protocol && npm run build -w @driftless/sync-engine && npm run build -w @driftless/signaling && npm run build -w @driftless/web",
-    "verify": "npm run check && npm run test:e2e"
+    "verify": "npm run check && npm run test:e2e",
+    "test:qualification": "node --test tools/qualification/phase3/*.test.mjs"
   }
 }

@@ -1,6 +1,6 @@
 # Phase 3C Implementation Evidence
 
-**IMPLEMENTED — Heartbeat, Clock Estimation, Drift Detection & Correction. Independent GitHub review pending.** No 3C REVIEW PASS is claimed. Phase 3D is NEXT / NOT STARTED. Phase 3 exit gate is NOT PASSED. Phase 2 physical/network qualification remains DEFERRED / NOT CLOSED; all existing physical debts remain open.
+**IMPLEMENTED / REVIEW PASS — Heartbeat, Clock Estimation, Drift Detection & Correction.** Independent review PASS is approved by the user at `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0`. Phase 3D is QUALIFICATION IN PROGRESS. Phase 3 exit gate is NOT PASSED. Phase 2 physical/network qualification remains DEFERRED / NOT CLOSED; all existing physical debts remain open.
 
 Evidence classification: **AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE**. Browser contexts on one development machine, synthetic 8 s MP4/H.264/AAC, real loopback signaling and real RTCPeerConnection/ordered RTCDataChannel. No physical Android, different-network, cellular, TURN, real long-duration or final synchronization-quality qualification.
 
@@ -160,17 +160,17 @@ Local verification logs are outside the repository: `/private/tmp/driftless-3c-c
 
 Production synchronization adds only bounded control JSON on the RTCDataChannel, no media transfer or binary sends, no media upload or playback/SYNC WebSocket signaling. SYNC contains no filename/path/MIME/object URL/fingerprint/content root/chunk digest/media byte/wall-clock date/browser exception. No persistence or raw timing history/logging: no localStorage/sessionStorage/IndexedDB/OPFS/Cache Storage/URL state. Browser privacy probes inspect every recorded control send and WebSocket frame: strings only, legal bounded JSON, no private media metadata, no guest authority, no SYNC signaling, no non-GET/HEAD upload, and empty application storage/query/hash. Static scope inspection confirms every new timing occurrence belongs to 3C, no signaling production diff, no transfer-engine diff and no lockfile/dependency churn. `git diff --check` passes; generated build/test artifacts remain ignored or outside the repository.
 
-No transfer-engine/MSE/OPFS/MP4Box production integration/Progressive Watch/chat/reactions/third participant/server-assisted sync/audio/volume/mute manipulation or variable host speed. No Phase 3D qualification, physical Android, different-network, cellular, TURN, final acceptable quality, production quality, long-duration exit gate, Phase 3 CLOSED/PASS or 3C REVIEW PASS.
+No transfer-engine/MSE/OPFS/MP4Box production integration/Progressive Watch/chat/reactions/third participant/server-assisted sync/audio/volume/mute manipulation or variable host speed. The original 3C implementation run included no Phase 3D qualification, physical Android, different-network, cellular, TURN, final acceptable quality, production quality, long-duration exit gate, Phase 3 CLOSED/PASS or independent-review result. The later user-approved 3C review PASS is recorded above.
 
 ## Durable status and next step
 
 ```text
 3A — IMPLEMENTED / REVIEW PASS
 3B — IMPLEMENTED / REVIEW PASS
-3C — IMPLEMENTED
-3D — NEXT / NOT STARTED
+3C — IMPLEMENTED / REVIEW PASS
+3D — QUALIFICATION IN PROGRESS
 Phase 3 exit gate — NOT PASSED
 Phase 2 physical/network qualification — DEFERRED / NOT CLOSED
 ```
 
-Independent GitHub review of the exact pushed Phase 3C commit. Do not begin Phase 3D before review PASS. Commit SHA is supplied by post-commit/push handoff and can be resolved with `git log -1 --format=%H -- docs/PHASE3C_IMPLEMENTATION.md`.
+3C independent review PASS is approved by the user. Continue only Phase 3D qualification; do not open the milestone PR before independent qualification review PASS. Commit SHA is supplied by post-commit/push handoff and can be resolved with `git log -1 --format=%H -- docs/PHASE3C_IMPLEMENTATION.md`.

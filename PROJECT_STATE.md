@@ -44,7 +44,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 
 The latest physical qualification attempt at `3a5922200ab0a77a1dd55d9d911a79a492971874` on 2026-10-04 identified the physical OnePlus Nord 5 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but did not execute a cellular / Wi-Fi-off cross-network session. Real-device data-channel establishment, selected-path evidence on both peers, and genuine network recovery remain unobserved (G1–G5 GAP). No publicly reachable TURN endpoint was available (T3/T4 GAP; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D automated browser evidence remains two browser contexts on one development machine.
 
-Phase 3 — Local Sync Mode: **IN PROGRESS**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED**. Phase 3D — Qualification & Closure: **NEXT — NOT STARTED**. Phase 3 exit gate: **NOT PASSED**.
+Phase 3 — Local Sync Mode: **IN PROGRESS**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **QUALIFICATION IN PROGRESS**. Phase 3 exit gate: **NOT PASSED**.
 
 ### Implementation and qualification policy
 
@@ -421,7 +421,7 @@ Both-ready creates a PAUSE revision-1 baseline at the host current position. Exp
 
 Independent review correction **3B-01** binds READY to a fresh participant-local 128-bit ReadinessId and PLAY/PAUSE/SEEK to both current Ready intents as well as selections. IDs are generated once after successful explicit preparation, cleared with invalidated readiness, and never persisted/displayed/logged or sent through signaling. Old same-media/revision-1 baselines cannot activate a new Ready cycle; revision reset to 1 is safe inside a fresh readiness pair. The exact opposite-direction 2 s stale baseline / 6 s genuine baseline and PLAYBACK_UNAVAILABLE regressions pass. Protocol version, host role enforcement, transport sequences, message bound and burst-32/refill-8/s limiter remain unchanged. **3B — IMPLEMENTED / REVIEW PASS.**
 
-Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMENTATION.md). That historical 3B evidence introduces no heartbeat/drift correction. Phase 3C is now **IMPLEMENTED** (separate evidence); 3D is **NEXT — NOT STARTED**; Phase 3 remains **IN PROGRESS**, exit gate **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**.
+Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMENTATION.md). That historical 3B evidence introduces no heartbeat/drift correction. Phase 3C is now **IMPLEMENTED / REVIEW PASS** (separate evidence); 3D is **QUALIFICATION IN PROGRESS**; Phase 3 remains **IN PROGRESS**, exit gate **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**.
 
 ## Open Deferred Qualification
 
@@ -430,7 +430,7 @@ Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMEN
 
 ## Not Started
 
-- Phase 3D — Qualification & Closure: **NEXT — NOT STARTED**; deferred physical/network qualification remains an open release-level gate.
+- Phase 3D — Qualification & Closure: **QUALIFICATION IN PROGRESS**; deferred physical/network qualification remains an open release-level gate.
 - Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
@@ -547,7 +547,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-Independent GitHub review of the exact pushed Phase 3C commit. Do not begin Phase 3D before review PASS. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
+3C independent review PASS is approved by the user at `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0`. Phase 3D qualification is authorized. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -580,12 +580,12 @@ Approved Phase 3B head: `9ace3833eccc560a0cecd3075c49edbf01e4f3f5` (`fix: bind p
 
 3B — IMPLEMENTED / REVIEW PASS
 
-3C — IMPLEMENTED (independent review pending)
+3C — IMPLEMENTED / REVIEW PASS
 
-3D — NEXT / NOT STARTED
+3D — QUALIFICATION IN PROGRESS
 
 Phase 3 exit gate — NOT PASSED
 
 Phase 2 physical/network qualification — DEFERRED / NOT CLOSED
 
-Independent GitHub review of the exact pushed Phase 3C commit. Do not begin Phase 3D before review PASS. No milestone PR, merge or qualification performed.
+3C independent review PASS is approved by the user at `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0`. Phase 3D qualification is authorized. No milestone PR or merge. Physical qualification remains pending.

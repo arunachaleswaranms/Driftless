@@ -204,3 +204,49 @@ The status vocabulary and target tiers live in [COMPATIBILITY.md](COMPATIBILITY.
 ## Test Artifacts
 
 Future test reports should include the exact Git revision, configuration without secrets, browser/OS/device versions, media fixture provenance and characteristics, network topology and impairments, ICE path type, raw measurements, failures, and reviewer conclusion. Test media must be lawful, non-sensitive, minimal where possible, and excluded from Git when large or local-only.
+
+## Phase 3D qualification methodology
+
+The literal Local Sync gate requires two real devices with matching independent
+local media, a confirmed different-network session, a measured ≥30-minute playing
+run, acceptable synchronization, genuine network interruption/recovery and no media
+transfer. Frozen acceptance thresholds and Q1–Q20 are in
+[PHASE3_QUALIFICATION.md](PHASE3_QUALIFICATION.md); change only with rationale,
+new commit and complete requalification.
+
+Use one committed candidate with `DRIFTLESS_BUILD_REVISION` confirmed on both
+participants. No code/tool changes during measurement; fixes invalidate affected
+candidate evidence. Generate an ignored deterministic ≥35-minute MP4/H.264/AAC
+fixture, verify identical byte length/SHA-256 on each device and record only its
+filename and characteristics.
+
+External CDP samples approximately once/second read video currentTime, paused,
+playbackRate and performance.now(). One sampler clock brackets each evaluation;
+project both positions to a common epoch with their paused/rate state. Reject
+individual evaluation RTT>100 ms or effective separation>200 ms; retain rejected
+samples/reasons and reduce coverage. Explicit bounded PLAY/SEEK/recovery warm-ups
+are 10 s; injections exclude only their predeclared recovery deadline. Nearest-rank
+absolute drift p95≤250 ms, p99≤500 ms, maximum≤750 ms, ≥95% coverage, no more than
+two consecutive valid samples>500 ms. Keep all deviations visible.
+
+Physical topology is development Mac/installed Chrome on Wi-Fi plus physical
+OnePlus Nord 5/Chrome on cellular, Wi-Fi OFF, no tethering. USB ADB/CDP supplies
+measurement without a wireless control dependency. Same-LAN smoke is supplemental.
+Record both selected paths as DIRECT/TURN_RELAY; UNKNOWN is a gap. Disable Device B
+cellular until actual transport loss is observed, restore it, require fresh usable
+peer≤30 s without reload, both explicit Ready choices, PAUSE revision1, heartbeat
+sequence1 with null first estimate and explicit Play. Test network switching when
+practical. Public forced-relay T3/T4 is a separate Phase 2 release debt.
+
+No-transfer checks independently observe local selection/fingerprints, bounded text
+control JSON, no binary channel/media upload/playback signaling/media storage; also
+verify empty application persistence, no secret in URLs/logs, memory-only readiness
+IDs/clock state and sanitized errors. Source/unit evidence owns private bounds
+(pending/window≤8, one scheduler, no history); runtime metrics are labelled, never
+invented exact browser-memory acceptance limits.
+
+The real 30-minute desktop soak, three serial full Chromium regressions, installed
+Chrome opt-in and ten focused 3C repetitions remain **AUTOMATED SAME-HOST DEVELOPMENT
+BROWSER EVIDENCE**. They cannot replace **PHYSICAL REAL-DEVICE EVIDENCE** or confirmed
+**REAL CROSS-NETWORK EVIDENCE**. Any mandatory physical gap keeps Phase 3 NOT CLOSED
+and the exit gate NOT PASSED. No milestone PR before independent review PASS.
