@@ -1,0 +1,204 @@
+{
+  "date": "2026-10-08",
+  "qualificationSha": "778de3a839d468527ad4789ebdc24fda42b06453",
+  "phase3Gate": "NOT PASSED",
+  "softwareQualification": "PASS",
+  "physicalQualification": "NOT CLOSED",
+  "classification": "AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE",
+  "mac": {
+    "model": "MacBook Pro / Mac17,2",
+    "chip": "Apple M5",
+    "os": "macOS 26.6.2 (25G83)",
+    "chrome": "154.0.8037.98",
+    "defaultRouteWiFi": true
+  },
+  "phoneInventory": {
+    "model": "OnePlus Nord 5 / CPH2707",
+    "os": "Android 16 / SDK 36",
+    "chrome": "154.0.8037.126",
+    "transportAtInventory": "WIRELESS",
+    "wifiAtInventory": "ON",
+    "usbObserved": false,
+    "cdpSocketObserved": false,
+    "availableAtFinalInventory": false,
+    "qualificationExecuted": false
+  },
+  "fixture": {
+    "filename": "synthetic-320x180-35m-h264-aac.mp4",
+    "byteLength": 11976311,
+    "sha256": "9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67",
+    "durationSeconds": 2100,
+    "video": "H.264 High / AVC / yuv420p / 320x180 / 30fps",
+    "audio": "AAC-LC / 48000Hz / stereo",
+    "generator": "FFmpeg 6.0 / single-threaded / bitexact / synthetic color and tone",
+    "committed": false,
+    "phoneBytesVerified": false
+  },
+  "deployment": {
+    "sameHost": "loopback preview/signaling, development only, no ICE server",
+    "physicalPublicDeployment": "GAP \u2014 not executed",
+    "plannedPublicCategory": "development qualification deployment, not production hosting"
+  },
+  "soak": {
+    "completedDurationMs": 1800000.14075,
+    "summary": {
+      "state": "PASS",
+      "durationMs": 1800000,
+      "expectedSamples": 1800,
+      "validSamples": 1800,
+      "rejectedSamples": 0,
+      "excludedSamples": 0,
+      "missingSlots": 2,
+      "coveragePercent": 99.8888888888889,
+      "p50Ms": 0.12366649997420609,
+      "p95Ms": 0.4393960000597872,
+      "p99Ms": 1.367625000042608,
+      "maximumMs": 8.944499499863014,
+      "over250": 0,
+      "over500": 0,
+      "over750": 0,
+      "maximumConsecutiveOver500": 0,
+      "checks": {
+        "duration": true,
+        "coverage": true,
+        "p95": true,
+        "p99": true,
+        "maximum": true,
+        "consecutive": true
+      },
+      "exclusions": []
+    },
+    "invariants": {
+      "noAsyncOrMediaError": true,
+      "hostAlways1x": true,
+      "bothAlwaysPlaying": true,
+      "mediaErrors": 0,
+      "samePeerAndChannel": true,
+      "guestAuthority": 0,
+      "noReadyCycling": true,
+      "noBinaryOrSignalingPlayback": true,
+      "oneObjectUrlEach": true
+    },
+    "rateCounts": {
+      "slow": 0,
+      "fast": 0
+    },
+    "path": [
+      "DIRECT",
+      "DIRECT"
+    ],
+    "storage": [
+      {
+        "localStorage": 0,
+        "sessionStorage": 0,
+        "databases": 0,
+        "caches": 0,
+        "opfsEntries": 0,
+        "urlState": false
+      },
+      {
+        "localStorage": 0,
+        "sessionStorage": 0,
+        "databases": 0,
+        "caches": 0,
+        "opfsEntries": 0,
+        "urlState": false
+      }
+    ],
+    "heartbeatCountTotal": 3591,
+    "heartbeatCountMeasured": 3571,
+    "observationCountMeasured": 3571,
+    "guestSeekEventsMeasured": 0,
+    "hardCorrectionCount": null,
+    "controlMaxBytes": [
+      563,
+      506
+    ],
+    "resourceMetrics": [
+      {
+        "JSHeapUsedSize": {
+          "start": 5484284,
+          "last": 4696084,
+          "min": 4399452,
+          "max": 5810676
+        },
+        "Nodes": {
+          "start": 916,
+          "last": 732,
+          "min": 732,
+          "max": 916
+        },
+        "Documents": {
+          "start": 20,
+          "last": 7,
+          "min": 7,
+          "max": 20
+        }
+      },
+      {
+        "JSHeapUsedSize": {
+          "start": 5119984,
+          "last": 4736144,
+          "min": 3989472,
+          "max": 5497556
+        },
+        "Nodes": {
+          "start": 878,
+          "last": 684,
+          "min": 684,
+          "max": 878
+        },
+        "Documents": {
+          "start": 20,
+          "last": 7,
+          "min": 7,
+          "max": 20
+        }
+      }
+    ]
+  },
+  "rawArtifact": {
+    "filename": "driftless-3d-soak-30m.json",
+    "sha256": "dc9d2d26f9a77db295a58fa58e5d46ac658056342799cf8d173bfd11096fa247",
+    "byteLength": 1561815,
+    "committed": false
+  },
+  "phase2": {
+    "G1": "GAP",
+    "G2": "GAP",
+    "G3": "GAP",
+    "G4": "GAP",
+    "G5": "GAP",
+    "T1": "PASS",
+    "T2": "PASS",
+    "T3": "GAP",
+    "T4": "GAP",
+    "physicalQualification": "DEFERRED / NOT CLOSED"
+  },
+  "compatibilityChanged": false,
+  "audits": {
+    "full": 0,
+    "omitDev": 0
+  },
+  "regression": {
+    "workspaceTests": 1099,
+    "qualificationToolTests": 14,
+    "preCandidateChromium": 76,
+    "chromiumConsecutiveRuns": [
+      76,
+      76,
+      76
+    ],
+    "installedChromeOptIn": {
+      "chromium": 76,
+      "chrome": 76
+    },
+    "focusedRepeat": 10,
+    "finalChromium": 76,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "totalBrowserExecutions": 542,
+    "finalRootCheck": "PASS"
+  }
+}

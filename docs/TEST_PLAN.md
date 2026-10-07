@@ -20,7 +20,7 @@ See [PHASE3C_IMPLEMENTATION.md](PHASE3C_IMPLEMENTATION.md) for exact results. Br
 - Ten simulated minutes (1200 cycles), zero/one timer, pending/window maxima eight and final zero-timer cleanup. This is fake-time evidence, not ten real playback minutes.
 - Real two-context browser heartbeat/observation/estimate flow, small drift/no seek, behind/ahead rate correction, large local seek, paused alignment, host unaffected, command rate reset, stale Ready-cycle SYNC, fresh peer reset/rebuild, signaling-only preservation, text JSON/no media/no upload/no signaling/no persistence checks. Ten focused repetitions and three consecutive full serial Chromium regressions followed by installed Chrome, retries zero.
 
-Implementation thresholds are provisional and unit tests own exact boundaries. Browser tolerances accommodate HTMLVideoElement timing. Phase 3D will define/evaluate final acceptance thresholds and perform long-duration, physical and real-network qualification. No Phase 3 exit-gate PASS is recorded here.
+Implementation thresholds are provisional and unit tests own exact boundaries. Browser tolerances accommodate HTMLVideoElement timing. Phase 3D has frozen acceptance thresholds and executed the desktop long-duration supplement; physical and real-network qualification remains NOT CLOSED. See [PHASE3_QUALIFICATION.md](PHASE3_QUALIFICATION.md). No Phase 3 exit-gate PASS is recorded here.
 
 ## Implemented Phase 3B automated evidence
 
@@ -234,8 +234,8 @@ OnePlus Nord 5/Chrome on cellular, Wi-Fi OFF, no tethering. USB ADB/CDP supplies
 measurement without a wireless control dependency. Same-LAN smoke is supplemental.
 Record both selected paths as DIRECT/TURN_RELAY; UNKNOWN is a gap. Disable Device B
 cellular until actual transport loss is observed, restore it, require fresh usable
-peer≤30 s without reload, both explicit Ready choices, PAUSE revision1, heartbeat
-sequence1 with null first estimate and explicit Play. Test network switching when
+peer≤30 s without reload, both explicit Ready choices, PAUSE revision 1, heartbeat
+sequence 1 with null first estimate and explicit Play. Test network switching when
 practical. Public forced-relay T3/T4 is a separate Phase 2 release debt.
 
 No-transfer checks independently observe local selection/fingerprints, bounded text
@@ -250,3 +250,5 @@ Chrome opt-in and ten focused 3C repetitions remain **AUTOMATED SAME-HOST DEVELO
 BROWSER EVIDENCE**. They cannot replace **PHYSICAL REAL-DEVICE EVIDENCE** or confirmed
 **REAL CROSS-NETWORK EVIDENCE**. Any mandatory physical gap keeps Phase 3 NOT CLOSED
 and the exit gate NOT PASSED. No milestone PR before independent review PASS.
+
+2026-10-08 execution: software qualification PASS at `778de3a839d468527ad4789ebdc24fda42b06453`, real 30-minute same-host soak PASS, physical Q4–Q18/Q20 GAP and optional Q19 NOT APPLICABLE. Phase 3 exit gate NOT PASSED; Phase 2 G1–G5 and public forced-relay T3/T4 remain open. Exact counts, versions, sampling coverage and limitations are in the qualification record.

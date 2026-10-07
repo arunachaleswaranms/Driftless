@@ -1,13 +1,16 @@
 # Phase 3 Local Sync Qualification
 
 3A, 3B, 3C — IMPLEMENTED / REVIEW PASS (user-approved independent reviews).
-3D — QUALIFICATION IN PROGRESS. Phase 3 exit gate — NOT PASSED.
+3D — QUALIFICATION NOT CLOSED. Phase 3 exit gate — NOT PASSED.
+Phase 3 software qualification — PASS; physical/network qualification — NOT CLOSED.
 Phase 2 physical/network qualification — DEFERRED / NOT CLOSED.
 
 Starting local and origin revision, verified clean after fetch/switch/ff-only pull:
 `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0` (`feat: add heartbeat and drift correction`).
 
-`QUALIFICATION_SHA`: assigned after the pre-qualification commit. The commit
+`QUALIFICATION_SHA` = `778de3a839d468527ad4789ebdc24fda42b06453` (`test: prepare Local Sync qualification`).
+Thresholds and tooling were committed/pushed before gate measurement. No production,
+test or tooling source changed during collection. The commit
 containing the thresholds and tools is the code candidate; a later documentation-only
 commit records its SHA and results, and is not the tested application revision.
 No product behavior changes are planned. Any fix requires a new committed SHA,
@@ -99,30 +102,33 @@ Only actual Mac + phone measurements use **PHYSICAL REAL-DEVICE EVIDENCE**;
 only confirmed cellular/Wi-Fi-off uses **REAL CROSS-NETWORK EVIDENCE**.
 Software and same-LAN evidence never substitute for the literal physical gate.
 
-## Qualification matrix before execution
+## Qualification matrix — 2026-10-08
 
-| ID | Requirement | State | Evidence |
+PASS in Q1–Q3 is software evidence. Q4–Q18/Q20 are physical criteria; none is
+replaced by the desktop supplement. Q19 is conditional and was not exercised.
+
+| ID | Requirement | State | Evidence / exact gap |
 | --- | --- | --- | --- |
-| Q1 | Exact-build software regression | GAP | Await candidate regression |
-| Q2 | Three consecutive full Chromium runs / focused 3C ten-repeat | GAP | Await execution |
-| Q3 | Installed Chrome regression | GAP | Await execution |
-| Q4 | Physical Android local-file playback | GAP | Await real-device fixture selection/preparation |
-| Q5 | Two-real-device same-LAN smoke | GAP | Await physical measurement |
-| Q6 | Two-real-device different-network establishment | GAP | USB/topology required |
-| Q7 | Selected ICE path on both physical devices | GAP | Await real selected pairs |
-| Q8 | Physical paused baseline | GAP | Await physical measurement |
-| Q9 | Physical Play/Pause/Seek authority | GAP | Await command matrix |
-| Q10 | Continuous physical playing drift | GAP | Await measured distributions |
-| Q11 | Physical moderate behind recovery | GAP | Await −350 ms test |
-| Q12 | Physical moderate ahead recovery | GAP | Await +350 ms test |
-| Q13 | Physical large-drift recovery | GAP | Await ±1.5 s tests |
-| Q14 | Physical paused drift recovery | GAP | Await ~500 ms test |
-| Q15 | 30-minute physical long run | GAP | Await ≥95% coverage physical run |
-| Q16 | Physical no-media-transfer evidence | GAP | Await physical probes and source verification |
-| Q17 | Real network interruption/recovery | GAP | Await cellular disruption/restoration |
-| Q18 | Fresh physical Ready/baseline after recovery | GAP | Await fresh cycle and heartbeat |
-| Q19 | Physical signaling-only behavior | GAP | Exercise if practical; supplemental only |
-| Q20 | Physical privacy/storage/error checks | GAP | Await physical probes |
+| Q1 | Exact-build software regression | PASS | 1099 workspace tests + 14 qualification-tool tests; root Chromium 76; final verification below |
+| Q2 | Full Chromium repeat stability / focused 3C ten-repeat | PASS | Three consecutive 76/76 runs; focused scenario 10/10; one worker, no retry |
+| Q3 | Installed Chrome regression | PASS | Opt-in 152/152: Chromium 76 + installed Chrome 76 |
+| Q4 | Physical Android local-file playback | GAP | Phone inventoried; fixture selection/preparation/playback and identical bytes not observed |
+| Q5 | Two-real-device same-LAN smoke | GAP | No objective dual-device inspection path; phone Chrome CDP socket not exposed |
+| Q6 | Two-real-device different-network establishment | GAP | No USB ADB; cellular/Wi-Fi-off/non-tethered topology not confirmed |
+| Q7 | Selected ICE path on both physical devices | GAP | No physical peer session; no selected pair on either physical participant |
+| Q8 | Physical paused baseline | GAP | No physical Ready pair; software baseline only |
+| Q9 | Physical Play/Pause/Seek authority | GAP | No physical command-application timing; existing software authority regressions pass |
+| Q10 | Continuous physical playing drift | GAP | No physical samples or distributions; same-host soak is separate |
+| Q11 | Physical moderate behind recovery | GAP | No physical −350 ms recovery/deadline measurement |
+| Q12 | Physical moderate ahead recovery | GAP | No physical +350 ms recovery/deadline measurement |
+| Q13 | Physical large-drift recovery | GAP | No physical ±1.5 s recovery/deadline measurement |
+| Q14 | Physical paused drift recovery | GAP | No physical ~500 ms recovery/deadline measurement |
+| Q15 | 30-minute physical long run | GAP | No physical long run; 30-minute same-host run cannot substitute |
+| Q16 | Physical no-media-transfer evidence | GAP | Source/software probes PASS; physical local selection/control/storage not observed |
+| Q17 | Real network interruption/recovery | GAP | No cellular disruption/restoration or usable-session timing; no reload rescue attempted |
+| Q18 | Fresh physical Ready/baseline after recovery | GAP | No physical fresh cycle; software reset regressions only |
+| Q19 | Physical signaling-only behavior, if exercised | NOT APPLICABLE | Optional physical scenario not exercised because no physical peer session |
+| Q20 | Physical privacy/storage/error checks | GAP | Software counters/storage PASS; no phone-session observation |
 
 ## Regression and resource procedure
 
@@ -139,3 +145,247 @@ After qualification: root check, root E2E, both audits; then documentation-only
 results commit, full diff review, normal push. The code candidate is never amended.
 Mandatory physical gaps keep 3D NOT CLOSED and the Phase 3 exit gate NOT PASSED.
 Independent review precedes any milestone PR; no Phase 4/5 work.
+
+## Environment, fixture and deployment results
+
+Live inventory on 2026-10-08, without addresses or serial numbers:
+
+| Participant | Environment | Qualification evidence |
+| --- | --- | --- |
+| Mac | MacBook Pro, Mac17,2, Apple M5; macOS 26.6.2 (25G83); installed Chrome 154.0.8037.98; default route confirmed Wi-Fi | Automated independent contexts on this one Mac; not a two-real-device run |
+| Phone | Intended OnePlus Nord 5; ADB manufacturer OnePlus, model CPH2707; Android 16, SDK 36; active Chrome 154.0.8037.126 | Inventory only; wireless ADB, Wi-Fi ON at inspection; no USB transport; no exposed Chrome CDP socket, including after opening Chrome |
+
+USB connection/debugging was requested during the task but not established. At final
+inventory the phone was no longer visible to ADB. Mobile data being enabled is not
+proof of cellular routing, Wi-Fi OFF or absence of tethering. No cellular/Wi-Fi-off
+operation was attempted through a wireless ADB dependency. No phone playback failure
+is inferred from unavailable measurement. Same-LAN smoke was GAP because objective
+phone inspection was unavailable. No emulator or simulator was counted.
+
+Fixture filename: **synthetic-320x180-35m-h264-aac.mp4**; **11,976,311 bytes**;
+**2100 s / 35 minutes**, confirmed by FFmpeg inspection and both desktop video
+metadata values. MP4, H.264 High/AVC, yuv420p, 320×180, 30fps; AAC-LC stereo,
+48kHz, nominal 32kb/s audio. Encoded single-threaded/bitexact using FFmpeg **6.0**,
+synthetic color + 440Hz tone; total inspected bitrate approximately 45kb/s.
+
+```text
+SHA-256 = 9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67
+```
+
+The MP4 is uncommitted in an ignored local fixture directory. Both desktop contexts
+independently select the same local bytes. Phone file delivery/selection and byte
+verification were **not observed**. This fixture does not establish representative
+large-file Android resource qualification.
+
+Desktop deployment: loopback preview + loopback signaling, development-only, no
+public service or ICE server; both diagnostics confirmed the full candidate SHA.
+The detached candidate checkout isolated the soak from regression rebuilds. Installed
+Chrome ran real media in headless mode, no fake time or artificial drift injection.
+The complete browser repeat suite overlapped the early soak on the same Mac.
+
+Physical public deployment: **GAP — not executed** because the phone measurement
+prerequisite was unavailable. The established HTTPS/WSS account-free quick-tunnel
+procedure remains the next deployment method: **development qualification deployment,
+not production hosting**. Production HTTPS-origin restrictions are unchanged.
+Physical selected ICE paths: **GAP / not observed** on both devices. The same-host
+pair was **DIRECT / DIRECT** and is not real cross-network or TURN evidence.
+
+## Real-duration desktop supplement
+
+**AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE — PASS.**
+Candidate `778de3a839d468527ad4789ebdc24fda42b06453`, installed Chrome
+154.0.8037.98. Ten-second initial Play warm-up preceded the measured **1800-second
+continuous playing interval**. Actual sampler completion duration **1800000.141 ms**.
+No later transition/injection/recovery exclusion, no reload/refresh or manual rescue.
+Warm-up lies before the measured interval and is not silently removed from its
+coverage denominator.
+
+| Measurement | Result |
+| --- | ---: |
+| Valid samples | 1800 |
+| Rejected measurement samples | 0 |
+| Scheduled eligible slots | 1800 |
+| Covered slots | 1798 |
+| Missing slots | 2 |
+| Coverage | 99.888889% |
+| Absolute drift p50 | 0.123666 ms |
+| Absolute drift p95 | 0.439396 ms |
+| Absolute drift p99 | 1.367625 ms |
+| Maximum absolute drift | 8.944499 ms |
+| Samples >250 / >500 / >750 ms | 0 / 0 / 0 |
+| Maximum consecutive valid >500 ms | 0 |
+| Guest 0.95× / 1.05× sample observations | 0 / 0 |
+| Guest 1× sample observations | 1800 |
+| Observed guest seek events during interval | 0 |
+| Classified hard-correction count | Not instrumented; no invented count |
+
+Two additional valid observations occurred in already-covered one-second slots;
+all 1800 valid observations enter the percentiles, but duplicates never inflate
+coverage. The two unoccupied slots remain visible. No rejected/inconvenient drift
+sample was discarded. The sanitized [machine summary](evidence/phase3/2026-10-08-summary.json)
+records the exact values and raw-artifact SHA-256. Raw JSON (1,561,815 bytes) remains
+outside Git under filename `driftless-3d-soak-30m.json`; it contains no network
+identifiers, invite data, filenames/paths from participants or SDP.
+
+Host heartbeat count **3591** through final snapshot (including pre-interval
+baseline/warm-up), **3571** during measurement; guest observations likewise **3571**
+during measurement, about **1.984/s**. Last heartbeat sequence 3591, revision 2,
+playing with a usable clock estimate. One peer connection and one open channel
+per participant; no reconnection or Ready cycling during measurement, no guest
+PLAY/PAUSE/SEEK, no page/console error, unhandled rejection, media error or
+application-rate-limit failure. Both remained playing, host always 1× and guest 1×
+at every sample and final snapshot. Both retained their single Ready choice;
+host emitted only baseline PAUSE and initial PLAY. No playback command loop.
+
+No runtime introspection of private pending/window/timer state was added.
+Deterministic root tests/source verify pending≤8, valid window≤8, one scheduler,
+reset cleanup/no history. Observed heartbeat rate is consistent with that scheduler;
+it is not a direct count of private timers. One object URL per context, no replacement
+or URL accumulation, no media transfer buffer/engine. CDP Performance metrics were
+sampled at 30 one-minute checkpoints and are labelled browser/runtime observations,
+not a complete memory measurement or an exact acceptance threshold:
+
+| Metric | Host start / last / maximum | Guest start / last / maximum |
+| --- | --- | --- |
+| JSHeapUsedSize (bytes) | 5484284 / 4696084 / 5810676 | 5119984 / 4736144 / 5497556 |
+| Nodes | 916 / 732 / 916 | 878 / 684 / 878 |
+| Documents | 20 / 7 / 20 | 20 / 7 / 20 |
+
+These checkpoints show no accumulating trend in those reported metrics. They do
+not measure decoder/process/device RAM, CPU/battery or physical Android resources.
+
+## Correction, authority and network outcomes
+
+Existing full software tests reconfirm moderate behind/ahead rate correction, local
+large seek, paused alignment, guest no authority, host isolation, command normalization,
+fresh peer reset and signaling-only preservation. The required ten-repeat path is
+Ready → baseline → Play → estimate → moderate behind drift → 1.05× → host Pause →1×.
+These remain implementation regressions on the existing 8-second fixture. They do
+not supply the missing physical ±350 ms/±1.5 s/~500 ms deadline measurements or certify
+physical Play receipt/application timing. Each physical correction and command
+acceptance criterion is explicitly GAP in Q8–Q14.
+
+The physical long run has **zero observed samples**; physical sample coverage,
+p50/p95/p99/max, correction counts and deadlines are **GAP / unavailable**, not the
+desktop numbers above. Real cellular interruption/restoration, fresh usable-session
+≤30 s, both explicit Ready choices, PAUSE revision 1/heartbeat sequence 1/null estimate,
+and explicit Play after recovery are **GAP**. Genuine network-switch qualification
+is **GAP**. No failure of those product behaviors was observed, and no PASS is inferred
+from simulated transport closure or signaling loss. No browser reload rescued a run.
+
+## Privacy and no-transfer outcome
+
+**Software evidence — PASS; physical no-transfer gate — GAP.** Both desktop contexts
+selected local copies and matched fingerprints; transfer-engine remains unused/empty.
+External probe observed only text control, maximum sizes host **563 B**, guest **506 B**
+(below 1024), no binary send, private filename/path/MIME/object URL/root/chunk digest,
+playback/SYNC signaling or upload request. Full existing E2E probes additionally
+validate strict peer JSON and complete signaling frames. No extra media channel.
+
+Final storage in both contexts: localStorage 0, sessionStorage 0, IndexedDB databases 0,
+Cache Storage 0, OPFS entries 0; URL query/hash absent. Source and root tests reconfirm
+memory-only readiness IDs and clock samples, bounded timing state/no persisted timing
+history, no invite/resume secret or TURN credential in logs/URLs/persistence, and fixed
+sanitized browser-error categories. No production `window.*` debug hook was added;
+qualification probes are external-only and retain fixed counters/latest safe state.
+These observations do not attest a physical phone session that did not occur.
+
+## Audit remediation and software regression
+
+Initial diagnosis: `npm audit` reported exactly one high development advisory,
+source-map-js 1.2.1 / GHSA-68fv-2mgg-jv7q; `npm audit --omit=dev` reported 0.
+`npm explain` traced it through direct dev toolchains **jsdom 30.1.1** (css-tree 3.2.1)
+and **Vite 8.3.1 / Vitest 5.0.2** (PostCSS 8.5.28). Both immediate consumers declare
+`source-map-js: ^1.2.1`, accepting patched 1.2.2. `npm outdated` was inspected;
+unrelated available updates, including a TypeScript major, were not taken.
+
+`npm update source-map-js --package-lock-only --ignore-scripts` changed only that
+package's version/resolved/integrity to 1.2.2. No direct dependency upgrade, override,
+force fix, script-policy change or production behavior change. `npm ci` installed 235
+packages; its existing optional fsevents script-policy warning is unchanged.
+Both complete and production audits now report **0 vulnerabilities**.
+
+| Verification | Passed | Failed | Skipped | Retries |
+| --- | ---: | ---: | ---: | ---: |
+| Protocol workspace | 305 | 0 | 0 | 0 |
+| Sync-engine workspace | 109 | 0 | 0 | 0 |
+| Signaling workspace | 206 | 0 | 0 | 0 |
+| Web workspace | 479 | 0 | 0 | 0 |
+| Workspace total | 1099 | 0 | 0 | 0 |
+| Qualification math/probe tests | 14 | 0 | 0 | 0 |
+| Pre-candidate root Chromium | 76 | 0 | 0 | 0 |
+| Exact candidate Chromium consecutive 1 | 76 | 0 | 0 | 0 |
+| Exact candidate Chromium consecutive 2 | 76 | 0 | 0 | 0 |
+| Exact candidate Chromium consecutive 3 | 76 | 0 | 0 | 0 |
+| Exact candidate Chrome opt-in (76 Chromium + 76 Chrome) | 152 | 0 | 0 | 0 |
+| Exact candidate focused 3C ten-repeat | 10 | 0 | 0 | 0 |
+| Post-soak exact candidate full root check | 1099 + 14 | 0 | 0 | 0 |
+| Post-soak exact candidate Chromium | 76 | 0 | 0 | 0 |
+
+Browser versions read live: Playwright 1.63.0, Chromium **153.0.8010.12**, installed
+Chrome **154.0.8037.98**; Node 26.3.0/npm 11.16.0. All browser runs workers 1/retries 0,
+no hidden retries. Three full Chromium runs were consecutive, 2.2 min each; Chrome
+opt-in 4.3 min; ten-repeat 56.3 s. Root checks include typecheck/lint/format, unit/component/
+integration tests, production builds and built-package/source-buffer-release smokes.
+Tool tests cover common-epoch projection, paused/rate projection, delay rejection and
+boundaries, nearest-rank percentiles, explicit exclusion union, consecutive violations
+(including rejected samples), coverage/missing/duplicate slots, PASS/FAIL/GAP, and
+idempotent external channel counting.
+
+Pre-candidate instrumentation development caught the constant invite-button label
+and repeated browser channel-open events; only tooling was corrected, with a probe
+regression. Short five-second smokes are deliberately FAIL for the 30-minute duration
+criterion and are not gate evidence. No code fix after the committed candidate and
+no failed qualified browser run was hidden. Logs/traces remain outside Git.
+
+## Phase 2 debt and compatibility impact
+
+G1–G5 **GAP**: no physical public HTTPS/WSS, authenticated cross-network join,
+real-device channel/handshake, two-peer selected paths or genuine network recovery.
+T1/T2 **PASS** for software issuance/credential boundaries only; T3/T4 **GAP /
+DEFERRED**, no supplied/configured/verified publicly reachable TURN infrastructure.
+No paid service/account provisioned and no local TURN result reused as public relay.
+These remain **OPEN release-level debt**. See the new dated section in
+[PHASE2_QUALIFICATION.md](PHASE2_QUALIFICATION.md); the 2026-10-04 attempt is retained.
+
+`DEFERRED-PHYSICAL-001` **GAP / OPEN**: no physical local selection/playback, pause/
+resume/seeks/lifecycle/error coverage or representative large-file resource evidence.
+`002` and `003`–`007` remain OPEN. Local Sync cannot qualify OPFS, MSE, transfer or
+Progressive Watch. No compatibility status changes: all existing Local Sync/product
+statuses remain unchanged, including Chrome desktop/Android NOT TESTED. Edge,
+Firefox, Safari/iOS and Progressive Watch were not qualified.
+
+## Final verdict and remaining physical actions
+
+**Phase 3 implementation — COMPLETE / REVIEW PASS.**
+**Phase 3 software qualification — PASS.**
+**Phase 3 physical/network qualification — NOT CLOSED.**
+**Phase 3 exit gate — NOT PASSED.**
+
+Mandatory missing evidence: two real participants selecting identical bytes on the
+same exact build; confirmed Mac Wi-Fi + Android cellular/Wi-Fi OFF/non-tethered
+establishment and both selected paths; measured 30-minute physical drift and correction/
+command acceptance; real cellular interruption and fresh Ready/baseline recovery;
+physical privacy/no-transfer observation. Inventory and desktop playback never satisfy
+those requirements. No physical product FAIL is claimed where execution was unavailable.
+
+1. Establish USB ADB and Chrome CDP inspection on the physical phone; confirm live
+   device versions and independently verify the fixture bytes. Run physical same-LAN
+   smoke, then the established public HTTPS/WSS development qualification deployment.
+2. Freeze/reconfirm one exact committed candidate, display its SHA on both devices,
+   confirm cellular/Wi-Fi OFF/no tethering and run Q4–Q18/Q20 using the frozen thresholds.
+3. Measure ≥30 continuous physical playing minutes, corrections/commands and actual
+   cellular disable/restore recovery without reload; collect sanitized path/storage/
+   no-transfer evidence. Exercise signaling-only/network switching when practical.
+4. Separately supply publicly reachable compatible TURN infrastructure for T3/T4
+   forced relay. This remains release debt even if a future DIRECT Phase 3 gate passes.
+
+No milestone PR or merge. Independent qualification review precedes any milestone PR.
+The evidence commit changes only docs/sanitized summaries; it is not the application
+revision measured above and does not amend `QUALIFICATION_SHA`.
+
+Post-soak full root check, Chromium 76/76 (2.1 min), `npm audit` and
+`npm audit --omit=dev` all PASS, with both audits 0 vulnerabilities. Total browser
+executions across the required pre-candidate/repeat/opt-in/focused/final runs: **542
+passed / 0 failed / 0 skipped / 0 retries**. The separate soak is not included in that
+E2E total. Both final commands used the exact candidate build revision.

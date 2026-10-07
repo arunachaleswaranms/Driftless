@@ -6,11 +6,11 @@ Driftless is an experimental, private, peer-to-peer application for synchronized
 >
 > Physical Android / different-network / real-recovery / public-TURN qualification is **DEFERRED / NOT CLOSED**. The literal Phase 2 physical exit gate is **NOT PASSED**; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
 >
-> **Phase 3 — Local Sync Mode: IN PROGRESS**. 3A is IMPLEMENTED / REVIEW PASS; 3B host playback controls are IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D is QUALIFICATION IN PROGRESS. Phase 3 exit gate: **NOT PASSED**.
+> **Phase 3 — Local Sync Mode: IN PROGRESS / QUALIFICATION NOT CLOSED**. 3A is IMPLEMENTED / REVIEW PASS; 3B host playback controls are IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D is QUALIFICATION NOT CLOSED. Phase 3 exit gate: **NOT PASSED**.
 
 Phase 2 provides private two-person rooms, signaling, WebRTC negotiation and a data-channel handshake, authenticated signaling resume, bounded fresh-peer recovery, safe connection diagnostics, runtime ICE configuration, and short-lived TURN credential issuance. Its automated browser evidence uses two contexts on one development machine; it does not qualify Internet connectivity or public TURN operation.
 
-Phase 0 software feasibility and Phase 1 application foundation are closed. The web client provides an application shell, PWA foundation, local video playback, and a local report of observable browser APIs. Local Sync includes host-authoritative playback and automatic guest drift correction. Physical, long-duration and real-network synchronization qualification remains pending. Media transfer remains unimplemented. Compatibility statuses are unchanged.
+Phase 0 software feasibility and Phase 1 application foundation are closed. The web client provides an application shell, PWA foundation, local video playback, and a local report of observable browser APIs. Local Sync includes host-authoritative playback and automatic guest drift correction. Implementation is complete and has passed review. Software regression and a real 30-minute same-host browser soak passed; physical-device and real-network synchronization qualification remains pending. See [Phase 3 qualification](docs/PHASE3_QUALIFICATION.md). Media transfer remains unimplemented. Compatibility statuses are unchanged.
 
 Physical Android, real-network recovery, and public TURN remain project-level qualification debt. Phase 3 implementation may proceed after the Phase 2 implementation merge, but final product/release closure must revisit that debt and must not infer the deferred gates as passed.
 
@@ -31,7 +31,7 @@ Each participant selects a local copy of the same video. Local Sync exchanges me
 
 **Implemented through Phase 3C:** independent local selection, bounded full-file identity, session-scoped identity exchange, match/mismatch, explicit readiness, host Play/Pause/Seek, and authoritative revisions. Both-ready establishes a paused host-position baseline; host heartbeats report authority and clock estimates for automatic guest drift correction.
 
-**Future:** Phase 3D acceptance/qualification, chat, and reactions.
+**Pending qualification:** physical-device and real-network Phase 3D gates. Chat and reactions remain future work.
 
 ### Mode B - Progressive Watch
 
@@ -72,7 +72,7 @@ The project version is `0.0.0-planning`. Phase 0 software feasibility closed aft
 
 Phase 1 — Application Foundation is **CLOSED / PASS**. Its exit gate passed at revision `4bf6e31`; see the [Phase 1 qualification record](docs/PHASE1_QUALIFICATION.md).
 
-Phase 2 — Internet P2P Foundation is **MERGED / COMPLETE**; Phases 2A–2D are implemented and review pass. Physical/network qualification is **DEFERRED / NOT CLOSED**, and the literal physical exit gate is **NOT PASSED**. The physical OnePlus Nord 5 was identified, but cellular / Wi-Fi-off establishment, real recovery, and selected-path evidence were not obtained; no public TURN service was available. Phase 3 — Local Sync Mode is **IN PROGRESS**, on `phase/3-local-sync`. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D is QUALIFICATION IN PROGRESS. The overall Phase 3 gate is not passed.
+Phase 2 — Internet P2P Foundation is **MERGED / COMPLETE**; Phases 2A–2D are implemented and review pass. Physical/network qualification is **DEFERRED / NOT CLOSED**, and the literal physical exit gate is **NOT PASSED**. The physical OnePlus Nord 5 was identified, but cellular / Wi-Fi-off establishment, real recovery, and selected-path evidence were not obtained; no public TURN service was available. Phase 3 — Local Sync Mode is **IN PROGRESS**, on `phase/3-local-sync`. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D is QUALIFICATION NOT CLOSED. The overall Phase 3 gate is not passed.
 
 - **Phase 1A — implemented:** the React/TypeScript/Vite web client in [`apps/web/`](apps/web/), with an application shell, a web app manifest and service worker registration without offline caching, and a baseline of type checking, linting, formatting, unit/component tests, and Playwright browser tests.
 - **Phase 1B — implemented:** a local browser media player. It plays a video file chosen on the device through an object URL and native controls, shows browser-reported file and media details, reports playback failures conservatively, and releases each file on replace or clear. Phase 1 playback itself uses no application-level whole-file read or upload. Phase 3A identity intentionally reads the file sequentially in bounded chunks, never materializing or uploading the entire file.

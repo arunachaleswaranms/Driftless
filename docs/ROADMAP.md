@@ -8,7 +8,7 @@
 - Thresholds and compatibility claims must come from measurements.
 - Later phases may be replanned when an earlier feasibility gate fails.
 
-The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: MERGED / COMPLETE** at `2dd7dea8798bcfc742c8902e853cef69c053eecd` — Phases 2A–2D implemented and review pass. **Physical/network qualification: DEFERRED / NOT CLOSED**; the literal Phase 2 physical exit gate is **NOT PASSED**. **Phase 3 — Local Sync Mode: IN PROGRESS**. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D is QUALIFICATION IN PROGRESS; the Phase 3 exit gate is NOT PASSED.
+The current state is **Phase 0 — Architecture & Feasibility: SOFTWARE FEASIBILITY CLOSED / PASS**. **Phase 1 — Application Foundation: CLOSED / PASS** (exit gate PASS). **Phase 2 — Internet P2P Foundation: MERGED / COMPLETE** at `2dd7dea8798bcfc742c8902e853cef69c053eecd` — Phases 2A–2D implemented and review pass. **Physical/network qualification: DEFERRED / NOT CLOSED**; the literal Phase 2 physical exit gate is **NOT PASSED**. **Phase 3 — Local Sync Mode: IN PROGRESS / QUALIFICATION NOT CLOSED**. 3A is IMPLEMENTED / REVIEW PASS; 3B is IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D is QUALIFICATION INCOMPLETE; the Phase 3 exit gate is NOT PASSED.
 
 - Spikes 0.1–0.7 completed their software-feasibility questions in controlled testing. Their individual results remain provisional where physical Android or external-network validation was deferred. Spike 0.6 passed independent re-review and was committed at `7bbb10f`.
 - Spike 0.7's first independent review returned `REQUEST CHANGES — DO NOT COMMIT` for host scheduling and stale closure documentation. The fixes and regressions passed final independent review: `PASS — SAFE TO COMMIT AND CLOSE PHASE 0 SOFTWARE FEASIBILITY`. The reviewed implementation was committed at `e1ea11b`, and [PR #1](https://github.com/arunachaleswaranms/Driftless/pull/1) merged into `main` at `17eea6a`.
@@ -86,7 +86,7 @@ The implementation milestone is complete. The physical exit gate remains deferre
 
 ## Phase 3 — Local Sync Mode
 
-**Status — IN PROGRESS.** Phase 3 starts from the exact merged Phase 2 `main` on `phase/3-local-sync`. Deferred Phase 2 physical/network qualification remains an open release-level gate and must be revisited before final product qualification.
+**Status — IN PROGRESS / QUALIFICATION NOT CLOSED.** Phase 3 starts from the exact merged Phase 2 `main` on `phase/3-local-sync`. Deferred Phase 2 physical/network qualification remains an open release-level gate and must be revisited before final product qualification.
 
 Implementation sequencing introduced by Phase 3A (does not change the overall exit gate):
 
@@ -95,9 +95,11 @@ Implementation sequencing introduced by Phase 3A (does not change the overall ex
 | 3A | Media Identity & Readiness Foundation | IMPLEMENTED / REVIEW PASS |
 | 3B | Host-Authoritative Playback Controls | IMPLEMENTED / REVIEW PASS |
 | 3C | Heartbeat, Drift Detection & Correction | IMPLEMENTED / REVIEW PASS |
-| 3D | Qualification & Closure | QUALIFICATION IN PROGRESS |
+| 3D | Qualification & Closure | QUALIFICATION INCOMPLETE |
 
-3A implements bounded identity and explicit readiness. 3B adds event-driven host Play/Pause/Seek and authoritative revisions, beginning with a paused baseline; 3B independent review PASS is approved by the user. 3C implements heartbeat, clock estimation and guest drift correction; independent 3C review PASS is approved by the user. 3D is QUALIFICATION IN PROGRESS. 3C automated same-host development browser evidence evaluates no physical or playback synchronization exit gate. Phase 3 exit gate: **NOT PASSED**.
+3A implements bounded identity and explicit readiness. 3B adds event-driven host Play/Pause/Seek and authoritative revisions, beginning with a paused baseline; 3B independent review PASS is approved by the user. 3C implements heartbeat, clock estimation and guest drift correction; independent 3C review PASS is approved by the user. 3D is QUALIFICATION INCOMPLETE. 3C automated same-host development browser evidence evaluates no physical or playback synchronization exit gate. Phase 3 exit gate: **NOT PASSED**.
+
+Software qualification at `778de3a839d468527ad4789ebdc24fda42b06453` is PASS, including a real 30-minute same-host desktop supplement. Physical/network qualification is NOT CLOSED: objective phone measurement, different-network establishment, physical long-run/correction metrics and real recovery remain GAP. See [Phase 3 qualification](PHASE3_QUALIFICATION.md). No milestone PR before literal gate completion and independent review PASS. Phase 2 G1–G5 and public TURN T3/T4 remain open.
 
 - Authoritative clock.
 - Play.

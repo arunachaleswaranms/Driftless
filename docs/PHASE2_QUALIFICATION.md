@@ -2,11 +2,48 @@
 
 ## Status
 
-**NOT CLOSED — the physical Android device was inventoried on 2026-10-04, but cellular / Wi-Fi-off operation and a two-real-device, different-network establishment and recovery have not been observed. G1–G5 remain GAP. No publicly reachable TURN endpoint has been supplied or verified for this attempt; T3/T4 remain GAP.**
+**NOT CLOSED — the 2026-10-08 Phase 3D re-evaluation obtained phone inventory but no physical/cellular establishment or recovery. G1–G5 remain GAP; public forced-relay T3/T4 remain GAP / DEFERRED. The 2026-10-04 attempt is retained below.**
 
-Phase 2 software implementation is **COMPLETE / REVIEW PASS**, with the implementation milestone **READY TO MERGE**. Physical/network qualification is **DEFERRED / NOT CLOSED**. The literal Phase 2 physical exit gate is **NOT PASSED**. The latest attempt is recorded below; the 2026-10-02 evaluation is retained as historical evidence. Phase 3 — Local Sync Mode is **NEXT / NOT STARTED**.
+Phase 2 software implementation is **MERGED / COMPLETE / REVIEW PASS** at
+`2dd7dea8798bcfc742c8902e853cef69c053eecd` (PR #4). Physical/network qualification
+remains **DEFERRED / NOT CLOSED**, literal gate **NOT PASSED**. Phase 3 implementation
+is COMPLETE / REVIEW PASS; its physical/network qualification is NOT CLOSED.
+No later software or same-host result closes these release-level gates. Historical
+2026-10-04 and 2026-10-02 attempts below retain their original facts/status snapshots.
 
-Implementation completion permits the Phase 2 milestone to be merged after independent PR review. Physical Android, real-network recovery, and public TURN qualification remain deferred project-level qualification debt. Phase 3 implementation may begin after the implementation milestone is merged, but later product/release closure must revisit this debt and must not infer the deferred Phase 2 gates as passed.
+## Phase 3D debt re-evaluation — 2026-10-08
+
+Candidate `778de3a839d468527ad4789ebdc24fda42b06453` (`test: prepare Local Sync
+qualification`), built with that exact `DRIFTLESS_BUILD_REVISION`. Full root tests,
+serial browser repeats and the real 30-minute same-host Local Sync supplement PASS;
+both audits 0 vulnerabilities. See [Phase 3 qualification](PHASE3_QUALIFICATION.md).
+
+Live phone inventory: physical OnePlus CPH2707, Android 16/SDK 36, active
+Chrome 154.0.8037.126, wireless ADB and Wi-Fi ON. No USB transport or exposed Chrome
+CDP socket; phone absent from ADB at final inspection. Cellular/Wi-Fi OFF/no tethering,
+phone public deployment, authenticated cross-network join, physical channel, selected
+paths and genuine interruption/recovery were not observed. No physical product failure
+is inferred from unavailable instrumentation. No public TURN endpoint configured or
+supplied/verified; no paid infrastructure/account or local-relay substitution.
+
+| Criterion | State | New exact-candidate evidence / gap |
+| --- | --- | --- |
+| G1 | GAP | No public HTTPS/WSS reachability on both physical devices in this attempt |
+| G2 | GAP | No authenticated physical different-network create/join |
+| G3 | GAP | Only same-host channels; no physical bidirectional handshake |
+| G4 | GAP | Same-host DIRECT/DIRECT only; no paths on real cross-network peers |
+| G5 | GAP | No genuine phone interruption and usable recovery |
+| T1 | PASS | Current full software tests reconfirm authenticated short-lived issuance; no public relay |
+| T2 | PASS | Current software tests/source reconfirm no long-lived browser TURN secret/persistence |
+| T3 | GAP | No public forced-relay real-device channel; DEFERRED |
+| T4 | GAP | No real cross-network TURN_RELAY diagnostics; DEFERRED |
+
+`DEFERRED-PHYSICAL-001` remains OPEN: no physical local selection/playback, pause/
+resume/seeks/lifecycle/error and representative large-file resource evidence.
+`002` remains OPEN; `003`–`007` remain OPEN. No OPFS/MSE/binary-transfer/Progressive
+Watch inference or compatibility change. Phase 2 physical/network qualification
+**DEFERRED / NOT CLOSED**, G1–G5 GAP; public TURN T3/T4 **GAP / DEFERRED**, OPEN
+release-level debt. A future DIRECT Phase 3 gate may pass without closing T3/T4.
 
 ## Latest attempt — 2026-10-04
 

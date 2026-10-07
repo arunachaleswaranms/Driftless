@@ -44,7 +44,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 
 The latest physical qualification attempt at `3a5922200ab0a77a1dd55d9d911a79a492971874` on 2026-10-04 identified the physical OnePlus Nord 5 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but did not execute a cellular / Wi-Fi-off cross-network session. Real-device data-channel establishment, selected-path evidence on both peers, and genuine network recovery remain unobserved (G1–G5 GAP). No publicly reachable TURN endpoint was available (T3/T4 GAP; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D automated browser evidence remains two browser contexts on one development machine.
 
-Phase 3 — Local Sync Mode: **IN PROGRESS**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **QUALIFICATION IN PROGRESS**. Phase 3 exit gate: **NOT PASSED**.
+Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
 
 ### Implementation and qualification policy
 
@@ -421,16 +421,16 @@ Both-ready creates a PAUSE revision-1 baseline at the host current position. Exp
 
 Independent review correction **3B-01** binds READY to a fresh participant-local 128-bit ReadinessId and PLAY/PAUSE/SEEK to both current Ready intents as well as selections. IDs are generated once after successful explicit preparation, cleared with invalidated readiness, and never persisted/displayed/logged or sent through signaling. Old same-media/revision-1 baselines cannot activate a new Ready cycle; revision reset to 1 is safe inside a fresh readiness pair. The exact opposite-direction 2 s stale baseline / 6 s genuine baseline and PLAYBACK_UNAVAILABLE regressions pass. Protocol version, host role enforcement, transport sequences, message bound and burst-32/refill-8/s limiter remain unchanged. **3B — IMPLEMENTED / REVIEW PASS.**
 
-Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMENTATION.md). That historical 3B evidence introduces no heartbeat/drift correction. Phase 3C is now **IMPLEMENTED / REVIEW PASS** (separate evidence); 3D is **QUALIFICATION IN PROGRESS**; Phase 3 remains **IN PROGRESS**, exit gate **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**.
+Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMENTATION.md). That historical 3B evidence introduces no heartbeat/drift correction. Phase 3C is now **IMPLEMENTED / REVIEW PASS** (separate evidence); 3D is **QUALIFICATION NOT CLOSED**; Phase 3 remains **IN PROGRESS**, exit gate **NOT PASSED**. Phase 2 physical/network qualification remains **DEFERRED / NOT CLOSED**.
 
 ## Open Deferred Qualification
 
 - Phase 2 physical Android cross-network establishment and recovery, selected-path evidence on both real peers, and public TURN forced-relay qualification remain **DEFERRED / NOT CLOSED**. T1/T2 are **PASS — software**; T3/T4 remain **GAP / DEFERRED** because no publicly reachable TURN service was available. The literal physical exit gate is **NOT PASSED**.
 - Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests, Phase 2B's and 2C's same-host browser tests, and Phase 2D's same-host tests and one-device public smoke test do not satisfy `DEFERRED-PHYSICAL-002`.
 
-## Not Started
+## Remaining Work
 
-- Phase 3D — Qualification & Closure: **QUALIFICATION IN PROGRESS**; deferred physical/network qualification remains an open release-level gate.
+- Phase 3D — Qualification & Closure: **QUALIFICATION NOT CLOSED**; deferred physical/network qualification remains an open release-level gate.
 - Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
@@ -547,7 +547,7 @@ These questions must be resolved by evidence, not by assumptions or undocumented
 
 ## Next Exact Step
 
-3C independent review PASS is approved by the user at `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0`. Phase 3D qualification is authorized. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
+3C independent review PASS is approved by the user at `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0`. Phase 3D software qualification passed at `778de3a839d468527ad4789ebdc24fda42b06453`; the physical/network gate remains NOT CLOSED. Complete objective USB/CDP physical measurement, cellular/Wi-Fi-off establishment, the 30-minute run and real recovery. Do not open the milestone PR. Phase 3 exit gate remains NOT PASSED. Deferred Phase 2 physical/network qualification remains mandatory before final product/release qualification and must not be inferred from later software milestones.
 
 `DEFERRED-PHYSICAL-001` through `DEFERRED-PHYSICAL-007` remain open and must be retained through their applicable qualification gates.
 
@@ -582,10 +582,39 @@ Approved Phase 3B head: `9ace3833eccc560a0cecd3075c49edbf01e4f3f5` (`fix: bind p
 
 3C — IMPLEMENTED / REVIEW PASS
 
-3D — QUALIFICATION IN PROGRESS
+3D — QUALIFICATION NOT CLOSED
 
 Phase 3 exit gate — NOT PASSED
 
 Phase 2 physical/network qualification — DEFERRED / NOT CLOSED
 
 3C independent review PASS is approved by the user at `03a19b0e22a13a37f6c4dba20aa7ba187ca134a0`. Phase 3D qualification is authorized. No milestone PR or merge. Physical qualification remains pending.
+
+## Phase 3D qualification handoff — 2026-10-08
+
+`QUALIFICATION_SHA` = `778de3a839d468527ad4789ebdc24fda42b06453`. Thresholds, external
+measurement tools, tests, 3C REVIEW PASS/status wording and the minimal
+source-map-js 1.2.1→1.2.2 dev lockfile patch were frozen in that committed/pushed
+candidate. Production behavior and 3C constants are unchanged. No PR or merge.
+
+Phase 3 implementation — COMPLETE / REVIEW PASS. Software qualification — PASS:
+1099 workspace tests + 14 tool tests; three consecutive Chromium 76/76, installed
+Chrome opt-in 152/152, focused 3C 10/10 and final Chromium 76/76, all zero failures/skips/
+retries. Both audits 0 vulnerabilities. The real 30-minute desktop soak passed with
+1800 valid samples, 99.888889% coverage, p95 0.439396 ms, p99 1.367625 ms, max 8.944499 ms,
+zero >250/>500/>750 ms samples and stable observed authority/channel/storage/error
+counters. This is AUTOMATED SAME-HOST DEVELOPMENT BROWSER EVIDENCE only.
+
+Physical/network qualification — NOT CLOSED. The OnePlus CPH2707 was inventoried
+(Android 16, active Chrome 154.0.8037.126), with wireless ADB/Wi-Fi ON and no USB or
+exposed Chrome CDP; it was unavailable to ADB at final inspection. No phone local
+playback, same-LAN pair, confirmed cellular/Wi-Fi-off pair, physical drift/correction
+measurement or real recovery was observed. Q4–Q18/Q20 remain GAP; optional Q19 was
+not exercised. Phase 3 exit gate — NOT PASSED.
+
+Phase 2 physical/network qualification — DEFERRED / NOT CLOSED: G1–G5 GAP,
+T1/T2 software PASS, public forced-relay T3/T4 GAP / DEFERRED, OPEN release-level debt.
+DEFERRED-PHYSICAL-001 through 007 remain OPEN. Compatibility statuses unchanged;
+no Android OPFS/MSE/transfer/Progressive Watch or broader-browser claim. See
+[Phase 3 qualification](docs/PHASE3_QUALIFICATION.md) and its sanitized summary.
+The later docs evidence commit is not the measured application revision.
