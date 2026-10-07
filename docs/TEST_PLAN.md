@@ -252,3 +252,11 @@ BROWSER EVIDENCE**. They cannot replace **PHYSICAL REAL-DEVICE EVIDENCE** or con
 and the exit gate NOT PASSED. No milestone PR before independent review PASS.
 
 2026-10-08 execution: software qualification PASS at `778de3a839d468527ad4789ebdc24fda42b06453`, real 30-minute same-host soak PASS, physical Q4–Q18/Q20 GAP and optional Q19 NOT APPLICABLE. Phase 3 exit gate NOT PASSED; Phase 2 G1–G5 and public forced-relay T3/T4 remain open. Exact counts, versions, sampling coverage and limitations are in the qualification record.
+
+Later 2026-10-08 USB prerequisite attempt: the same frozen candidate reproduced
+1099 workspace tests, 14 qualification-tool tests and Chromium 76/76 with zero
+failures/skips/browser retries; both audits 0 vulnerabilities. `adb -d get-state`
+still returned `error: no devices found`; a wireless phone listing was not used.
+Desktop CDP and exact fixture/`ffprobe` inspection passed, but no physical session
+or physical sample executed. Q4–Q18/Q20 remain GAP and Q19 NOT APPLICABLE. See the
+[sanitized prerequisite-attempt summary](evidence/phase3/2026-10-08-physical-summary.json).

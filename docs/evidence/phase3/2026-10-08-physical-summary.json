@@ -1,0 +1,344 @@
+{
+  "date": "2026-10-08",
+  "qualificationSha": "778de3a839d468527ad4789ebdc24fda42b06453",
+  "branchParentSha": "160b53df1d620e17e8f810185bb820b2f763593a",
+  "classification": "PHYSICAL QUALIFICATION PREREQUISITE ATTEMPT; NO PHYSICAL SESSION",
+  "phase3Gate": "NOT PASSED",
+  "softwareQualification": "PASS",
+  "physicalQualification": "NOT CLOSED",
+  "physicalSessionExecuted": false,
+  "candidateSourceOrToolingChanged": false,
+  "historicalSoftwareSummaryPreserved": "2026-10-08-summary.json",
+  "mac": {
+    "model": "MacBook Pro / Mac17,2",
+    "os": "macOS 26.6.2 (25G83)",
+    "chrome": "154.0.8037.98",
+    "defaultRouteWiFi": true,
+    "dedicatedInstalledChromeCdpReachable": true
+  },
+  "phone": {
+    "requiredDevice": "OnePlus Nord 5 / CPH2707",
+    "usbInventoryObserved": false,
+    "manufacturer": null,
+    "android": null,
+    "sdk": null,
+    "chrome": null,
+    "finalAdbListing": [
+      {
+        "state": "device",
+        "transport": "WIRELESS",
+        "model": "CPH2707"
+      }
+    ],
+    "wirelessEntryUsedForQualification": false
+  },
+  "usbPrerequisite": {
+    "state": "GAP",
+    "adbServerRestarted": true,
+    "observations": [
+      {
+        "observedAtUtc": "2026-10-07T20:53:48.413215+00:00",
+        "command": "adb -d get-state",
+        "exitCode": 1,
+        "stdout": "",
+        "stderr": "error: no devices found"
+      },
+      {
+        "observedAtUtc": "2026-10-07T20:55:01.691785+00:00",
+        "command": "adb -d get-state",
+        "exitCode": 1,
+        "stdout": "",
+        "stderr": "error: no devices found"
+      },
+      {
+        "observedAtUtc": "2026-10-07T20:56:14.301786+00:00",
+        "deviceCount": 1,
+        "usbMarkedDeviceCount": 0,
+        "usbGetStateExit": 1,
+        "usbGetStateStdout": "",
+        "usbGetStateStderr": "error: no devices found"
+      },
+      {
+        "observedAtUtc": "2026-10-07T20:57:44.982200+00:00",
+        "entries": [
+          {
+            "state": "device",
+            "transport": "WIRELESS",
+            "model": "CPH2707"
+          }
+        ],
+        "usbGetStateExit": 1,
+        "usbGetStateStdout": "",
+        "usbGetStateStderr": "error: no devices found"
+      }
+    ],
+    "androidChromeUsbCdp": "NOT ATTEMPTED; USB prerequisite GAP",
+    "humanSetupRequested": true,
+    "usbAuthorizationOrConnectionEstablished": false
+  },
+  "fixture": {
+    "filename": "synthetic-320x180-35m-h264-aac.mp4",
+    "bytes": 11976311,
+    "sha256": "9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67",
+    "durationSeconds": 2100,
+    "video": "H.264 High / AVC / yuv420p / 320x180 / 30fps",
+    "audio": "AAC-LC / 48000Hz / stereo",
+    "independentInspection": "ffprobe",
+    "phoneProvisioned": false,
+    "phoneBytesVerified": false,
+    "committed": false
+  },
+  "deployment": {
+    "physicalPublicDeployment": "NOT EXECUTED; phone USB prerequisite GAP",
+    "preparedBuildRevision": "778de3a839d468527ad4789ebdc24fda42b06453",
+    "plannedCategory": "development qualification deployment, not production hosting"
+  },
+  "sameLan": {
+    "state": "GAP",
+    "executed": false
+  },
+  "crossNetwork": {
+    "state": "GAP",
+    "macWiFiConfirmed": true,
+    "androidCellularConfirmed": false,
+    "androidWiFiOffConfirmed": false,
+    "androidNotTetheredConfirmed": false,
+    "adbUsbConfirmed": false,
+    "selectedPathHost": null,
+    "selectedPathGuest": null
+  },
+  "longRun": {
+    "state": "GAP",
+    "executed": false,
+    "durationSeconds": null,
+    "validSamples": null,
+    "rejectedSamples": null,
+    "coveragePercent": null,
+    "p50Ms": null,
+    "p95Ms": null,
+    "p99Ms": null,
+    "maximumMs": null,
+    "over250": null,
+    "over500": null,
+    "over750": null,
+    "maximumConsecutiveOver500": null
+  },
+  "corrections": {
+    "moderateBehind": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "moderateAhead": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "largeBehind": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "largeAhead": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "paused": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    }
+  },
+  "authority": {
+    "state": "GAP",
+    "physicallyObserved": false
+  },
+  "networkInterruption": {
+    "state": "GAP",
+    "executed": false,
+    "durationSeconds": null,
+    "connectivityRestoredAt": null,
+    "freshUsablePeerRecoveryMs": null,
+    "freshReadyBaselineResult": "GAP",
+    "networkSwitch": "GAP; not exercised"
+  },
+  "noTransfer": {
+    "state": "GAP",
+    "physicallyObserved": false
+  },
+  "privacyStorage": {
+    "state": "GAP",
+    "physicallyObserved": false
+  },
+  "qualificationMatrix": {
+    "Q4": {
+      "state": "GAP",
+      "reason": "USB unavailable; no phone file provisioning/hash verification, local selection or playback observed."
+    },
+    "Q5": {
+      "state": "GAP",
+      "reason": "No physical Mac/phone same-LAN session or sample."
+    },
+    "Q6": {
+      "state": "GAP",
+      "reason": "No confirmed cellular/Wi-Fi OFF/non-tethered topology or fresh cross-network authenticated join."
+    },
+    "Q7": {
+      "state": "GAP",
+      "reason": "No selected ICE path observed on either physical cross-network peer."
+    },
+    "Q8": {
+      "state": "GAP",
+      "reason": "No physical matching-media Ready pair or paused revision-1 baseline."
+    },
+    "Q9": {
+      "state": "GAP",
+      "reason": "No measured physical Play/Pause/Seek application timing or authority exercise."
+    },
+    "Q10": {
+      "state": "GAP",
+      "reason": "No physical continuous-playing drift observations or distribution."
+    },
+    "Q11": {
+      "state": "GAP",
+      "reason": "No physical -350 ms guest recovery or return-to-1x measurement."
+    },
+    "Q12": {
+      "state": "GAP",
+      "reason": "No physical +350 ms guest recovery or return-to-1x measurement."
+    },
+    "Q13": {
+      "state": "GAP",
+      "reason": "No physical -1.5 s/+1.5 s recovery measurement."
+    },
+    "Q14": {
+      "state": "GAP",
+      "reason": "No physical paused ~500 ms perturbation/recovery measurement."
+    },
+    "Q15": {
+      "state": "GAP",
+      "reason": "No 1800-second physical cross-network run or coverage measurement."
+    },
+    "Q16": {
+      "state": "GAP",
+      "reason": "No physical-session request/control/storage inspection or independently selected matching phone bytes."
+    },
+    "Q17": {
+      "state": "GAP",
+      "reason": "No genuine cellular disable/restore, old-peer loss or recovery timing."
+    },
+    "Q18": {
+      "state": "GAP",
+      "reason": "No physical fresh Ready/baseline/timing cycle or post-recovery sample."
+    },
+    "Q19": {
+      "state": "NOT APPLICABLE",
+      "reason": "Optional physical signaling-only scenario not exercised."
+    },
+    "Q20": {
+      "state": "GAP",
+      "reason": "No physical-session Android storage/privacy/URL/media-error inspection."
+    }
+  },
+  "phase2": {
+    "G1": "GAP",
+    "G2": "GAP",
+    "G3": "GAP",
+    "G4": "GAP",
+    "G5": "GAP"
+  },
+  "turn": {
+    "T1": "PASS; software only",
+    "T2": "PASS; software only",
+    "T3": "GAP / DEFERRED",
+    "T4": "GAP / DEFERRED",
+    "publicRelayExercised": false
+  },
+  "deferredPhysicalDebts": {
+    "DEFERRED-PHYSICAL-001": "OPEN",
+    "DEFERRED-PHYSICAL-002": "OPEN",
+    "DEFERRED-PHYSICAL-003": "OPEN",
+    "DEFERRED-PHYSICAL-004": "OPEN",
+    "DEFERRED-PHYSICAL-005": "OPEN",
+    "DEFERRED-PHYSICAL-006": "OPEN",
+    "DEFERRED-PHYSICAL-007": "OPEN"
+  },
+  "regression": {
+    "npmCi": "PASS",
+    "baselineCheck": "PASS",
+    "explicitQualificationToolTests": "14 PASS / 0 FAIL / 0 SKIP",
+    "exactRevisionBuild": "PASS",
+    "finalCheck": "PASS",
+    "workspace": {
+      "protocol": 305,
+      "syncEngine": 109,
+      "signaling": 206,
+      "web": 479
+    },
+    "workspacePassed": 1099,
+    "qualificationToolsPassed": 14,
+    "chromiumPassed": 76,
+    "failed": 0,
+    "skipped": 0,
+    "browserRetries": 0,
+    "physicalQualificationEvidence": false
+  },
+  "audits": {
+    "npmAuditVulnerabilities": 0,
+    "npmAuditOmitDevVulnerabilities": 0
+  },
+  "rawArtifacts": [
+    {
+      "filename": "phase3-physical-usb-prerequisite.json",
+      "bytes": 883,
+      "sha256": "6c4c62ea3d815737241a9d883d54e74bbe57713ead11e758edc94dbd0ffd2ba3"
+    },
+    {
+      "filename": "phase3-physical-fixture-ffprobe.json",
+      "bytes": 605,
+      "sha256": "9bf4d408e980ded63c21de6c1c0a0b1b2bff3d4e80a32cd42381281a12c1fb86"
+    },
+    {
+      "filename": "phase3-physical-npm-ci.log",
+      "bytes": 454,
+      "sha256": "a3f27c88dfa5d043c9f71790dc7a5b319c7e3765b0e9de3df6a5a98e1e14a842"
+    },
+    {
+      "filename": "phase3-physical-baseline-check.log",
+      "bytes": 5330,
+      "sha256": "1e3ad3814a0ec454b11b4e5129dfd0c910488d9808981c5b7fcdc7a739339dd3"
+    },
+    {
+      "filename": "phase3-physical-baseline-tools.log",
+      "bytes": 1158,
+      "sha256": "0ad09e484071d06e8a2a66f2b1e4704f9daa6c78e6fdb55d3d227ddda594c105"
+    },
+    {
+      "filename": "phase3-physical-candidate-build.log",
+      "bytes": 785,
+      "sha256": "e18bd495b5f7e5f57bf14ebdf68e15c0314eee565d2aa56357996a721e47cc25"
+    },
+    {
+      "filename": "phase3-physical-final-check.log",
+      "bytes": 5324,
+      "sha256": "e75e89d55a531c641872293ba3dbffbee190ba578f683a4c5c5af52781050a7a"
+    },
+    {
+      "filename": "phase3-physical-final-e2e.log",
+      "bytes": 11040,
+      "sha256": "5951f9bd43d86011897284b57b49002654ee70cf95f508dc2f04537a01c54e4b"
+    },
+    {
+      "filename": "phase3-physical-final-audit.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-physical-final-audit-production.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    }
+  ],
+  "nextRequiredPhysicalAction": "Establish authorized USB adb -d and Android Chrome USB CDP, then run the exact-candidate two-device same-LAN and confirmed cellular qualification including the 30-minute run, correction/authority, actual cellular recovery and privacy/no-transfer checks."
+}

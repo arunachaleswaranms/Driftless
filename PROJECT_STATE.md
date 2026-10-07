@@ -618,3 +618,25 @@ DEFERRED-PHYSICAL-001 through 007 remain OPEN. Compatibility statuses unchanged;
 no Android OPFS/MSE/transfer/Progressive Watch or broader-browser claim. See
 [Phase 3 qualification](docs/PHASE3_QUALIFICATION.md) and its sanitized summary.
 The later docs evidence commit is not the measured application revision.
+
+### Later USB prerequisite attempt — 2026-10-08
+
+Starting branch HEAD `160b53df1d620e17e8f810185bb820b2f763593a` was clean and synchronized.
+A separate clean detached worktree reproduced candidate `778de3a839d468527ad4789ebdc24fda42b06453`:
+1099 workspace tests + 14 qualification-tool tests and Chromium 76/76 PASS, zero
+failures/skips/browser retries; both audits 0 vulnerabilities. Exact-revision build
+PASS. Mac Wi-Fi and dedicated installed-Chrome CDP were verified; the original
+fixture SHA/bytes and 2100 s H.264/AAC metadata were independently verified with
+`ffprobe`. No source/tooling/threshold change or new qualification candidate.
+
+USB ADB remained unavailable after server restart and repeated `adb -d get-state`
+checks (`error: no devices found`). A wireless CPH2707 entry appeared, but was not
+used for qualification. Authorized USB phone inventory/CDP and fixture delivery
+could not proceed. **No physical playback, public deployment, cross-network session
+or physical sample executed.** Q4–Q18/Q20 remain GAP; optional Q19 NOT APPLICABLE.
+Phase 3D — QUALIFICATION NOT CLOSED; software qualification PASS; physical/network
+qualification NOT CLOSED; exit gate NOT PASSED. Phase 2 G1–G5 GAP, T3/T4 GAP / DEFERRED
+and all seven deferred physical debts remain open. Compatibility is unchanged.
+The [new sanitized prerequisite-attempt summary](docs/evidence/phase3/2026-10-08-physical-summary.json)
+preserves the earlier software/GAP artifact. Next: authorized USB ADB/CDP, then the
+full existing two-device physical procedure. No milestone PR or merge.

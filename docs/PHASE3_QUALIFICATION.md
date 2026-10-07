@@ -16,6 +16,66 @@ commit records its SHA and results, and is not the tested application revision.
 No product behavior changes are planned. Any fix requires a new committed SHA,
 full regression and requalification of the affected matrix. No PR or merge in 3D.
 
+## USB physical qualification prerequisite attempt — 2026-10-08
+
+This later attempt started from clean, synchronized documentation branch HEAD
+`160b53df1d620e17e8f810185bb820b2f763593a`. A new clean detached worktree retained
+the frozen candidate `778de3a839d468527ad4789ebdc24fda42b06453`; no source, tooling,
+lockfile or threshold changed. The earlier [software/GAP summary](evidence/phase3/2026-10-08-summary.json)
+is preserved. The new [prerequisite-attempt summary](evidence/phase3/2026-10-08-physical-summary.json)
+records safe observations and hashes of raw artifacts kept outside Git.
+
+**USB prerequisite — GAP; physical playback/network testing did not execute.**
+After `adb kill-server` / `adb start-server`, `adb devices -l` initially listed
+zero devices. Repeated `adb -d get-state` returned exit 1, `error: no devices found`.
+At final inspection a wireless `CPH2707` entry was present, but `adb -d` still failed.
+Wireless ADB was not used for qualification. USB cable/debugging/RSA authorization,
+disabling Wireless debugging and opening phone Chrome were requested; authorized
+USB transport was not established. No phone OS/browser inventory through `adb -d`,
+USB Chrome CDP, phone fixture provisioning/hash verification or phone playback was
+possible. This is an instrumentation/setup GAP, not an observed product FAIL.
+
+Live Mac inventory: MacBook Pro / Mac17,2, macOS 26.6.2 (25G83), installed Chrome
+154.0.8037.98; the default route was confirmed Wi-Fi. A dedicated installed-Chrome
+profile exposed a usable desktop CDP endpoint. The existing fixture independently
+matched **11,976,311 bytes**, SHA-256
+`9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67`.
+Independent `ffprobe` confirmed **2100 s**, H.264 High/AVC/yuv420p/320×180/30fps
+and AAC-LC/48kHz/stereo. Identical phone bytes remain unverified.
+
+The software baseline reproduced: `npm ci`, root check, explicit qualification-tool
+tests and exact-revision build PASS. Final verification: protocol **305**, sync-engine
+**109**, signaling **206**, web **479** (**1099 workspace tests**), qualification tools
+**14**, Chromium **76/76**, zero failures/skips and zero browser retries. Both complete
+and production-only audits reported **0 vulnerabilities**. These are software results;
+no new desktop soak or physical sample was collected in this attempt.
+
+Public deployment and dual-device smoke were not executed because the phone USB
+prerequisite remained unavailable. No cellular/Wi-Fi OFF/non-tethered topology,
+physical peer, selected path, baseline/authority, long run, perturbation, genuine
+cellular interruption/recovery or physical no-transfer/privacy inspection was observed.
+Every mandatory criterion **Q4–Q18/Q20 remains GAP**; optional **Q19 remains
+NOT APPLICABLE**. No statistics, recovery times or phone-session internals are inferred.
+Phase 2 **G1–G5 remain GAP**, **T1/T2 PASS — software only**, **T3/T4 GAP / DEFERRED**;
+`DEFERRED-PHYSICAL-001` through `007` remain OPEN. Compatibility is unchanged.
+
+```text
+Phase 3A — IMPLEMENTED / REVIEW PASS
+Phase 3B — IMPLEMENTED / REVIEW PASS
+Phase 3C — IMPLEMENTED / REVIEW PASS
+Phase 3D — QUALIFICATION NOT CLOSED
+
+Phase 3 software qualification — PASS
+Phase 3 physical/network qualification — NOT CLOSED
+Phase 3 exit gate — NOT PASSED
+```
+
+Next required physical action: establish authorized USB `adb -d` and phone Chrome
+CDP, then execute the existing exact-candidate physical procedure: same-LAN smoke,
+confirmed cellular/Wi-Fi OFF/no tethering, fresh cross-network room, 30-minute run,
+authority/corrections, actual cellular disable/restore/fresh Ready cycle and
+no-transfer/privacy checks. No milestone PR or merge.
+
 ## Phase 3 Local Sync acceptance thresholds
 
 Frozen in the pre-qualification candidate **before qualification measurement**.
