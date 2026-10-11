@@ -260,3 +260,26 @@ still returned `error: no devices found`; a wireless phone listing was not used.
 Desktop CDP and exact fixture/`ffprobe` inspection passed, but no physical session
 or physical sample executed. Q4–Q18/Q20 remain GAP and Q19 NOT APPLICABLE. See the
 [sanitized prerequisite-attempt summary](evidence/phase3/2026-10-08-physical-summary.json).
+
+## Phase 3D physical attempt — 2026-10-11
+
+Frozen candidate `778de3a839d468527ad4789ebdc24fda42b06453` is unchanged. Wireless
+CDP observed the actual Mac/OnePlus same-LAN public HTTPS/WSS exact build and
+DIRECT/DIRECT channels. Human native Done and Ready completed matching local media;
+Q4/Q5 functional smoke PASS: paused baseline, Play/Pause/paused and playing Seek,
+active heartbeat and ten minutes continuously playing. Guest authority sends zero;
+host rate 1. The frozen sampler summary is FAIL: 600 s, 519 valid / 81 rejected,
+86.5% coverage, p95 42.015 ms, p99 44.253 ms, max 60.322 ms, no sample >250 ms.
+Duration/coverage thresholds were unchanged; this is not mandatory Q10/Q15 evidence.
+
+Only wireless debugging was available. No cellular / Wi-Fi-OFF / non-tethered
+session, drift perturbation or genuine interruption/recovery was measured.
+Q6–Q18/Q20 GAP; Q19 NOT APPLICABLE. Clean physical same-LAN post-media storage,
+URL/error and probe/request observations do not close the required cellular
+no-transfer/privacy checks. G1/G3 PASS for physical Wi-Fi reachability/channel;
+G2/G4/G5 GAP, T3/T4 GAP / DEFERRED. All deferred physical debts remain OPEN.
+Post-physical software regression: 1099 workspace + 14 tool tests; Chromium 76/76,
+zero failures/skips/retries; both audits 0 vulnerabilities. Software PASS;
+physical/network NOT CLOSED; Phase 3 exit gate NOT PASSED. See the
+[sanitized summary](evidence/phase3/2026-10-11-physical-summary.json).
+Next: instrumentation surviving Wi-Fi OFF, then the complete frozen cellular matrix.

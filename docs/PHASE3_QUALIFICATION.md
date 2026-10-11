@@ -16,7 +16,118 @@ commit records its SHA and results, and is not the tested application revision.
 No product behavior changes are planned. Any fix requires a new committed SHA,
 full regression and requalification of the affected matrix. No PR or merge in 3D.
 
-## USB physical qualification prerequisite attempt — 2026-10-08
+## Physical same-LAN media attempt — 2026-10-11
+
+Candidate remains `778de3a839d468527ad4789ebdc24fda42b06453`; no source,
+qualification tooling, dependency or acceptance threshold changed. Starting branch
+and origin were clean at `ba89e009032cc265bf40fd7f1114cb97a91b4332`, the earlier
+documentation-only USB GAP commit after `160b53d`. The clean detached candidate
+worktree was reused. Both 2026-10-08 summaries remain historical and unchanged.
+See the [sanitized physical summary](evidence/phase3/2026-10-11-physical-summary.json)
+for raw-artifact hashes and detailed observations.
+
+The user requested wireless debugging and confirmed that only wireless debugging
+was available. USB remained unavailable (`adb -d get-state`: exit 1,
+`error: no devices found`). Wireless Android Chrome CDP and the unchanged external
+probe supported the feasible same-LAN tests. This overrides the instrumentation
+preference for this attempt; it does not waive cellular/Wi-Fi-OFF acceptance.
+MacBook Pro / Mac17,2, macOS 26.6.2 (25G83), installed Chrome 154.0.8037.98;
+physical OnePlus CPH2707, Android 16 / SDK 36, active Chrome 154.0.8037.126.
+Both default Internet transports were Wi-Fi. No cellular, non-tethered or USB
+instrumentation claim is made.
+
+Both physical browsers loaded public HTTPS, secure context, exact candidate Build,
+minimal `{"status":"ok"}` health, authenticated WSS and a bidirectional peer channel.
+Selected paths were **DIRECT / DIRECT on the same LAN**. The development qualification
+deployment used loopback signaling, exact-origin validation and runtime STUN, with
+no public TURN. An initial preview hostname rejection was corrected in external
+configuration; candidate source/tooling remained unchanged.
+
+The independently inspected fixture was 11,976,311 bytes, 2100 s, H.264 High / AVC /
+yuv420p / 320×180 / 30fps and AAC-LC / 48kHz / stereo, SHA-256
+`9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67`.
+It was provisioned outside Driftless through wireless ADB; phone bytes matched.
+After media indexing, the native chooser showed the blue 35:00 fixture. Initial
+remote Done taps and an Android-local-path CDP selection did not complete valid
+preparation; these setup failures are retained. Human Done and Ready actions then
+completed selection and readiness. Both physical players prepared matching local
+media and played without media errors.
+
+**Q4 PASS; Q5 functional same-LAN smoke PASS.** Both explicitly Ready, paused
+baseline at 0 ms difference, host Play/Pause/Seek while paused and playing, active
+heartbeat and ten minutes of continuously playing media were observed. The baseline
+revision-1 wire message was not directly captured. Supplemental conservative bounds
+from before the host UI click to the first valid applied-state sample were Pause
+102.4 ms, paused Seek 215.1 ms, Play 97.3 ms and playing Seek 96.0 ms. Guest authority
+sends remained zero; host rate stayed 1.0. These are same-LAN observations only;
+host isolation under guest perturbations remains untested.
+
+| Ten-minute same-LAN sampler | Observed |
+| --- | --- |
+| Measured duration | 600 s (completed 600.014 s) |
+| Valid / rejected | 519 / 81 |
+| Coverage | 86.5% |
+| Absolute drift p50 / p95 / p99 / maximum | 34.641 / 42.015 / 44.253 / 60.322 ms |
+| Samples >250 / >500 / >750 ms | 0 / 0 / 0 |
+| Maximum consecutive valid samples >500 ms | 0 |
+| Both playing / host rate 1 / media-error samples | true / true / 0 |
+
+**The frozen sampler summary is FAIL:** duration is below 1800 s and coverage below
+95%. All 81 rejected samples exceeded the evaluation-RTT bound; five also exceeded
+observation separation. Maximum guest evaluation RTT was 657.612 ms. This failed
+quantitative result is retained, without rerunning for a lucky PASS or changing
+thresholds. Functional smoke does not close Q10/Q15 or the mandatory cellular run.
+
+During the physical same-LAN media session, both probes recorded zero binary sends,
+invalid controls, private-metadata leakage, signaling playback, unhandled rejections
+and media errors. Controls incurred zero non-GET requests; local media used one active
+object URL per page. Final inspection found empty application localStorage,
+sessionStorage, IndexedDB, Cache Storage and OPFS, and no URL query/hash. Both
+players ended paused with unchanged Ready/channel counters. These actual observations
+support same-LAN privacy/no-transfer evidence; Q16/Q20 remain GAP for the required
+cellular session. No cellular interruption or fresh-cycle recovery was attempted.
+
+| Criterion | Current state | Remaining boundary |
+| --- | --- | --- |
+| Q4 | PASS | Exact local bytes selected/prepared and played on the physical phone |
+| Q5 | PASS | Functional same-LAN media/control/heartbeat smoke; sampler FAIL retained |
+| Q6 | GAP | Cellular / Wi-Fi OFF / non-tethered topology not established |
+| Q7 | GAP | Cross-network selected paths not observed |
+| Q8 | GAP | Fresh cellular baseline/revision-1 observation absent |
+| Q9 | GAP | Cellular authority/host-isolation exercise absent |
+| Q10 | GAP | No mandatory cellular drift distribution; same-LAN duration/coverage FAIL |
+| Q11 | GAP | No moderate-behind recovery measurement |
+| Q12 | GAP | No moderate-ahead recovery measurement |
+| Q13 | GAP | No large-drift recovery measurement |
+| Q14 | GAP | No paused-drift recovery measurement |
+| Q15 | GAP | No 1800-second physical cross-network run |
+| Q16 | GAP | Required cellular media-session no-transfer check absent |
+| Q17 | GAP | No genuine cellular interruption/restoration timing |
+| Q18 | GAP | No fresh Ready/baseline/timing cycle or post-recovery sample |
+| Q19 | NOT APPLICABLE | Optional signaling-only scenario not exercised |
+| Q20 | GAP | Required cellular end-of-session privacy checks absent |
+
+Post-physical exact-candidate regression: **1099 workspace tests + 14 qualification-tool
+tests, Chromium 76/76**, zero failures/skips/browser retries. Both audits reported
+**0 vulnerabilities**. Earlier sandbox loopback EPERM failures are retained as
+resolved environmental failures. No candidate replacement or implementation change.
+
+Phase 2: **G1/G3 PASS** for physical public reachability and authenticated same-LAN
+channel; **G2/G4/G5 GAP** for different-network join/path and genuine recovery.
+T1/T2 remain software PASS; **T3/T4 GAP / DEFERRED**. All seven deferred physical
+debts remain OPEN; this one synthetic Local Sync fixture does not qualify the wider
+Android media corpus/lifecycle/resources, transfer, OPFS, MSE or Progressive Watch.
+Compatibility is unchanged. Phase 3 software qualification **PASS**;
+physical/network **NOT CLOSED**; Phase 3D **QUALIFICATION NOT CLOSED**;
+exit gate **NOT PASSED**.
+
+Next: establish objective instrumentation that survives Android Wi-Fi OFF, then
+create a fresh Mac Wi-Fi / Android cellular, non-tethered room and execute the frozen
+baseline/authority, 1800-second run, perturbations, genuine cellular interruption and
+fresh recovery, no-transfer and privacy checks. Wireless Wi-Fi debugging cannot
+supply that measurement path. No milestone PR or merge.
+
+## Historical USB physical qualification prerequisite attempt — 2026-10-08
 
 This later attempt started from clean, synchronized documentation branch HEAD
 `160b53df1d620e17e8f810185bb820b2f763593a`. A new clean detached worktree retained
@@ -162,7 +273,7 @@ Only actual Mac + phone measurements use **PHYSICAL REAL-DEVICE EVIDENCE**;
 only confirmed cellular/Wi-Fi-off uses **REAL CROSS-NETWORK EVIDENCE**.
 Software and same-LAN evidence never substitute for the literal physical gate.
 
-## Qualification matrix — 2026-10-08
+## Historical qualification matrix — 2026-10-08
 
 PASS in Q1–Q3 is software evidence. Q4–Q18/Q20 are physical criteria; none is
 replaced by the desktop supplement. Q19 is conditional and was not exercised.
@@ -398,7 +509,7 @@ regression. Short five-second smokes are deliberately FAIL for the 30-minute dur
 criterion and are not gate evidence. No code fix after the committed candidate and
 no failed qualified browser run was hidden. Logs/traces remain outside Git.
 
-## Phase 2 debt and compatibility impact
+## Historical Phase 2 debt and compatibility impact — 2026-10-08
 
 G1–G5 **GAP**: no physical public HTTPS/WSS, authenticated cross-network join,
 real-device channel/handshake, two-peer selected paths or genuine network recovery.

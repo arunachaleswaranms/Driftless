@@ -42,7 +42,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 | Phase 2C | Connection lifecycle & reconnect   | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED / REVIEW PASS** |
 
-The latest physical qualification attempt at `3a5922200ab0a77a1dd55d9d911a79a492971874` on 2026-10-04 identified the physical OnePlus Nord 5 (`CPH2707`, Android 16, Chrome 154.0.8037.92), but did not execute a cellular / Wi-Fi-off cross-network session. Real-device data-channel establishment, selected-path evidence on both peers, and genuine network recovery remain unobserved (G1–G5 GAP). No publicly reachable TURN endpoint was available (T3/T4 GAP; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). The Phase 2B–2D automated browser evidence remains two browser contexts on one development machine.
+The latest physical attempt on 2026-10-11 at `778de3a839d468527ad4789ebdc24fda42b06453` established public HTTPS/WSS and an authenticated DIRECT/DIRECT channel on the real Mac/OnePlus pair over Wi-Fi (G1/G3 PASS). Matching local-file playback and functional same-LAN smoke passed (Q4/Q5); cellular / Wi-Fi OFF establishment, cross-network path evidence and genuine recovery remain unqualified (G2/G4/G5 GAP). No public TURN was configured or exercised (T3/T4 GAP / DEFERRED; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Earlier automated browser evidence remains same-host development evidence.
 
 Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
 
@@ -486,7 +486,7 @@ The project intentionally accumulates these physical Android gates for the later
 
 ## Current Blockers
 
-The literal Phase 2 physical exit gate remains **NOT PASSED**. The physical Android device was identified, but its cellular / Wi-Fi-off cross-network session was not executed; real-device RTCDataChannel establishment, genuine network recovery (including the known heartbeat/retry timing limitation), and selected-path evidence on both real peers remain unobserved. No publicly reachable TURN service was available for T3/T4. These are deferred qualification blockers, not implementation-merge blockers; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). They must be resolved before final product/release qualification.
+The literal Phase 2 physical exit gate remains **NOT PASSED**. The physical Mac/Android same-LAN public reachability and authenticated channel passed G1/G3. Cellular / Wi-Fi-off establishment, genuine network recovery (including the known heartbeat/retry timing limitation), and selected paths on real cross-network peers remain unobserved (G2/G4/G5 GAP). No publicly reachable TURN service was available for T3/T4. These are deferred qualification blockers, not implementation-merge blockers; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). They must be resolved before final product/release qualification.
 
 No architecture blocker has been observed. Spike 0.1 has no exact desktop memory measurements and retains physical Android debt. Spike 0.2 proves controlled same-host browser connectivity only; different-NAT, carrier-network, physical Android, and TURN behavior remain unqualified. The selected host/host pair must not be generalized to Internet reachability.
 
@@ -640,3 +640,28 @@ and all seven deferred physical debts remain open. Compatibility is unchanged.
 The [new sanitized prerequisite-attempt summary](docs/evidence/phase3/2026-10-08-physical-summary.json)
 preserves the earlier software/GAP artifact. Next: authorized USB ADB/CDP, then the
 full existing two-device physical procedure. No milestone PR or merge.
+
+### Physical same-LAN media attempt — 2026-10-11
+
+Candidate `778de3a839d468527ad4789ebdc24fda42b06453` remains unchanged; clean branch
+parent/origin was `ba89e009032cc265bf40fd7f1114cb97a91b4332`. User-requested wireless
+ADB/CDP supported actual Mac/OnePlus local selection, matching fixture SHA, explicit
+Ready, paused baseline, host Play/Pause/Seek and ten-minute playing smoke. Q4/Q5
+functional PASS. Both public HTTPS/WSS pages showed the exact build and physical
+same-LAN DIRECT/DIRECT channels. Guest authority sends were zero; host rate was 1.
+Post-media application storage/URL/error and probe no-transfer observations were clean.
+
+Frozen same-LAN sampler summary FAIL: 600 s, 519 valid / 81 rejected, 86.5% coverage;
+p95 42.015 ms, p99 44.253 ms, max 60.322 ms; no sample >250 ms. Duration and coverage
+fail the unchanged long-run thresholds. This does not close Q10/Q15. The user
+confirmed only wireless debugging; USB remains unavailable. No mandatory cellular /
+Wi-Fi-OFF session, perturbation or genuine recovery was measured. Q6–Q18/Q20 GAP;
+Q19 NOT APPLICABLE. See the [sanitized summary](docs/evidence/phase3/2026-10-11-physical-summary.json).
+
+Post-physical candidate regression: 1099 workspace + 14 tool tests and Chromium
+76/76 PASS, zero failures/skips/retries; both audits 0 vulnerabilities. Phase 3D
+QUALIFICATION NOT CLOSED; software PASS; physical/network NOT CLOSED; exit gate
+NOT PASSED. Phase 2 G1/G3 PASS for physical Wi-Fi reachability/channel; G2/G4/G5 GAP;
+T3/T4 GAP / DEFERRED. All seven deferred physical debts remain OPEN and compatibility
+is unchanged. Next: instrumentation surviving Wi-Fi OFF, then the complete frozen
+cellular matrix. No milestone PR or merge.

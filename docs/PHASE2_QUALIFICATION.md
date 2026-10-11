@@ -2,7 +2,7 @@
 
 ## Status
 
-**NOT CLOSED — the 2026-10-08 Phase 3D re-evaluation obtained phone inventory but no physical/cellular establishment or recovery. G1–G5 remain GAP; public forced-relay T3/T4 remain GAP / DEFERRED. The 2026-10-04 attempt is retained below.**
+**NOT CLOSED — the 2026-10-11 physical same-LAN attempt passed G1/G3 at `778de3a839d468527ad4789ebdc24fda42b06453`. G2/G4/G5 remain GAP; public forced-relay T3/T4 remain GAP / DEFERRED. Earlier attempts are retained below.**
 
 Phase 2 software implementation is **MERGED / COMPLETE / REVIEW PASS** at
 `2dd7dea8798bcfc742c8902e853cef69c053eecd` (PR #4). Physical/network qualification
@@ -11,7 +11,33 @@ is COMPLETE / REVIEW PASS; its physical/network qualification is NOT CLOSED.
 No later software or same-host result closes these release-level gates. Historical
 2026-10-04 and 2026-10-02 attempts below retain their original facts/status snapshots.
 
-## Phase 3D debt re-evaluation — 2026-10-08
+## Physical same-LAN debt re-evaluation — 2026-10-11
+
+Exact candidate `778de3a839d468527ad4789ebdc24fda42b06453`, unchanged source/tooling.
+MacBook Pro / Mac17,2, macOS 26.6.2 (25G83), installed Chrome 154.0.8037.98;
+physical OnePlus CPH2707, Android 16 / SDK 36, active Chrome 154.0.8037.126.
+Wireless ADB/CDP was explicitly requested by the user; USB remained unavailable.
+Both devices used Wi-Fi. This does not establish cellular / Wi-Fi OFF topology.
+See the [sanitized physical attempt](evidence/phase3/2026-10-11-physical-summary.json).
+
+| Gate | Current state | New physical evidence |
+| --- | --- | --- |
+| G1 | PASS | Both real devices reached public HTTPS, minimal health response and authenticated WSS on the exact build over Wi-Fi |
+| G2 | GAP | No different-network authenticated join |
+| G3 | PASS | Both real peers reached authenticated connected state on the ordered reliable channel; same-LAN only |
+| G4 | GAP | Physical DIRECT/DIRECT observed on same LAN; required cross-network paths not observed |
+| G5 | GAP | No genuine cellular interruption/restoration or usable-session timing |
+| T1/T2 | PASS — software only | No new public-relay claim |
+| T3/T4 | GAP / DEFERRED | No public forced-relay test |
+
+Phone fixture bytes matched the Mac independently. Human native Done and Ready
+actions enabled actual local playback and functional ten-minute same-LAN smoke
+(Q4/Q5 PASS). The frozen sampler failed duration/coverage (600 s, 86.5%); no cellular
+synchronization gate is closed. The wider Android media corpus/lifecycle, large-file
+resources, binary transfer, OPFS, MSE and Progressive Watch remain unqualified. All `DEFERRED-PHYSICAL-001` through `007` remain OPEN.
+Phase 2 physical gate remains NOT PASSED and qualification DEFERRED / NOT CLOSED.
+
+## Historical Phase 3D debt re-evaluation — 2026-10-08
 
 Candidate `778de3a839d468527ad4789ebdc24fda42b06453` (`test: prepare Local Sync
 qualification`), built with that exact `DRIFTLESS_BUILD_REVISION`. Full root tests,

@@ -1,0 +1,565 @@
+{
+  "date": "2026-10-11",
+  "qualificationSha": "778de3a839d468527ad4789ebdc24fda42b06453",
+  "branchParentSha": "ba89e009032cc265bf40fd7f1114cb97a91b4332",
+  "classification": "PHYSICAL SAME-LAN MEDIA SMOKE; WIRELESS ADB/CDP; MANDATORY CELLULAR QUALIFICATION NOT EXECUTED",
+  "phase3Gate": "NOT PASSED",
+  "softwareQualification": "PASS",
+  "physicalQualification": "NOT CLOSED",
+  "physicalSessionExecuted": true,
+  "candidateSourceOrToolingChanged": false,
+  "historicalSoftwareSummaryPreserved": "2026-10-08-summary.json",
+  "mac": {
+    "model": "MacBook Pro / Mac17,2",
+    "os": "macOS 26.6.2 (25G83)",
+    "chrome": "154.0.8037.98",
+    "defaultRouteWiFi": true,
+    "installedChromeCdpReachable": true
+  },
+  "phone": {
+    "requiredDevice": "OnePlus Nord 5 / CPH2707",
+    "manufacturer": "OnePlus",
+    "model": "CPH2707",
+    "android": "16",
+    "sdk": "36",
+    "chrome": "154.0.8037.126",
+    "chromeVersionSource": "live Chrome CDP Browser version",
+    "inventoryTransport": "WIRELESS ADB",
+    "usbInventoryObserved": false,
+    "wirelessEntryUsedForQualification": true,
+    "scope": "User explicitly requested wireless debugging; observations are same-LAN only.",
+    "humanNativeFileConfirmation": true
+  },
+  "usbPrerequisite": {
+    "state": "GAP",
+    "command": "adb -d get-state",
+    "exitCode": 1,
+    "error": "error: no devices found",
+    "androidChromeUsbCdp": "UNAVAILABLE",
+    "wirelessChromeCdp": "USABLE; same-LAN only",
+    "userWirelessOverride": true
+  },
+  "fixture": {
+    "filename": "synthetic-320x180-35m-h264-aac.mp4",
+    "bytes": 11976311,
+    "sha256": "9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67",
+    "durationSeconds": 2100,
+    "video": "H.264 High / AVC / yuv420p / 320x180 / 30fps",
+    "audio": "AAC-LC / 48000Hz / stereo",
+    "independentInspection": "ffprobe",
+    "phoneProvisioned": true,
+    "phoneBytesVerified": true,
+    "committed": false,
+    "provisioningTransport": "WIRELESS ADB; outside Driftless",
+    "nativePickerCompleted": true
+  },
+  "deployment": {
+    "category": "development qualification deployment, not production hosting",
+    "buildRevision": "778de3a839d468527ad4789ebdc24fda42b06453",
+    "bothPhysicalPagesSecure": true,
+    "bothHealthBodies": {
+      "status": "ok"
+    },
+    "bothWssConnected": true,
+    "exactBuildObservedOnBoth": true,
+    "exactOriginRestricted": true,
+    "loopbackOnlySignaling": true,
+    "runtimeStunConfigured": true,
+    "publicTurnConfigured": false,
+    "hostnameCommitted": false
+  },
+  "sameLan": {
+    "state": "PASS",
+    "scope": "Functional physical same-LAN smoke only; no cross-network or 30-minute PASS",
+    "transportSessionExecuted": true,
+    "mediaSessionExecuted": true,
+    "bothAuthenticatedPeerChannelsConnected": true,
+    "selectedPathHost": "DIRECT",
+    "selectedPathGuest": "DIRECT",
+    "androidDefaultTransport": "WIFI",
+    "measurementSeconds": 600,
+    "sampler": {
+      "state": "FAIL",
+      "durationMs": 600000,
+      "expectedSamples": 600,
+      "validSamples": 519,
+      "rejectedSamples": 81,
+      "excludedSamples": 0,
+      "missingSlots": 81,
+      "coveragePercent": 86.5,
+      "p50Ms": 34.640604000072926,
+      "p95Ms": 42.015124999918044,
+      "p99Ms": 44.25283299997682,
+      "maximumMs": 60.32162499999686,
+      "over250": 0,
+      "over500": 0,
+      "over750": 0,
+      "maximumConsecutiveOver500": 0,
+      "checks": {
+        "duration": false,
+        "coverage": false,
+        "p95": true,
+        "p99": true,
+        "maximum": true,
+        "consecutive": true
+      },
+      "exclusions": []
+    },
+    "completedDurationMs": 600014.306833,
+    "continuousPlaying": true,
+    "hostAlways1x": true,
+    "mediaErrorSamples": 0,
+    "interpretation": "Frozen sampler summary FAIL: 600 seconds is shorter than 1800 and coverage 86.5% is below 95%. The sample supports functional Q5 smoke only. No threshold changed, no long-run PASS and no cellular claim.",
+    "rejections": {
+      "evaluation_rtt": 81,
+      "observation_separation": 5
+    },
+    "maximumGuestEvaluationRttMs": 657.611583000049,
+    "unexpectedReadyCycle": false,
+    "unexpectedPeerRecovery": false
+  },
+  "crossNetwork": {
+    "state": "GAP",
+    "macWiFiConfirmed": true,
+    "androidCellularConfirmed": false,
+    "androidWiFiOffConfirmed": false,
+    "androidNotTetheredConfirmed": false,
+    "adbUsbConfirmed": false,
+    "selectedPathHost": null,
+    "selectedPathGuest": null
+  },
+  "longRun": {
+    "state": "GAP",
+    "executed": false,
+    "durationSeconds": null,
+    "validSamples": null,
+    "rejectedSamples": null,
+    "coveragePercent": null,
+    "p50Ms": null,
+    "p95Ms": null,
+    "p99Ms": null,
+    "maximumMs": null,
+    "over250": null,
+    "over500": null,
+    "over750": null,
+    "maximumConsecutiveOver500": null
+  },
+  "corrections": {
+    "moderateBehind": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "moderateAhead": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "largeBehind": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "largeAhead": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    },
+    "paused": {
+      "state": "GAP",
+      "executed": false,
+      "recoveryMs": null
+    }
+  },
+  "authority": {
+    "state": "GAP",
+    "physicallyObserved": true,
+    "scope": "Same-LAN host commands and zero guest authority observed; mandatory cellular exercise and host isolation under guest perturbations not executed"
+  },
+  "networkInterruption": {
+    "state": "GAP",
+    "executed": false,
+    "durationSeconds": null,
+    "connectivityRestoredAt": null,
+    "freshUsablePeerRecoveryMs": null,
+    "freshReadyBaselineResult": "GAP",
+    "networkSwitch": "GAP; not exercised"
+  },
+  "noTransfer": {
+    "state": "GAP",
+    "physicallyObserved": true,
+    "scope": "Observed physical same-LAN media session only; mandatory cellular session not executed",
+    "binarySendsBoth": 0,
+    "signalingPlaybackSendsBoth": 0,
+    "privateMetadataCounterBoth": 0,
+    "invalidControlCounterBoth": 0,
+    "guestSelectedMedia": true,
+    "fullPhysicalMediaNoTransferCriterionSatisfied": false,
+    "nonGetRequestsDuringControls": {
+      "host": 0,
+      "guest": 0
+    },
+    "oneActiveObjectUrlEach": true
+  },
+  "privacyStorage": {
+    "state": "GAP",
+    "physicallyObserved": true,
+    "scope": "Physical same-LAN post-media inspection only; required cellular session not executed",
+    "both": {
+      "localStorage": 0,
+      "sessionStorage": 0,
+      "indexedDB": 0,
+      "cacheStorage": 0,
+      "opfsEntries": 0,
+      "urlQueryOrHashPresent": false,
+      "unhandledRejections": 0,
+      "mediaErrors": 0
+    },
+    "finalBothPaused": true
+  },
+  "qualificationMatrix": {
+    "Q4": {
+      "state": "PASS",
+      "reason": "Exact independently provisioned phone SHA matched Mac; native file selection, 2100-second H.264/AAC preparation and active error-free phone playback observed."
+    },
+    "Q5": {
+      "state": "PASS",
+      "reason": "Both real devices used matching local bytes, explicit Ready, paused baseline, Play/Pause/paused and playing Seek, active heartbeat, ten-minute continuously playing same-LAN smoke and zero binary sends. Frozen quantitative long-run coverage/duration checks were not met and are not promoted to PASS."
+    },
+    "Q6": {
+      "state": "GAP",
+      "reason": "Mac Wi-Fi and Android default Wi-Fi observed. No cellular/Wi-Fi OFF/non-tethered pair; wireless CDP does not establish this topology."
+    },
+    "Q7": {
+      "state": "GAP",
+      "reason": "DIRECT/DIRECT observed on physical same-LAN pair only; no physical cross-network selected path."
+    },
+    "Q8": {
+      "state": "GAP",
+      "reason": "Physical same-LAN paused baseline observed at 0 ms; no fresh mandatory cellular baseline or direct revision-1 wire capture."
+    },
+    "Q9": {
+      "state": "GAP",
+      "reason": "Physical same-LAN command bounds and zero guest authority observed; mandatory cellular command/host-isolation exercise not executed."
+    },
+    "Q10": {
+      "state": "GAP",
+      "reason": "600-second same-LAN sample: 519 valid, 81 rejected, 86.5% coverage. No mandatory cellular drift distribution; frozen sampler duration/coverage checks FAIL."
+    },
+    "Q11": {
+      "state": "GAP",
+      "reason": "No physical -350 ms guest recovery or return-to-1x measurement."
+    },
+    "Q12": {
+      "state": "GAP",
+      "reason": "No physical +350 ms guest recovery or return-to-1x measurement."
+    },
+    "Q13": {
+      "state": "GAP",
+      "reason": "No physical -1.5 s/+1.5 s recovery measurement."
+    },
+    "Q14": {
+      "state": "GAP",
+      "reason": "No physical paused ~500 ms perturbation/recovery measurement."
+    },
+    "Q15": {
+      "state": "GAP",
+      "reason": "No 1800-second physical cross-network run or coverage measurement."
+    },
+    "Q16": {
+      "state": "GAP",
+      "reason": "Physical same-LAN local selection/probe/request/storage observations clean; full required cellular media session not exercised."
+    },
+    "Q17": {
+      "state": "GAP",
+      "reason": "No genuine cellular disable/restore, old-peer loss or recovery timing."
+    },
+    "Q18": {
+      "state": "GAP",
+      "reason": "No physical fresh Ready/baseline/timing cycle or post-recovery sample."
+    },
+    "Q19": {
+      "state": "NOT APPLICABLE",
+      "reason": "Optional physical signaling-only scenario not exercised."
+    },
+    "Q20": {
+      "state": "GAP",
+      "reason": "Physical same-LAN post-media storage/URL/error inspection clean; required cellular session and its end-of-session checks not executed."
+    }
+  },
+  "phase2": {
+    "G1": "PASS",
+    "G2": "GAP",
+    "G3": "PASS",
+    "G4": "GAP",
+    "G5": "GAP"
+  },
+  "turn": {
+    "T1": "PASS; software only",
+    "T2": "PASS; software only",
+    "T3": "GAP / DEFERRED",
+    "T4": "GAP / DEFERRED",
+    "publicRelayExercised": false
+  },
+  "deferredPhysicalDebts": {
+    "DEFERRED-PHYSICAL-001": "OPEN",
+    "DEFERRED-PHYSICAL-002": "OPEN",
+    "DEFERRED-PHYSICAL-003": "OPEN",
+    "DEFERRED-PHYSICAL-004": "OPEN",
+    "DEFERRED-PHYSICAL-005": "OPEN",
+    "DEFERRED-PHYSICAL-006": "OPEN",
+    "DEFERRED-PHYSICAL-007": "OPEN"
+  },
+  "regression": {
+    "npmCi": "PASS",
+    "baselineCheck": "PASS after rerun with loopback permission; sandbox EPERM preserved as environmental failure",
+    "explicitQualificationToolTests": "14 PASS / 0 FAIL / 0 SKIP",
+    "exactRevisionBuild": "PASS",
+    "finalCheck": "PASS",
+    "workspace": {
+      "protocol": 305,
+      "syncEngine": 109,
+      "signaling": 206,
+      "web": 479
+    },
+    "workspacePassed": 1099,
+    "qualificationToolsPassed": 14,
+    "chromiumPassed": 76,
+    "failed": 0,
+    "skipped": 0,
+    "browserRetries": 0,
+    "physicalQualificationEvidence": false,
+    "browserResult": "Post-physical serial Chromium 76/76 PASS; workers=1, retries=0",
+    "sandboxFailure": "Initial baseline signaling tests: 44 blocked failures from loopback listen EPERM. Permitted full baseline and final check passed; initial environmental log retained.",
+    "postPhysicalFinalVerification": "PASS: check, serial E2E and both audits completed after physical collection"
+  },
+  "audits": {
+    "npmAuditVulnerabilities": 0,
+    "npmAuditOmitDevVulnerabilities": 0
+  },
+  "rawArtifacts": [
+    {
+      "filename": "phase3-2026-10-11-audit-production.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-2026-10-11-audit.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-2026-10-11-baseline-check-unrestricted.log",
+      "bytes": 5331,
+      "sha256": "852a1f11d17765211e270f3233b2fe19716e4f9e8e65116df222a4377696ef44"
+    },
+    {
+      "filename": "phase3-2026-10-11-baseline-check.log",
+      "bytes": 12718,
+      "sha256": "e428a02881b27019ad7a07967ffe61cbd4bfed528799fe7386969c1a7883dcc6"
+    },
+    {
+      "filename": "phase3-2026-10-11-baseline.json",
+      "bytes": 1860,
+      "sha256": "359d236d559d5879c3fef1d0f550c94043fcefd893b326ea7d3dc78081bd700e"
+    },
+    {
+      "filename": "phase3-2026-10-11-build.log",
+      "bytes": 785,
+      "sha256": "add027739da10f63297e60c9f2e91961f2f5151863713283b92d9561074f3b36"
+    },
+    {
+      "filename": "phase3-2026-10-11-controls.json",
+      "bytes": 74926,
+      "sha256": "cdfa35004af64f6baf79bba13dbd9e0f7cffac6d3d363d35656a6a16d1329b0c"
+    },
+    {
+      "filename": "phase3-2026-10-11-controls.log",
+      "bytes": 130,
+      "sha256": "380772e73306a31eabdc3eaef8c7e256fc5e2f0e81901e8ad4410179acbc5e8b"
+    },
+    {
+      "filename": "phase3-2026-10-11-e2e.log",
+      "bytes": 11039,
+      "sha256": "6a3c2e5e3037d673ae7f2d67702ff5afa14bf9966c2a7b6ae08c0a14a724dbb9"
+    },
+    {
+      "filename": "phase3-2026-10-11-final-audit-production.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-2026-10-11-final-audit.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-2026-10-11-final-check.log",
+      "bytes": 5324,
+      "sha256": "0d47fce15bc70887158250b57b5c90f14f8cca35372770505400903cc0724efa"
+    },
+    {
+      "filename": "phase3-2026-10-11-final-e2e.log",
+      "bytes": 11036,
+      "sha256": "a289d0129c268a16a2530d4a83babd322226d9e212c0da1f843c9ce5baaf931a"
+    },
+    {
+      "filename": "phase3-2026-10-11-fixture.json",
+      "bytes": 525,
+      "sha256": "d9e95d8c17ce30c714918497df92688deec45554e8cd3ca4571effc6d651c04a"
+    },
+    {
+      "filename": "phase3-2026-10-11-initial-playing.json",
+      "bytes": 708,
+      "sha256": "188f676ceec70f67b437d2055a5e13faff755c670ed078fbdd6559b9b4b2af4f"
+    },
+    {
+      "filename": "phase3-2026-10-11-inspection.json",
+      "bytes": 2890,
+      "sha256": "431f7060e8e9c292e307ee396b3dc53b8f96514321cf49f853f5c71e00be73cb"
+    },
+    {
+      "filename": "phase3-2026-10-11-npm-ci.log",
+      "bytes": 403,
+      "sha256": "25d0f9b8646966adcc906a96a7545e2b56201d64e9b8afe521507d4cf6c146e1"
+    },
+    {
+      "filename": "phase3-2026-10-11-postphysical-audit-production.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-2026-10-11-postphysical-audit.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-2026-10-11-postphysical-check.log",
+      "bytes": 5326,
+      "sha256": "9f4ff3d3487f9c7859e91b4ab450c07de5a798a4f66f2c5348b58f315eb398da"
+    },
+    {
+      "filename": "phase3-2026-10-11-postphysical-e2e.log",
+      "bytes": 11040,
+      "sha256": "45f2bb8a64a0511c9522ff2a53fe570916ed2f8460febf6671b7d173a75016fb"
+    },
+    {
+      "filename": "phase3-2026-10-11-ready.log",
+      "bytes": 62,
+      "sha256": "d42f364b480995bf859e8b07c8b14b13d37320b25ecf214661bbbd2bc9905d09"
+    },
+    {
+      "filename": "phase3-2026-10-11-resume.json",
+      "bytes": 157,
+      "sha256": "8fc27f7b408606c3cced5a0a72c3611cd8b1ea1ac235b953ad55d46d038ac464"
+    },
+    {
+      "filename": "phase3-2026-10-11-resume.log",
+      "bytes": 14,
+      "sha256": "7e4a43197896224178b3d5b41976ac50dab2721e089584ec11168f7b586d32d0"
+    },
+    {
+      "filename": "phase3-2026-10-11-samelan.log",
+      "bytes": 147,
+      "sha256": "edc6ca6961f547481478a49c7d203aeb2edce2cb9d4ddda6a24b6620e1f11178"
+    },
+    {
+      "filename": "phase3-2026-10-11-setup.json",
+      "bytes": 460,
+      "sha256": "a1a24db883d734d86b13b295e282425f77393365769262571364f08e71ebd704"
+    },
+    {
+      "filename": "phase3-2026-10-11-setup.log",
+      "bytes": 54,
+      "sha256": "ada57eccf7a5d6cbfb21f82dbc12ec408e6f6d3b5c81b57a724669e6a9faad1b"
+    },
+    {
+      "filename": "phase3-2026-10-11-tools.log",
+      "bytes": 1157,
+      "sha256": "4d03113a377fe7b6c4a577add56efd9ab33d2adc06a93b258a717aabc992a671"
+    },
+    {
+      "filename": "phase3-physical-samelan-2026-10-11.json",
+      "bytes": 515239,
+      "sha256": "571baabe883934fc677e134655a3aaa50d83b3d4f908e7742d6fcac2e52bdd36"
+    }
+  ],
+  "nextRequiredPhysicalAction": "Establish an authorized inspection path that survives Android Wi-Fi OFF (the prescribed USB ADB/CDP path was unavailable and the user confirmed only wireless debugging). Then create a fresh Mac Wi-Fi / Android cellular non-tethered room and execute the frozen cellular baseline/authority, 1800-second run, perturbation/recovery and full no-transfer/privacy matrix.",
+  "physicalPlaybackSessionExecuted": true,
+  "historicalPhysicalSummaryPreserved": "2026-10-08-physical-summary.json",
+  "setupObservations": [
+    {
+      "result": "DEPLOYMENT CONFIGURATION ERROR",
+      "detail": "Initial Vite preview rejected the temporary hostname; corrected the external preview configuration to allow only its exact hostname. Candidate source/tooling unchanged."
+    },
+    {
+      "result": "SETUP GAP",
+      "detail": "Fixture initially absent from native chooser; indexed exact synthetic file and refreshed its timestamp without changing bytes. Fixture became visible as 35:00 video."
+    },
+    {
+      "result": "SETUP GAP",
+      "detail": "An Android-local path selected through CDP failed media identity checking; no native/local playback PASS inferred."
+    },
+    {
+      "result": "SETUP GAP",
+      "detail": "Native chooser remote Done taps did not return a file; human Done confirmation then completed successfully. User explicitly tapped Ready; physical playback and same-LAN smoke followed."
+    },
+    {
+      "result": "MEASUREMENT LIMITATION",
+      "detail": "Ten-minute wireless-CDP sample retained 81 excessive-RTT rejections; coverage 86.5% is below frozen 95%. Summary FAIL for duration and coverage retained. No repeat-to-lucky-PASS or threshold change."
+    }
+  ],
+  "phase2Scope": {
+    "G1": "Public HTTPS minimal health response, secure context and authenticated WSS observed on both real devices over Wi-Fi. No cellular reachability claim.",
+    "G3": "Ordered reliable peer channel reached authenticated connected state on both real devices. Same-LAN only.",
+    "G4": "Physical same-LAN DIRECT/DIRECT is supplemental and does not close the real cross-network path criterion."
+  },
+  "sameLanControls": {
+    "scope": "Supplemental same-LAN only; does not satisfy mandatory cellular command/authority exercise",
+    "baselineAbsoluteDifferenceMs": 0,
+    "bothBaselinePaused": true,
+    "revisionOneDirectlyCaptured": false,
+    "method": "Conservative upper bound from external monotonic time before host UI click to first valid applied-state sample; includes input and CDP overhead.",
+    "actions": [
+      {
+        "name": "host_pause",
+        "firstQualifyingObservationMs": 102.412375
+      },
+      {
+        "name": "host_seek_while_paused",
+        "firstQualifyingObservationMs": 215.07320900000013
+      },
+      {
+        "name": "host_play",
+        "firstQualifyingObservationMs": 97.28095799999937
+      },
+      {
+        "name": "host_seek_while_playing",
+        "firstQualifyingObservationMs": 95.99170800000047
+      },
+      {
+        "name": "final_host_pause",
+        "firstQualifyingObservationMs": 66.1612499999992
+      }
+    ],
+    "guestAuthorityCount": 0,
+    "hostRateAlwaysOneInControlSamples": true,
+    "hostHeartbeatsBeforeControls": 1473,
+    "guestObservationsBeforeControls": 1473,
+    "hostLatestSanitizedHeartbeatAfterControls": {
+      "syncSequence": 1496,
+      "revision": 7,
+      "mode": "paused",
+      "clockOffsetMs": -1935,
+      "roundTripMs": 8
+    },
+    "finalBothPaused": true,
+    "readyAndNotReadyCountersUnchanged": true
+  },
+  "cleanup": {
+    "taskRoomsTeardownAttempted": true,
+    "temporaryDeploymentServicesStopped": true,
+    "userNormalChromeProfileUntouched": true,
+    "androidNetworkSettingsChanged": false
+  }
+}
