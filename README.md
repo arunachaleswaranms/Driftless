@@ -6,7 +6,7 @@ Driftless is an experimental, private, peer-to-peer application for synchronized
 >
 > Physical Android / different-network / real-recovery / public-TURN qualification is **DEFERRED / NOT CLOSED**. The literal Phase 2 physical exit gate is **NOT PASSED**; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md).
 >
-> **Phase 3 — Local Sync Mode: IN PROGRESS / QUALIFICATION NOT CLOSED**. 3A is IMPLEMENTED / REVIEW PASS; 3B host playback controls are IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D recovery hardening is implemented and pending independent review, and physical qualification is NOT CLOSED. Phase 3 exit gate: **NOT PASSED**.
+> **Phase 3 — Local Sync Mode: IN PROGRESS / QUALIFICATION NOT CLOSED**. 3A is IMPLEMENTED / REVIEW PASS; 3B host playback controls are IMPLEMENTED / REVIEW PASS; 3C is IMPLEMENTED / REVIEW PASS; 3D recovery hardening is implemented / review pass, a pre-qualification development-dependency cleanup is pending independent review, and physical qualification is NOT CLOSED. Phase 3 exit gate: **NOT PASSED**.
 
 Phase 2 provides private two-person rooms, signaling, WebRTC negotiation and a data-channel handshake, authenticated signaling resume, bounded fresh-peer recovery, safe connection diagnostics, runtime ICE configuration, and short-lived TURN credential issuance. Its automated browser evidence uses two contexts on one development machine; it does not qualify Internet connectivity or public TURN operation.
 

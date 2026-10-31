@@ -44,7 +44,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 
 The latest physical attempt on 2026-10-31 at `778de3a839d468527ad4789ebdc24fda42b06453`, instrumented over USB, established an authenticated DIRECT/DIRECT channel between the Mac on Wi-Fi and the OnePlus on cellular with Wi-Fi OFF (G1–G4 PASS). A genuine cellular interruption was detected but not recovered (G5 FAIL). The 2026-10-11 Wi-Fi attempt passed Q4/Q5. No public TURN was configured or exercised (T3/T4 GAP / DEFERRED; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Earlier automated browser evidence remains same-host development evidence.
 
-Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **RECOVERY HARDENING IMPLEMENTED / INDEPENDENT REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
+Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **RECOVERY HARDENING REVIEW PASS / PRE-QUALIFICATION DEPENDENCY CLEANUP IMPLEMENTED / DEPENDENCY CLEANUP REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
 
 ### Implementation and qualification policy
 
@@ -430,7 +430,7 @@ Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMEN
 
 ## Remaining Work
 
-- Phase 3D — Qualification & Closure: **RECOVERY HARDENING IMPLEMENTED / INDEPENDENT REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED**; after review PASS, a new candidate must be frozen and physically requalified. Deferred physical/network qualification remains an open release-level gate.
+- Phase 3D — Qualification & Closure: **RECOVERY HARDENING REVIEW PASS / PRE-QUALIFICATION DEPENDENCY CLEANUP IMPLEMENTED / DEPENDENCY CLEANUP REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED**; after the dependency cleanup passes review, a new candidate must be frozen and physically requalified. Deferred physical/network qualification remains an open release-level gate.
 - Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
@@ -748,3 +748,33 @@ Phase 2 — G1 PASS, G2 PASS, G3 PASS, G4 PASS, G5 FAIL
 
 Next: independent GitHub review of the recovery-hardening commit. Do not freeze or
 physically qualify a new candidate until review PASS. No milestone PR or merge.
+
+### Pre-qualification dependency cleanup — 2026-11-01
+
+Starting commit `49bf5542c094d69261a03d830f30423d1f225399` (recovery hardening,
+independent review PASS). The change is limited to development dependencies:
+vite 8.3.1 → 8.3.3 and vitest 5.0.2 → 5.0.3, the smallest patched releases with their
+declared floors raised. With them, @vitest/mocker and @vitest/spy move 5.0.2 → 5.0.3
+and why-is-node-running 3.2.2 → 3.2.1, an exact pin of vitest. undici 8.11.2 → 8.12.3
+and zod 4.6.5 → 4.6.7 changed in the lockfile only. There is no source, behavior or
+threshold change. `npm audit` went from 16 (13 moderate, 3 high) to 11 moderate, all
+minimatch GHSA-g3hv-75wg-m249 under ESLint/typescript-eslint, which only minimatch 11
+fixes. That major is outside every published ESLint 10 and typescript-eslint 8 range,
+so it is kept as development-only debt. `npm audit --omit=dev` is 0 before and after.
+Regression from a fresh `npm ci`: 315/109/222/500 Vitest (1146) + 14 tool tests;
+focused recovery 10/10, Chromium 76/76 ×3, Chromium + installed Chrome 152/152, all
+with retries 0. See
+[PHASE3_QUALIFICATION.md](docs/PHASE3_QUALIFICATION.md#pre-qualification-dependency-cleanup).
+
+```text
+Phase 3D — RECOVERY HARDENING REVIEW PASS /
+           PRE-QUALIFICATION DEPENDENCY CLEANUP IMPLEMENTED /
+           DEPENDENCY CLEANUP REVIEW PENDING /
+           PHYSICAL QUALIFICATION NOT CLOSED
+Phase 3 exit gate — NOT PASSED
+Q10 FAIL, Q13 FAIL, Q15 FAIL, Q17 FAIL, Q18 GAP
+Phase 2 — G1 PASS, G2 PASS, G3 PASS, G4 PASS, G5 FAIL
+```
+
+Next: independent GitHub review of the dependency-cleanup commit. Do not freeze a new
+`QUALIFICATION_SHA` or begin physical USB/cellular testing until that review passes.

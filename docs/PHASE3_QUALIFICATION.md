@@ -1,8 +1,9 @@
 # Phase 3 Local Sync Qualification
 
 3A, 3B, 3C — IMPLEMENTED / REVIEW PASS (user-approved independent reviews).
-3D — RECOVERY HARDENING IMPLEMENTED / INDEPENDENT REVIEW PENDING / PHYSICAL
-QUALIFICATION NOT CLOSED. Phase 3 exit gate — NOT PASSED.
+3D — RECOVERY HARDENING REVIEW PASS / PRE-QUALIFICATION DEPENDENCY CLEANUP
+IMPLEMENTED / DEPENDENCY CLEANUP REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED.
+Phase 3 exit gate — NOT PASSED.
 Phase 3 software qualification — PASS; physical/network qualification — NOT CLOSED.
 Phase 2 physical/network qualification — DEFERRED / NOT CLOSED.
 
@@ -48,6 +49,60 @@ established fresh-peer recoveries with explicit re-Ready and a fresh baseline ea
 Thresholds are unchanged. **Q10, Q13, Q15 and Q17 remain FAIL and Q18 remains GAP**
 until a NEW frozen candidate is physically requalified; unit, controller, integration
 and same-host browser tests do not convert any physical result.
+
+## Pre-qualification dependency cleanup
+
+Starting commit `49bf5542c094d69261a03d830f30423d1f225399` (`fix: harden peer and
+signaling recovery`, independent review PASS). This is a development-dependency cleanup
+before a new candidate is frozen; it is not that candidate and records no new
+`QUALIFICATION_SHA`. No application, protocol, signaling, Local Sync or tooling source
+changed.
+
+Audit before (fresh `npm ci`): `npm audit` **16** (critical 0, high 3, moderate 13,
+low 0); `npm audit --omit=dev` **0**. Every advisory was development/tooling only.
+
+| Package | Before | After | Kind | Advisories addressed |
+| --- | --- | --- | --- | --- |
+| `vite` | 8.3.1 | 8.3.3 | direct dev (`apps/web` `^8.3.1` → `^8.3.3`) | GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, GHSA-587h-7wmj-h5pm, GHSA-9jrq-w75r-8gcw, GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg (high) |
+| `vitest` | 5.0.2 | 5.0.3 | direct dev (four workspaces `^5.0.2` → `^5.0.3`) | via `@vitest/mocker` (moderate) |
+| `@vitest/mocker` | 5.0.2 | 5.0.3 | transitive, exact pin of vitest | GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp (moderate) |
+| `@vitest/spy` | 5.0.2 | 5.0.3 | transitive, exact pin of `@vitest/mocker` | none; moves with it |
+| `why-is-node-running` | 3.2.2 | 3.2.1 | transitive, exact pin of vitest 5.0.3 | none; required by vitest |
+| `undici` | 8.11.2 | 8.12.3 | transitive (jsdom `^8.10.2`), lockfile only | eight undici advisories, GHSA-4qv8-2p9j-2685 et al. (high) |
+| `zod` | 4.6.5 | 4.6.7 | transitive (eslint-plugin-react-hooks `^3.25.0 \|\| ^4.0.0`), lockfile only | GHSA-mrhx-c7xc-m3w5 (high) |
+
+vite and vitest moved to the smallest patched release in their existing minor line.
+The latest in-range patches (vite 8.3.5, vitest 5.0.5) were evaluated and rejected:
+they cascaded through rolldown and its 16 platform bindings, postcss, chai and an
+`obug` major. undici and zod are dependency-free leaves updated in range with
+`npm update <pkg> --package-lock-only --ignore-scripts`. An incidental magic-string
+re-resolution, tied to no advisory, was restored to the previously locked 1.4.2. npm
+accepts the resulting lockfile without rewriting it. No override, force fix,
+script-policy change, new production dependency or unrelated upgrade was made.
+
+Audit after: `npm audit` **11** (critical 0, high 0, moderate 11, low 0);
+`npm audit --omit=dev` **0**. All eleven entries are one advisory, minimatch
+GHSA-g3hv-75wg-m249 (`<11.0.1`), reached through ESLint (`@eslint/config-array`
+`^10.2.4`) and typescript-eslint (`@typescript-eslint/typescript-estree` `^10.2.2`).
+The fix exists only in minimatch 11, a new major that no published ESLint 10 or
+typescript-eslint 8 release accepts, so it would need an override that breaks those
+packages' declared ranges or a lint-toolchain migration. It remains
+**development-only debt**: the linter runs only on repository sources.
+
+Regression from a fresh `npm ci`: `npm run check` PASS. Protocol 315, sync-engine 109,
+signaling 222 and web 500 Vitest tests (**1146**), plus **14** tool tests, with 0
+failures and 0 skips; the counts are unchanged. The named recovery regressions all pass
+again: transient and persistent disconnect, 20-cycle controller, 100-cycle store,
+consecutive bound, one- and two-sided `RTC_ESTABLISHED`, resend after a lost ACK,
+stale-socket resume at 11.75 s, and no live takeover. Playwright 1.63.0, workers 1,
+retries 0: focused recovery-hardening spec **10/10** in ten separate invocations;
+full Chromium 153.0.8010.12 **76/76** ×3 consecutive; Chromium plus installed Chrome
+156.0.8078.76 **152/152**. There were no failed, flaky or skipped browser runs.
+
+Physical results are unchanged: **Q10, Q13, Q15 and Q17 remain FAIL and Q18 remains
+GAP**. Phase 2 G1–G4 PASS, G5 FAIL. The historical `QUALIFICATION_SHA`
+`778de3a839d468527ad4789ebdc24fda42b06453` is not modified. After independent review of
+this cleanup, a new candidate is frozen and physically requalified.
 
 ## Physical USB cellular attempt — 2026-10-31
 
