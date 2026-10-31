@@ -2,7 +2,7 @@
 
 ## Status
 
-**NOT CLOSED — the 2026-10-11 physical same-LAN attempt passed G1/G3 at `778de3a839d468527ad4789ebdc24fda42b06453`. G2/G4/G5 remain GAP; public forced-relay T3/T4 remain GAP / DEFERRED. Earlier attempts are retained below.**
+**NOT CLOSED — the 2026-10-31 USB cellular attempt at `778de3a839d468527ad4789ebdc24fda42b06453` passed G1–G4 across Mac Wi-Fi and Android cellular; G5 FAILED (no recovery after a genuine cellular interruption). Public forced-relay T3/T4 remain GAP / DEFERRED. Earlier attempts are retained below.**
 
 Phase 2 software implementation is **MERGED / COMPLETE / REVIEW PASS** at
 `2dd7dea8798bcfc742c8902e853cef69c053eecd` (PR #4). Physical/network qualification
@@ -10,6 +10,34 @@ remains **DEFERRED / NOT CLOSED**, literal gate **NOT PASSED**. Phase 3 implemen
 is COMPLETE / REVIEW PASS; its physical/network qualification is NOT CLOSED.
 No later software or same-host result closes these release-level gates. Historical
 2026-10-04 and 2026-10-02 attempts below retain their original facts/status snapshots.
+
+## Physical cellular debt re-evaluation — 2026-10-31
+
+Exact candidate `778de3a839d468527ad4789ebdc24fda42b06453`, unchanged source/tooling.
+MacBook Pro / Mac17,2, macOS 26.6.2 (25G83), installed Chrome 156.0.8078.76 over Wi-Fi;
+physical OnePlus CPH2707, Android 16 / SDK 36, active Chrome 156.0.8078.49 on validated
+cellular with Wi-Fi OFF and no tethering. Instrumentation was USB ADB and USB Chrome CDP.
+Development qualification deployment through the quick tunnel; no TURN.
+See the [sanitized USB cellular summary](evidence/phase3/2026-10-31-usb-cellular-summary.json)
+and the [Phase 3 record](PHASE3_QUALIFICATION.md#physical-usb-cellular-attempt--2026-10-31).
+
+| Gate | Current state | New physical evidence |
+| --- | --- | --- |
+| G1 | PASS | Public HTTPS, secure context, `{"status":"ok"}` and WSS on the exact build from the Mac over Wi-Fi and the phone over cellular |
+| G2 | PASS | Fresh room created on the Mac and joined from the phone across Wi-Fi and cellular, authenticated |
+| G3 | PASS | Ordered reliable channel open on both cross-network peers |
+| G4 | PASS | DIRECT / DIRECT on both peers (UDP, global IPv6, no relay); no address recorded |
+| G5 | FAIL | Genuine Android data disable/enable: loss detected correctly, but no fresh usable peer within 180 s of validated restoration; the guest's resume was refused while the service held the dead socket and its schedule ended the membership |
+| T1/T2 | PASS — software only | No new public-relay claim |
+| T3/T4 | GAP / DEFERRED | No public forced-relay test |
+
+The DIRECT cellular path also failed spontaneously three times while signaling and
+cellular stayed up; each time the host recovered a fresh authenticated channel
+(12.0, 0.6 and 8.5 s), which used up the four-negotiation membership bound before the
+induced interruption. The Phase 2C heartbeat-versus-resume-schedule limitation was
+observed on a real mobile network. Network switching was not exercised. Phase 2 physical
+gate remains NOT PASSED and qualification DEFERRED / NOT CLOSED; all
+`DEFERRED-PHYSICAL-001` through `007` remain OPEN.
 
 ## Physical same-LAN debt re-evaluation — 2026-10-11
 

@@ -1,0 +1,656 @@
+{
+  "date": "2026-10-31",
+  "qualificationSha": "778de3a839d468527ad4789ebdc24fda42b06453",
+  "branchParentSha": "ec240e2f6d244b7bc244fd6de155eea39e921ced",
+  "classification": "PHYSICAL REAL-DEVICE EVIDENCE; REAL CROSS-NETWORK EVIDENCE (Mac Wi-Fi + Android cellular, Wi-Fi OFF, not tethered); USB ADB/CDP",
+  "phase3Gate": "NOT PASSED",
+  "softwareQualification": "PASS",
+  "physicalQualification": "NOT CLOSED",
+  "candidateSourceOrToolingChanged": false,
+  "historicalSummariesPreserved": [
+    "2026-10-08-summary.json",
+    "2026-10-08-physical-summary.json",
+    "2026-10-11-physical-summary.json"
+  ],
+  "mac": {
+    "model": "MacBook Pro / Mac17,2",
+    "os": "macOS 26.6.2 (25G83)",
+    "chrome": "156.0.8078.76",
+    "defaultRoute": "Wi-Fi",
+    "dedicatedChromeProfile": true
+  },
+  "phone": {
+    "model": "OnePlus Nord 5 / CPH2707",
+    "manufacturer": "OnePlus",
+    "android": "16",
+    "sdk": "36",
+    "chrome": "156.0.8078.49",
+    "chromeVersionSource": "adb -d package dump and USB Chrome CDP Browser version"
+  },
+  "instrumentation": {
+    "adb": "USB (adb -d)",
+    "chromeCdp": "USB forward to the com.android.chrome DevTools socket",
+    "wirelessDebugging": "OFF",
+    "cdpSurvivedWiFiOff": true,
+    "note": "The default chrome_devtools_remote socket belonged to another installed Chromium browser; forwarding was pointed at the Chrome package socket and verified by Android-Package.",
+    "maxGuestEvaluationRttMs30m": 23.14,
+    "maxHostEvaluationRttMs30m": 15.573
+  },
+  "topology": {
+    "macWiFi": true,
+    "androidCellularDefaultValidated": true,
+    "androidWiFiOff": true,
+    "tethering": "OFF (no upstream, no tethered interface, soft AP off)",
+    "monitoredEachMinuteDuringLongRun": "33 checks: Wi-Fi disabled, default CELLULAR, Chrome foreground, ADB device",
+    "androidWiFiDisabledBy": "adb -d shell svc wifi disable",
+    "androidSettingsRestoredAfterRun": true
+  },
+  "fixture": {
+    "filename": "synthetic-320x180-35m-h264-aac.mp4",
+    "bytes": 11976311,
+    "durationSeconds": 2100,
+    "sha256": "9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67",
+    "video": "H.264 High / AVC / yuv420p / 320x180 / 30fps",
+    "audio": "AAC-LC / 48000Hz / stereo",
+    "independentInspection": "ffprobe",
+    "phoneSha256MatchedViaAdbUsb": true,
+    "phoneCopy": "Present from the 2026-10-11 provisioning; re-verified byte-identical over adb -d, not re-pushed",
+    "phoneSelection": "Human selection in the Android photo picker; picker supplied a renamed media-store copy whose size/duration/dimensions matched and Driftless reported Media matches",
+    "committed": false
+  },
+  "deployment": {
+    "category": "development qualification deployment, not production hosting",
+    "publicEndpoint": "account-free cloudflared 2026.9.3 quick tunnel; hostname not recorded",
+    "origin": "Vite preview on loopback with exact-host allow, DEPLOYMENT.md headers, /v1/signaling and /healthz forwarded; scratch config outside the repository",
+    "signaling": "NODE_ENV=production, loopback bind, exact HTTPS origin, runtime STUN, no TURN",
+    "bothSecureContext": true,
+    "bothHealthBody": {
+      "status": "ok"
+    },
+    "bothWss": true,
+    "cspViolations": 0,
+    "crossOriginOrPlainHttpResources": 0,
+    "exactBuildObservedOnBoth": true,
+    "publicTurnConfigured": false,
+    "observations": [
+      "Intermittent HTTP 530 from the quick tunnel during its first minutes (5/20, then 1/30 /healthz probes)",
+      "Both signaling sockets closed together once (code 1006) in the abandoned first room and resumed within 16 s with no new peer connection"
+    ]
+  },
+  "crossNetwork": {
+    "state": "PASS",
+    "roomFresh": true,
+    "authenticatedJoin": true,
+    "dataChannelOpenBoth": true,
+    "selectedPathHost": "DIRECT",
+    "selectedPathGuest": "DIRECT",
+    "pairDetail": "UDP, nominated; Mac local host / remote host, phone local host / remote srflx; both endpoints global IPv6 (no private, link-local or relay candidate); addresses not recorded",
+    "turnConfiguration": "Not configured"
+  },
+  "baseline": {
+    "state": "PASS",
+    "bothPaused": true,
+    "firstQualifyingMsAfterGuestReady": 232.9,
+    "absoluteDifferenceMs": 0,
+    "hostAuthoritySendsForBaseline": 1,
+    "hostHeartbeatAfterBaseline": {
+      "revision": 1,
+      "mode": "paused"
+    },
+    "revisionOnePauseObservedBy": "external probe: exactly one host PAUSE/PLAY/SEEK send and heartbeat revision 1 / paused"
+  },
+  "authority": {
+    "state": "PASS",
+    "method": "Conservative upper bound: external monotonic time from host UI click to first valid applied-state sample",
+    "actions": [
+      {
+        "name": "host_play",
+        "firstQualifyingMs": 166.5,
+        "driftMsAtQualification": 21.1
+      },
+      {
+        "name": "host_pause",
+        "firstQualifyingMs": 97.4,
+        "driftMsAtQualification": -0.4
+      },
+      {
+        "name": "host_seek_paused_600s",
+        "firstQualifyingMs": 127.9,
+        "driftMsAtQualification": 0
+      },
+      {
+        "name": "host_play_2",
+        "firstQualifyingMs": 404.5,
+        "driftMsAtQualification": -296.5
+      },
+      {
+        "name": "host_seek_playing_1s",
+        "firstQualifyingMs": 93.4,
+        "driftMsAtQualification": -3.2
+      }
+    ],
+    "controlSamples": 144,
+    "controlSamplesValid": 144,
+    "hostAlways1x": true,
+    "guestAuthoritySends": 0,
+    "hostIsolationUnderGuestPerturbations": "Host 1x, zero host seek events and unchanged host revision through all five guest perturbations"
+  },
+  "longRun": {
+    "state": "FAIL",
+    "frozenSamplerSummary": "PASS",
+    "durationMs": 1800000,
+    "completedDurationMs": 1800014.056,
+    "expectedSamples": 1800,
+    "validSamples": 1800,
+    "rejectedSamples": 0,
+    "missingSlots": 0,
+    "excludedSamples": 0,
+    "coveragePercent": 100,
+    "p50Ms": 49.858,
+    "p95Ms": 53.252,
+    "p99Ms": 54.168,
+    "maximumMs": 57.569,
+    "over250": 0,
+    "over500": 0,
+    "over750": 0,
+    "maximumConsecutiveOver500": 0,
+    "warmUpSecondsAfterSeekWhilePlaying": ">=10",
+    "continuousPlaying": false,
+    "hostAlways1x": true,
+    "mediaErrorSamples": 0,
+    "bothPausedFromSecond": 1623,
+    "bothPausedSamples": 177,
+    "unexpectedPeerRecovery": true,
+    "unexpectedReadyCycle": true,
+    "applicationRateLimitFailure": false,
+    "interpretation": "Frozen drift statistics pass, but the direct peer transport failed spontaneously about 1623 s into the window. The host recovered a fresh peer, Ready reset as designed and both players stayed paused for the last 177 samples. Both-playing, no-unexpected-recovery and no-unexpected-Ready-cycle steady-state conditions fail. No threshold changed, no rejected sample reclassified, no rerun.",
+    "supplementalPlayingOnly": {
+      "samples": 1623,
+      "p50Ms": 50.239,
+      "p95Ms": 53.319,
+      "p99Ms": 54.273,
+      "maximumMs": 57.569,
+      "gateEvidence": false
+    }
+  },
+  "spontaneousPeerFailures": {
+    "count": 3,
+    "events": [
+      {
+        "approxSecondsAfterInitialNegotiation": 1801,
+        "initiatedBy": "host recovery offer",
+        "freshChannelSecondsAfterRecoveryOffer": 12.0
+      },
+      {
+        "approxSecondsAfterInitialNegotiation": 2459,
+        "initiatedBy": "guest recovery request",
+        "freshChannelSecondsAfterRequest": 0.6
+      },
+      {
+        "approxSecondsAfterInitialNegotiation": 2476,
+        "initiatedBy": "host recovery offer",
+        "freshChannelSecondsAfterRecoveryOffer": 8.5
+      }
+    ],
+    "signalingDuringFailures": "connected on both",
+    "androidDefaultNetwork": "CELLULAR, validated, in every per-minute check",
+    "cause": "Not identified from available sanitized evidence; Android logs showed no network event at the first failure",
+    "negotiationsUsed": "4 of MAX_NEGOTIATIONS_PER_MEMBERSHIP 4",
+    "freshCycleAfterEach": "Media matches, Ready reset, both paused, guest 1x, no auto-resume; after explicit Ready the first heartbeat was syncSequence 1 / revision 1 / paused / null clock estimate",
+    "freshHeartbeatsObserved": {
+      "afterFirst": [
+        {
+          "syncSequence": 1,
+          "revision": 1,
+          "mode": "paused",
+          "clockOffsetNull": true
+        },
+        {
+          "syncSequence": 2,
+          "revision": 1,
+          "mode": "paused",
+          "clockOffsetNull": false
+        },
+        {
+          "syncSequence": 3,
+          "revision": 1,
+          "mode": "paused",
+          "clockOffsetNull": false
+        }
+      ],
+      "afterThird": [
+        {
+          "syncSequence": 1,
+          "revision": 1,
+          "mode": "paused",
+          "clockOffsetNull": true
+        },
+        {
+          "syncSequence": 2,
+          "revision": 1,
+          "mode": "paused",
+          "clockOffsetNull": false
+        },
+        {
+          "syncSequence": 3,
+          "revision": 1,
+          "mode": "paused",
+          "clockOffsetNull": false
+        }
+      ]
+    }
+  },
+  "corrections": {
+    "moderateBehind": {
+      "state": "PASS",
+      "injectedS": -0.35,
+      "observedDriftMs": -328.4,
+      "peakAbsDriftMs": 583.4,
+      "firstWithin150Ms": 9304.5,
+      "lastAbove150Ms": 9413.1,
+      "guestRates": [
+        1,
+        1.05
+      ],
+      "guestBackTo1xMs": 12062.2,
+      "hostAlways1x": true,
+      "guestAuthoritySends": 0
+    },
+    "moderateAhead": {
+      "state": "PASS",
+      "injectedS": 0.35,
+      "observedDriftMs": 301.2,
+      "firstWithin150Ms": 266.4,
+      "lastAbove150Ms": 157.3,
+      "guestRates": [
+        1
+      ],
+      "hostAlways1x": true,
+      "guestAuthoritySends": 0,
+      "note": "Guest seek stall absorbed most of the offset; 0.95x was not exercised physically"
+    },
+    "largeBehind": {
+      "state": "PASS",
+      "injectedS": -1.5,
+      "observedDriftMs": -1479.6,
+      "firstWithin250Ms": 376.7,
+      "lastAbove250Ms": 1824.9,
+      "guestSeekEvents": 2,
+      "hardCorrection": "one local guest seek event beyond the injection; no SEEK wire command",
+      "guestBackTo1xMs": 5884.0,
+      "modePlaying": true,
+      "hostAlways1x": true,
+      "guestAuthoritySends": 0
+    },
+    "largeAhead": {
+      "state": "FAIL",
+      "injectedS": 1.5,
+      "observedDriftMs": 1420.8,
+      "firstWithin250Ms": null,
+      "detail": "No guest correction before the concurrent spontaneous peer failure at about 4.7 s; both players then paused as designed",
+      "hostAlways1x": true,
+      "guestAuthoritySends": 0
+    },
+    "paused": {
+      "state": "PASS",
+      "injectedS": 0.5,
+      "observedDriftMs": 500.4,
+      "firstWithin150Ms": 260.0,
+      "bothRemainedPaused": true,
+      "hostAlways1x": true,
+      "guestAuthoritySends": 0
+    },
+    "perturbationSamplesValid": {
+      "behind": "365/365",
+      "ahead": "365/365",
+      "large-behind": "136/136",
+      "large-ahead": "136/136",
+      "paused": "73/73"
+    },
+    "operatorNote": "A first perturbation pass aborted before any injection because the runner precondition (|drift|<=50 ms) was stricter than this pair's steady state; the gate was set to <=100 ms and the runs repeated. No injection occurred in the aborted pass."
+  },
+  "networkInterruption": {
+    "state": "FAIL",
+    "method": "adb -d svc data disable/enable; Wi-Fi OFF and USB connected throughout; one external monotonic clock",
+    "androidLostValidatedDefaultMsAfterDisable": 375.7,
+    "bothPeersDetectedLostMsAfterAndroidLoss": 6385.1,
+    "lossBehavior": {
+      "syncDeactivated": true,
+      "bothPaused": true,
+      "guestRate1": true,
+      "oldHeartbeatStopped": true,
+      "readyReset": true,
+      "refresh": false
+    },
+    "enableIssuedMsAfterDetection": 2082.8,
+    "connectivityRestoredDefinition": "Android default network CELLULAR with VALIDATED capability",
+    "connectivityRestoredMsAfterEnable": 1844.4,
+    "freshUsablePeerRecoveryMs": null,
+    "observedFor": "180 s after CONNECTIVITY_RESTORED",
+    "outcome": "Host reported the peer connection to the guest could not be recovered, consistent with the per-membership negotiation bound (4 of 4 peer connections already used). Guest signaling resumes after restoration were refused while the service still held the dead socket; the guest resume schedule ended and the guest left the room; the service later timed out the guest.",
+    "reloadUsed": false,
+    "networkSwitch": "GAP; not exercised"
+  },
+  "freshReadyCycleAfterInterruption": {
+    "state": "GAP",
+    "reason": "No peer recovery after the induced interruption"
+  },
+  "noTransfer": {
+    "state": "PASS",
+    "scope": "Actual cellular media session",
+    "bothSelectedLocally": true,
+    "matchingBytes": true,
+    "binarySendsBoth": 0,
+    "signalingPlaybackSendsBoth": 0,
+    "privateMetadataBoth": 0,
+    "invalidControlBoth": 0,
+    "maxControlBytes": {
+      "host": 566,
+      "guest": 506
+    },
+    "uploadLikeOrCrossOriginRequests": 0,
+    "localBlobPlaybackBoth": true,
+    "transferEngine": "unused (no binary channel send)"
+  },
+  "privacyStorage": {
+    "state": "PASS",
+    "scope": "End of the cellular media session and again after the interruption",
+    "both": {
+      "localStorage": 0,
+      "sessionStorage": 0,
+      "indexedDB": 0,
+      "cacheStorage": 0,
+      "opfsEntries": 0,
+      "urlQueryOrHashPresent": false,
+      "unhandledRejections": 0,
+      "mediaErrors": 0,
+      "pageErrors": 0,
+      "cspViolations": 0
+    }
+  },
+  "qualificationMatrix": {
+    "Q4": {
+      "state": "PASS",
+      "reason": "Retained 2026-10-11 PASS; exact fixture also selected, prepared and played on the phone in this cellular session."
+    },
+    "Q5": {
+      "state": "PASS",
+      "reason": "Retained 2026-10-11 functional same-LAN PASS."
+    },
+    "Q6": {
+      "state": "PASS",
+      "reason": "Fresh authenticated room, Mac Wi-Fi + Android validated cellular, Wi-Fi OFF, not tethered, data channel open on both."
+    },
+    "Q7": {
+      "state": "PASS",
+      "reason": "DIRECT / DIRECT on both real peers (UDP, global IPv6, no relay)."
+    },
+    "Q8": {
+      "state": "PASS",
+      "reason": "Both paused at 0 ms difference 233 ms after the second Ready; one host baseline PAUSE, heartbeat revision 1 / paused."
+    },
+    "Q9": {
+      "state": "PASS",
+      "reason": "Play 166/405 ms, Pause 97 ms, paused Seek 128 ms, playing Seek 93 ms; host 1x; guest authority sends 0; host isolated under all guest perturbations."
+    },
+    "Q10": {
+      "state": "FAIL",
+      "reason": "Drift statistics within thresholds at 100% coverage, but spontaneous peer failure, Ready cycle and 177 both-paused samples inside the 1800 s window."
+    },
+    "Q11": {
+      "state": "PASS",
+      "reason": "-350 ms: first <=150 ms at 9.3 s, settled by 9.4 s, 1.05x, back to 1x at 12.1 s; host 1x; no guest authority."
+    },
+    "Q12": {
+      "state": "PASS",
+      "reason": "+350 ms: <=150 ms at 0.27 s and sustained; guest stayed 1x (seek stall absorbed the offset; 0.95x not exercised)."
+    },
+    "Q13": {
+      "state": "FAIL",
+      "reason": "-1.5 s PASS (<=250 ms at 0.38 s, settled by 1.8 s, local hard correction). +1.5 s FAIL: not corrected within 3 s; concurrent spontaneous peer failure."
+    },
+    "Q14": {
+      "state": "PASS",
+      "reason": "+500 ms paused: 0.4 ms at 0.26 s, both remained paused, no guest authority."
+    },
+    "Q15": {
+      "state": "FAIL",
+      "reason": "1800 s physical cross-network window measured, but steady-state continuity failed (unexpected peer recovery and Ready cycle)."
+    },
+    "Q16": {
+      "state": "PASS",
+      "reason": "Cellular session: local selection both sides, matching bytes, zero binary sends, zero signaling playback, zero upload-like requests, no metadata leakage."
+    },
+    "Q17": {
+      "state": "FAIL",
+      "reason": "Genuine cellular loss detected correctly; no fresh usable peer within 30 s (none in 180 s) of validated cellular restoration; guest left the room. No reload."
+    },
+    "Q18": {
+      "state": "GAP",
+      "reason": "Unreachable after the Q17 failure. Supplemental: three spontaneous real peer recoveries each showed a correct fresh Ready/baseline/timing cycle."
+    },
+    "Q19": {
+      "state": "NOT APPLICABLE",
+      "reason": "Optional; one incidental signaling-only resume (no new peer connection) observed before media selection."
+    },
+    "Q20": {
+      "state": "PASS",
+      "reason": "Cellular session storage, URL and error checks clean on both browsers."
+    }
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "kind": "PRODUCT / NETWORK",
+      "detail": "The DIRECT Mac Wi-Fi to Android cellular IPv6 path failed spontaneously three times (first about 30 minutes after negotiation) while signaling and Android cellular stayed up. Cause not identified."
+    },
+    {
+      "id": "F2",
+      "kind": "PRODUCT",
+      "detail": "The per-membership negotiation budget (4) was exhausted by spontaneous recoveries, consistent with the host stopping recovery at its bound immediately after the later genuine loss."
+    },
+    {
+      "id": "F3",
+      "kind": "PRODUCT (known Phase 2C limitation, now observed on a real mobile network)",
+      "detail": "After restoration the guest resume was refused while the service still held the dead socket; the finite resume schedule ended the membership before liveness timeout."
+    },
+    {
+      "id": "F4",
+      "kind": "SETUP",
+      "detail": "First room abandoned before media: Chrome was backgrounded on the phone and the guest left. A non-fixture personal video was picked once outside any room and cleared before any room; nothing about it was transmitted or recorded."
+    },
+    {
+      "id": "F5",
+      "kind": "DEPENDENCY",
+      "detail": "npm audit now reports 16 dev-only advisories (13 moderate, 3 high: Vite dev server, Vitest mocker, ESLint/minimatch, jsdom/undici, eslint-plugin-react-hooks/zod) published after candidate freeze; npm audit --omit=dev 0. User chose to proceed at the frozen candidate and record this as debt."
+    }
+  ],
+  "phase2": {
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "G5": "FAIL"
+  },
+  "phase2Scope": {
+    "G1": "Public HTTPS/WSS, secure context and minimal health from the Mac over Wi-Fi and the phone over cellular.",
+    "G2": "Authenticated create/join across Mac Wi-Fi and Android cellular.",
+    "G3": "Authenticated ordered reliable channel open on both cross-network peers.",
+    "G4": "DIRECT / DIRECT on both cross-network peers.",
+    "G5": "Genuine Android cellular interruption: no authenticated recovery after restoration."
+  },
+  "turn": {
+    "T1": "PASS; software only",
+    "T2": "PASS; software only",
+    "T3": "GAP / DEFERRED",
+    "T4": "GAP / DEFERRED",
+    "publicRelayExercised": false
+  },
+  "deferredPhysicalDebts": {
+    "DEFERRED-PHYSICAL-001": "OPEN",
+    "DEFERRED-PHYSICAL-002": "OPEN",
+    "DEFERRED-PHYSICAL-003": "OPEN",
+    "DEFERRED-PHYSICAL-004": "OPEN",
+    "DEFERRED-PHYSICAL-005": "OPEN",
+    "DEFERRED-PHYSICAL-006": "OPEN",
+    "DEFERRED-PHYSICAL-007": "OPEN"
+  },
+  "regression": {
+    "npmCi": "PASS",
+    "baselineCheck": "PASS",
+    "qualificationToolTests": 14,
+    "exactRevisionBuild": "PASS",
+    "final": {
+      "check": "PASS",
+      "workspace": {
+        "protocol": 305,
+        "syncEngine": 109,
+        "signaling": 206,
+        "web": 479
+      },
+      "workspacePassed": 1099,
+      "qualificationToolsPassed": 14,
+      "chromiumPassed": 76,
+      "failed": 0,
+      "skipped": 0,
+      "browserRetries": 0,
+      "browserFlags": "workers=1, retries=0"
+    }
+  },
+  "audits": {
+    "npmAuditVulnerabilities": 16,
+    "npmAuditBreakdown": {
+      "moderate": 13,
+      "high": 3
+    },
+    "npmAuditOmitDevVulnerabilities": 0,
+    "scope": "dev/tooling only; advisories published after candidate freeze; lockfile unchanged"
+  },
+  "rawArtifacts": [
+    {
+      "filename": "phase3-usb-ahead.json",
+      "bytes": 281355,
+      "sha256": "39ba346d3c4dd1476cf95dd3ec913946b343c5cde5ec1631358d40e1531a7f2d"
+    },
+    {
+      "filename": "phase3-usb-behind.json",
+      "bytes": 281783,
+      "sha256": "d6ae3c5f8791ae6aab3ac8ce0db7de3505acfea939e322a1d54b6cbb66343c5d"
+    },
+    {
+      "filename": "phase3-usb-cellular-30m.json",
+      "bytes": 1545556,
+      "sha256": "cee4485133dd214fb5d1cbc51ebabb398db55b0276f127e2fa9cffc3a8029296"
+    },
+    {
+      "filename": "phase3-usb-commands.json",
+      "bytes": 125921,
+      "sha256": "3785a5279f168de6c4c3c62d0f4fd6233296012d30d079336775a9653bb6049c"
+    },
+    {
+      "filename": "phase3-usb-final-audit-production.json",
+      "bytes": 364,
+      "sha256": "c599714cdb340e762f9c9818363a516cb0d998eec10ba8cc90283d9c7d883fea"
+    },
+    {
+      "filename": "phase3-usb-final-audit.json",
+      "bytes": 17248,
+      "sha256": "87c48061f0c01cdd8d9553f32b82ccc29b095225d97d349caa77b9e90812b9ba"
+    },
+    {
+      "filename": "phase3-usb-final-storage.json",
+      "bytes": 216,
+      "sha256": "a1e4cf2ef1a2421a98d908a6eb12f53b5c2f316454cdcd09a4049ef5f7c219d3"
+    },
+    {
+      "filename": "phase3-usb-large-ahead.json",
+      "bytes": 106605,
+      "sha256": "600f5c676d64fc01095d4c92b23d57041ec39b875abc7d617c9df465d7db162a"
+    },
+    {
+      "filename": "phase3-usb-large-behind.json",
+      "bytes": 106925,
+      "sha256": "8ddc56d18085246e8cb014088fdbf3813615a758464eb3a14da168e1f62f4d79"
+    },
+    {
+      "filename": "phase3-usb-pause-3.json",
+      "bytes": 24495,
+      "sha256": "798fa247f0ff4c6b3947c966326c017760dec185bf6439d6de5b4dfb0a0fe900"
+    },
+    {
+      "filename": "phase3-usb-paused.json",
+      "bytes": 58401,
+      "sha256": "eb22d0441112d7de3c0382c8e0f2f097577d6d3666cafa931c4d583dfca0ed92"
+    },
+    {
+      "filename": "phase3-usb-play-3.json",
+      "bytes": 24671,
+      "sha256": "6f76ca524e9e4631a008be407489c93c5c9538b0b89b55a90951dae4d44fb625"
+    },
+    {
+      "filename": "phase3-usb-play-4.json",
+      "bytes": 24664,
+      "sha256": "e91cb971f6031de764c0f63d38ebc41f1d42c2800ba64e9ac0d88b4c921f06b5"
+    },
+    {
+      "filename": "phase3-usb-ready-3.json",
+      "bytes": 25249,
+      "sha256": "1a5490d9a8ef99596cd1ef3e9e3c224fee4396c70f08f4b66ceeb211544889b8"
+    },
+    {
+      "filename": "phase3-usb-ready-after-spontaneous.json",
+      "bytes": 23695,
+      "sha256": "762dc079dc6f84790f69d9895a530fbfd571c81bc60ea0dcd699f842be735fef"
+    },
+    {
+      "filename": "phase3-usb-ready.json",
+      "bytes": 22689,
+      "sha256": "a72ae1f93b1e0cd4b246ac50b1064e76e032e448339d36c51dcdc12b37c7bdad"
+    },
+    {
+      "filename": "phase3-usb-recovery.json",
+      "bytes": 1564839,
+      "sha256": "d0ec7705e1d37c437132b345b3beff76316c4c8ea6e4f3a7340cd7d826b93f5e"
+    },
+    {
+      "filename": "phase3-usb-seekplay.json",
+      "bytes": 48762,
+      "sha256": "74d3db83f8d665bed9630f46f6f53f61d531ef1fa2b992e9e502deaf30aa5746"
+    },
+    {
+      "filename": "phase3-usb-signaling-events.json",
+      "bytes": 10151,
+      "sha256": "542ec723df6a0e40187d205b0c8de3c5c73ea115c5d3748e5deb5ec7bb39af6a"
+    },
+    {
+      "filename": "phase3-usb-final-check.log",
+      "bytes": 5347,
+      "sha256": "63fe78b9d87869bce78cb69bf9be48185372762110bb1c13483bc0a988d45a3d"
+    },
+    {
+      "filename": "phase3-usb-final-e2e.log",
+      "bytes": 10312,
+      "sha256": "6f230155421b7acd45bf23ab2aab1838dd763226c43989701e8e4338df8d9cbb"
+    },
+    {
+      "filename": "phase3-usb-longrun-topology.log",
+      "bytes": 5775,
+      "sha256": "956d9188a436ba3317e1d96a265a201958d1942238c9ed852d862db9d4c612d3"
+    },
+    {
+      "filename": "phase3-usb-topology-before-room.txt",
+      "bytes": 266,
+      "sha256": "60350e12c3a99117c6e1676900ca0b5b1b6a35a015541fda2da4e45e7d224f68"
+    }
+  ],
+  "cleanup": {
+    "deploymentStopped": true,
+    "dedicatedChromeClosed": true,
+    "userNormalChromeProfileUntouched": true,
+    "phoneWiFiRestored": true,
+    "phoneStayAwakeRestored": true,
+    "mobileDataOn": true,
+    "usbForwardRemoved": true
+  },
+  "nextRequiredPhysicalAction": "Product work is required before a PASS is possible: diagnose spontaneous direct-path loss on Wi-Fi/cellular, and address negotiation-budget exhaustion and the stale-socket resume refusal (F1-F3) in a new reviewed candidate; then requalify the full physical cellular matrix on that candidate."
+}

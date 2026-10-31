@@ -283,3 +283,19 @@ zero failures/skips/retries; both audits 0 vulnerabilities. Software PASS;
 physical/network NOT CLOSED; Phase 3 exit gate NOT PASSED. See the
 [sanitized summary](evidence/phase3/2026-10-11-physical-summary.json).
 Next: instrumentation surviving Wi-Fi OFF, then the complete frozen cellular matrix.
+
+## Phase 3D USB cellular attempt — 2026-10-31
+
+Frozen candidate unchanged. USB ADB and USB Chrome CDP survived Android Wi-Fi OFF;
+the phone's validated default network was cellular, not tethered; the Mac used Wi-Fi.
+A fresh authenticated room reached DIRECT/DIRECT. Q6–Q9, Q11, Q12, Q14, Q16 and Q20
+PASS. The frozen 1800-second sampler summary passed (1800/1800 valid, 100% coverage,
+p95 53.252 ms, p99 54.168 ms, max 57.569 ms), but a spontaneous direct-path failure
+caused peer recovery, a Ready reset and 177 both-paused samples: **Q10/Q15 FAIL**.
+A later spontaneous failure prevented the +1.5 s correction (**Q13 FAIL**). A genuine
+`svc data` disable/enable was detected correctly but not recovered after validated
+restoration (**Q17 FAIL**; **Q18 GAP**). Q19 NOT APPLICABLE. Phase 2 G1–G4 PASS, G5 FAIL;
+T3/T4 GAP / DEFERRED. Final regression: 1099 workspace + 14 tool tests, Chromium 76/76;
+`npm audit --omit=dev` 0, `npm audit` 16 dev-only advisories recorded as debt.
+Software PASS; physical/network NOT CLOSED; Phase 3 exit gate NOT PASSED. See the
+[sanitized summary](evidence/phase3/2026-10-31-usb-cellular-summary.json).

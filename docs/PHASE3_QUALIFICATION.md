@@ -16,6 +16,156 @@ commit records its SHA and results, and is not the tested application revision.
 No product behavior changes are planned. Any fix requires a new committed SHA,
 full regression and requalification of the affected matrix. No PR or merge in 3D.
 
+## Physical USB cellular attempt — 2026-10-31
+
+Candidate remains `778de3a839d468527ad4789ebdc24fda42b06453`; no source, tooling,
+dependency, lockfile or threshold changed. Branch and origin were clean at
+`ec240e2f6d244b7bc244fd6de155eea39e921ced`. The stale `/private/tmp` worktree had lost
+its checkout; it was moved aside, pruned and recreated at the exact candidate. Earlier
+summaries are preserved. See the [sanitized USB cellular summary](evidence/phase3/2026-10-31-usb-cellular-summary.json)
+for exact values and raw-artifact hashes.
+
+**PHYSICAL REAL-DEVICE EVIDENCE; REAL CROSS-NETWORK EVIDENCE.** MacBook Pro / Mac17,2,
+macOS 26.6.2 (25G83), installed Chrome 156.0.8078.76 (dedicated profile), default route
+Wi-Fi. OnePlus Nord 5 / CPH2707, Android 16 / SDK 36, active Chrome 156.0.8078.49.
+Instrumentation was **USB ADB (`adb -d`) and USB Chrome CDP**; wireless debugging was
+off. The default `chrome_devtools_remote` socket belonged to another installed
+Chromium browser, so forwarding used the Chrome package's socket, verified by
+`Android-Package`. Android Wi-Fi was disabled over USB; the validated default network
+was CELLULAR; no tether upstream, tethered interface or soft AP. USB CDP survived
+Wi-Fi OFF. Per-minute checks throughout the long run stayed Wi-Fi OFF / CELLULAR /
+Chrome foreground / ADB device. Maximum 30-minute evaluation RTT: guest 23.1 ms,
+host 15.6 ms (wireless 2026-10-11: 657.6 ms).
+
+The fixture again matched 11,976,311 bytes, SHA-256
+`9947f859790ba110f37f0a02909d0fadaa99885fcda6bfa36c1f0a3c72853a67`, 2100 s,
+H.264 High / yuv420p / 320×180 / 30fps, AAC-LC / 48kHz / stereo (`ffprobe`). The phone
+copy from 2026-10-11 was re-verified byte-identical over `adb -d` and not re-pushed.
+The Android photo picker supplied a renamed media-store copy; size, duration and
+dimensions matched and Driftless reported **Media matches**. Exact-revision build;
+both pages showed the full candidate SHA. Development qualification deployment, not
+production hosting: account-free quick tunnel, loopback preview with the deployment
+headers, production signaling on loopback with exact origin and runtime STUN, no TURN.
+Both pages: secure context, `{"status":"ok"}`, WSS, zero CSP violations and zero
+cross-origin or plain-HTTP resources.
+
+Setup failures retained: the first cellular room was abandoned before media because
+phone Chrome was backgrounded and the guest left; one non-fixture personal video was
+picked outside any room and cleared (nothing transmitted or recorded); the quick
+tunnel returned intermittent 530s in its first minutes; one perturbation pass aborted
+before injection because the runner's stability precondition (≤50 ms) was stricter
+than this pair's steady state. The gate was set to ≤100 ms and rerun.
+
+A fresh room then connected **Mac Wi-Fi ↔ Android cellular**, authenticated, data
+channel open on both, **DIRECT / DIRECT** (UDP, nominated, global IPv6 on both ends,
+no relay). Ready on both gave a paused baseline at **0 ms** difference 233 ms after
+the second Ready: exactly one host PAUSE and heartbeat revision 1 / paused, observed
+through the external probe.
+
+| Host command (conservative click → first applied sample) | Result |
+| --- | --- |
+| Play / second Play | guest playing at 166.5 / 404.5 ms |
+| Pause | both paused, 0.4 ms apart, 97.4 ms |
+| Seek while paused (10:00) | both paused at 600.000 s, 127.9 ms |
+| Seek while playing (0:01) | aligned within 3.2 ms, 93.4 ms |
+
+144/144 control samples valid; host 1× throughout; guest authority sends 0.
+
+| 1800-second cellular sampler | Observed |
+| --- | --- |
+| Frozen sampler summary | PASS (duration, coverage, percentiles, consecutive) |
+| Valid / rejected / missing | 1800 / 0 / 0; coverage 100% |
+| Absolute drift p50 / p95 / p99 / max | 49.858 / 53.252 / 54.168 / 57.569 ms |
+| Samples >250 / >500 / >750; max consecutive >500 | 0 / 0 / 0; 0 |
+| Host 1× / media-error samples | true / 0 |
+| Continuously playing | **false** — both paused from second 1623 (177 samples) |
+
+**Q10/Q15 FAIL.** About 1623 s into the window (about 30 minutes after negotiation)
+the DIRECT transport failed spontaneously while signaling and validated cellular
+stayed up. The host recovered a fresh peer, Ready reset as designed and both players
+stayed paused. That is an unexpected peer recovery and Ready cycle inside the
+eligible steady state. The drift statistics are retained unchanged; no threshold
+changed, no sample was reclassified and the run was not repeated. Two more spontaneous
+direct-path failures followed, at about 2459 s and 2476 s after negotiation. Each
+recovered a fresh channel (12.0, 0.6 and 8.5 s). After each, media identity matched,
+Ready reset, both paused with guest 1×, nothing auto-resumed, and explicit Ready
+produced heartbeat sequence 1 / revision 1 / paused with a null initial clock estimate.
+The cause was not identified from available evidence.
+
+| Guest DevTools perturbation (not an application SEEK) | Result |
+| --- | --- |
+| −350 ms (Q11) | first ≤150 ms 9.30 s, last >150 ms 9.41 s; 1.05×; 1× at 12.06 s — PASS |
+| +350 ms (Q12) | ≤150 ms at 0.27 s, sustained; guest stayed 1× (seek stall absorbed the offset; 0.95× not exercised) — PASS |
+| −1.5 s (Q13) | ≤250 ms at 0.38 s, last >250 ms 1.82 s; one local hard-correction seek; playing; 1× at 5.88 s — PASS |
+| +1.5 s (Q13) | no correction before a concurrent spontaneous peer failure at about 4.7 s — FAIL |
+| +500 ms paused (Q14) | 0.4 ms at 0.26 s; both remained paused — PASS |
+
+Host 1×, zero host seek events and unchanged host revision through every perturbation;
+guest authority sends 0. End-of-session (Q16/Q20, cellular): both selected local files,
+matching bytes, zero binary sends, signaling playback, private-metadata or invalid-control
+counts; maximum control 566 / 506 B; zero upload-like or cross-origin requests; local
+`blob:` playback. Application storage (localStorage, sessionStorage, IndexedDB, Cache
+Storage, OPFS) was empty on both, with no URL query/hash and zero media/page errors,
+unhandled rejections or CSP violations, both before and after the interruption test.
+
+**Q17 FAIL.** With Wi-Fi OFF and USB connected, `svc data disable` removed the validated
+default network in 376 ms. Both pages detected the old peer lost 6.4 s later: sync
+deactivated, both paused, guest 1×, old heartbeat stopped, Ready reset, no reload.
+Data was re-enabled 2.1 s after detection; **CONNECTIVITY_RESTORED** (validated
+CELLULAR) followed 1.84 s after the enable command. No fresh usable peer appeared
+within 180 s. The host showed the guest peer could not be recovered, consistent with
+the four-negotiation membership bound already being used. The guest's resume attempts
+after restoration were refused while the service still held the dead socket (the
+known Phase 2C limitation, now observed on a real mobile network). Its resume schedule
+ended the membership before the service's liveness timeout. **Q18 GAP**: no
+post-interruption recovery to start a fresh cycle.
+
+| Criterion | 2026-10-31 state |
+| --- | --- |
+| Q4 / Q5 | PASS (retained; fixture also played on the phone over cellular) |
+| Q6 / Q7 / Q8 / Q9 | PASS / PASS (DIRECT/DIRECT) / PASS / PASS |
+| Q10 | FAIL — unexpected peer recovery and Ready cycle in steady state |
+| Q11 / Q12 | PASS / PASS |
+| Q13 | FAIL — +1.5 s uncorrected within 3 s (−1.5 s PASS) |
+| Q14 | PASS |
+| Q15 | FAIL — 1800 s window measured but not continuously playing |
+| Q16 | PASS |
+| Q17 | FAIL — no fresh usable peer after restored cellular |
+| Q18 | GAP — unreachable after Q17; spontaneous-recovery fresh cycles correct |
+| Q19 | NOT APPLICABLE — optional; one incidental signaling-only resume kept the peer |
+| Q20 | PASS |
+
+Findings for future product work (no source changed here): F1, spontaneous DIRECT
+Wi-Fi/cellular path loss; F2, negotiation-budget exhaustion by spontaneous recovery;
+F3, stale-socket resume refusal stranding the guest after genuine loss.
+
+Final exact-candidate regression: check PASS — protocol 305, sync-engine 109,
+signaling 206, web 479 (**1099**) plus **14** tool tests; serial Chromium **76/76**,
+zero failures/skips/retries. `npm audit --omit=dev`: **0 vulnerabilities**.
+`npm audit`: **16** (13 moderate, 3 high), all dev/tooling (Vite dev server, Vitest
+mocker, ESLint/minimatch, jsdom/undici, eslint-plugin-react-hooks/zod). These advisories
+were published after the candidate freeze; the lockfile is unchanged. The user chose to
+proceed at the frozen candidate and record this as dependency debt.
+
+Phase 2: **G1–G4 PASS** (cross-network reachability, join, channel, DIRECT paths);
+**G5 FAIL** (no recovery after genuine cellular interruption). T1/T2 PASS — software;
+**T3/T4 GAP / DEFERRED**. Compatibility is unchanged.
+
+```text
+Phase 3A — IMPLEMENTED / REVIEW PASS
+Phase 3B — IMPLEMENTED / REVIEW PASS
+Phase 3C — IMPLEMENTED / REVIEW PASS
+Phase 3D — QUALIFICATION NOT CLOSED
+
+Phase 3 software qualification — PASS
+Phase 3 physical/network qualification — NOT CLOSED
+Phase 3 exit gate — NOT PASSED
+```
+
+Next: product work on F1–F3 in a new reviewed candidate (and dependency updates for
+the dev advisories), then requalify the full cellular matrix on that candidate.
+No milestone PR or merge.
+
 ## Physical same-LAN media attempt — 2026-10-11
 
 Candidate remains `778de3a839d468527ad4789ebdc24fda42b06453`; no source,

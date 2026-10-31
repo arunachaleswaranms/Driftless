@@ -42,7 +42,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 | Phase 2C | Connection lifecycle & reconnect   | **IMPLEMENTED / REVIEW PASS**    |
 | Phase 2D | Diagnostics / real-network closure | **IMPLEMENTED / REVIEW PASS** |
 
-The latest physical attempt on 2026-10-11 at `778de3a839d468527ad4789ebdc24fda42b06453` established public HTTPS/WSS and an authenticated DIRECT/DIRECT channel on the real Mac/OnePlus pair over Wi-Fi (G1/G3 PASS). Matching local-file playback and functional same-LAN smoke passed (Q4/Q5); cellular / Wi-Fi OFF establishment, cross-network path evidence and genuine recovery remain unqualified (G2/G4/G5 GAP). No public TURN was configured or exercised (T3/T4 GAP / DEFERRED; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Earlier automated browser evidence remains same-host development evidence.
+The latest physical attempt on 2026-10-31 at `778de3a839d468527ad4789ebdc24fda42b06453`, instrumented over USB, established an authenticated DIRECT/DIRECT channel between the Mac on Wi-Fi and the OnePlus on cellular with Wi-Fi OFF (G1–G4 PASS). A genuine cellular interruption was detected but not recovered (G5 FAIL). The 2026-10-11 Wi-Fi attempt passed Q4/Q5. No public TURN was configured or exercised (T3/T4 GAP / DEFERRED; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Earlier automated browser evidence remains same-host development evidence.
 
 Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
 
@@ -425,7 +425,7 @@ Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMEN
 
 ## Open Deferred Qualification
 
-- Phase 2 physical Android cross-network establishment and recovery, selected-path evidence on both real peers, and public TURN forced-relay qualification remain **DEFERRED / NOT CLOSED**. T1/T2 are **PASS — software**; T3/T4 remain **GAP / DEFERRED** because no publicly reachable TURN service was available. The literal physical exit gate is **NOT PASSED**.
+- Phase 2 physical Android cross-network establishment and selected-path evidence on both real peers passed on 2026-10-31 (G1–G4); genuine-interruption recovery FAILED (G5) and public TURN forced-relay qualification remains open, so Phase 2 physical qualification remains **DEFERRED / NOT CLOSED**. T1/T2 are **PASS — software**; T3/T4 remain **GAP / DEFERRED** because no publicly reachable TURN service was available. The literal physical exit gate is **NOT PASSED**.
 - Physical Android and real external-network qualification remain open under the debt list below. No deferred debt was closed by the software review or PR merge. Phase 2A's Node loopback tests, Phase 2B's and 2C's same-host browser tests, and Phase 2D's same-host tests and one-device public smoke test do not satisfy `DEFERRED-PHYSICAL-002`.
 
 ## Remaining Work
@@ -486,7 +486,7 @@ The project intentionally accumulates these physical Android gates for the later
 
 ## Current Blockers
 
-The literal Phase 2 physical exit gate remains **NOT PASSED**. The physical Mac/Android same-LAN public reachability and authenticated channel passed G1/G3. Cellular / Wi-Fi-off establishment, genuine network recovery (including the known heartbeat/retry timing limitation), and selected paths on real cross-network peers remain unobserved (G2/G4/G5 GAP). No publicly reachable TURN service was available for T3/T4. These are deferred qualification blockers, not implementation-merge blockers; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). They must be resolved before final product/release qualification.
+The literal Phase 2 physical exit gate remains **NOT PASSED**. On 2026-10-31 the physical Mac (Wi-Fi) / Android (cellular, Wi-Fi OFF) pair passed public reachability, authenticated cross-network join, channel and DIRECT/DIRECT selected paths (G1–G4). Genuine cellular-interruption recovery FAILED (G5): the known heartbeat/resume-schedule limitation stranded the guest after restoration, and spontaneous DIRECT path failures had already used the four-negotiation membership bound. Those spontaneous failures also failed the Phase 3 30-minute steady-state run. No publicly reachable TURN service was available for T3/T4. These are deferred qualification blockers, not implementation-merge blockers; see [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md#blocking-findings). They must be resolved before final product/release qualification.
 
 No architecture blocker has been observed. Spike 0.1 has no exact desktop memory measurements and retains physical Android debt. Spike 0.2 proves controlled same-host browser connectivity only; different-NAT, carrier-network, physical Android, and TURN behavior remain unqualified. The selected host/host pair must not be generalized to Internet reachability.
 
@@ -665,3 +665,33 @@ NOT PASSED. Phase 2 G1/G3 PASS for physical Wi-Fi reachability/channel; G2/G4/G5
 T3/T4 GAP / DEFERRED. All seven deferred physical debts remain OPEN and compatibility
 is unchanged. Next: instrumentation surviving Wi-Fi OFF, then the complete frozen
 cellular matrix. No milestone PR or merge.
+
+### Physical USB cellular attempt — 2026-10-31
+
+Candidate `778de3a839d468527ad4789ebdc24fda42b06453` unchanged; clean branch parent/origin
+`ec240e2f6d244b7bc244fd6de155eea39e921ced`. USB ADB and USB Chrome CDP replaced wireless
+instrumentation and survived Android Wi-Fi OFF. Mac Wi-Fi (Chrome 156.0.8078.76) and
+OnePlus CPH2707 on validated cellular, Wi-Fi OFF, not tethered (Android 16, Chrome
+156.0.8078.49) established a fresh authenticated DIRECT/DIRECT room on the exact build.
+Baseline, host Play/Pause/Seek and host isolation passed. Moderate behind/ahead, large
+behind and paused corrections passed; no guest authority send. Cellular no-transfer and
+storage/URL/error checks were clean.
+
+The frozen 1800-second USB sampler reported 1800/1800 valid, 100% coverage, p95 53.252 ms,
+p99 54.168 ms, max 57.569 ms. However, the DIRECT transport failed spontaneously about
+1623 s into the window, causing peer recovery, a Ready reset and 177 both-paused samples.
+**Q10/Q15 FAIL.** Two more spontaneous path failures followed; one interrupted the
++1.5 s correction (**Q13 FAIL**). A genuine `svc data` disable/enable was detected
+correctly, but no fresh peer recovered after validated cellular restoration (**Q17
+FAIL**, **Q18 GAP**). Causes observed: four-negotiation bound used by spontaneous
+recoveries, and the known Phase 2C stale-socket resume refusal. Q4–Q9/Q11/Q12/Q14/Q16/Q20
+PASS; Q19 NOT APPLICABLE. See the [sanitized summary](docs/evidence/phase3/2026-10-31-usb-cellular-summary.json).
+
+Final candidate regression: 1099 workspace + 14 tool tests, Chromium 76/76, zero
+failures/skips/retries. `npm audit --omit=dev` 0; `npm audit` 16 dev-only advisories
+published after the candidate freeze (recorded as dependency debt by user decision).
+Phase 3D QUALIFICATION NOT CLOSED; software PASS; physical/network NOT CLOSED; exit gate
+NOT PASSED. Phase 2 G1–G4 PASS, G5 FAIL; T3/T4 GAP / DEFERRED. Compatibility unchanged.
+Next: product work on spontaneous path loss, negotiation-budget exhaustion and resume
+stranding in a new reviewed candidate, then full physical requalification. No milestone
+PR or merge.
