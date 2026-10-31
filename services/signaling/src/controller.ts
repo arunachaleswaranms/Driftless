@@ -13,6 +13,7 @@ import {
   type ParticipantLeftReason,
   type ParticipantSignalingState,
   type ResumeChallenge,
+  type RtcEstablishedMessage,
   type ServerMessage,
   type SessionResumeBeginMessage,
   type SessionResumeProveMessage,
@@ -446,6 +447,9 @@ export class SignalingController {
       case 'RTC_CONFIG_REQUEST':
         this.#issueRtcConfig(record, now);
         return;
+      case 'RTC_ESTABLISHED':
+        this.#recordEstablished(record, message);
+        return;
       case 'RTC_OFFER':
       case 'RTC_ANSWER':
       case 'ICE_CANDIDATE':
@@ -580,6 +584,26 @@ export class SignalingController {
       connection: record.id,
       turn: issued.turn ? 'issued' : 'not_configured',
     });
+  }
+
+  /**
+   * Records a member's report that its peer session for the active
+   * negotiation is established, and acknowledges it to this connection only,
+   * so that a client whose earlier report may have been lost with its
+   * connection can tell it was recorded. A repeated report is acknowledged
+   * again and changes nothing. Nothing is relayed to the peer.
+   */
+  #recordEstablished(record: ConnectionRecord, message: RtcEstablishedMessage): void {
+    const { negotiationId } = message.payload;
+    const result = this.#store.establish(record.id, negotiationId);
+    if (!result.ok) {
+      this.#reject(record, result.code, 'establishment_report', true);
+      return;
+    }
+    this.#send(record, { type: 'RTC_ESTABLISHED_ACK', payload: { negotiationId } });
+    if (result.reset) {
+      this.#logger.log({ event: 'negotiation_established', connection: record.id });
+    }
   }
 
   /**

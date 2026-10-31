@@ -32,11 +32,16 @@ export const MAX_USERNAME_FRAGMENT_BYTES = 256;
 export const MAX_ICE_CANDIDATES_PER_NEGOTIATION = 32;
 
 /**
- * Negotiations one guest membership may use: the first, plus up to three
- * fresh recovery negotiations after its peer connection fails. Each uses a
- * new negotiation ID that is never accepted again. Provisional.
+ * Negotiations a guest membership may start in a row without one of them
+ * becoming established: the first or a recovery, plus up to three fresh
+ * recovery negotiations after it. A negotiation is established once both
+ * participants report, with `RTC_ESTABLISHED`, that their authenticated peer
+ * session for it reached the Driftless `connected` state; the service then
+ * counts the established negotiation as the only one in the current run, so
+ * a long-lived room can recover any number of times, while failed recoveries
+ * stay bounded. Each negotiation uses a fresh negotiation ID. Provisional.
  */
-export const MAX_NEGOTIATIONS_PER_MEMBERSHIP = 4;
+export const MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT = 4;
 
 /**
  * The browser-compatible fields of one ICE candidate, as a plain object. It

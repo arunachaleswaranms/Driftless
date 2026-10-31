@@ -25,7 +25,7 @@ import {
 import type { IceServersResult } from './iceServers.ts';
 import { RoomController, type RoomState } from './roomController.ts';
 import type { SignalingUrlResult } from './signalingUrl.ts';
-import { PEER_APPLICATION_RATE_BURST } from './peerSession.ts';
+import { PEER_APPLICATION_RATE_BURST, PEER_DISCONNECT_GRACE_MS } from './peerSession.ts';
 import { HOST_RECOVERY_DELAY_MS } from './reconnectSchedule.ts';
 
 const ROOM_ID = `${'R'.repeat(21)}Q` as RoomId;
@@ -161,6 +161,107 @@ function inRoom(state: RoomState) {
 }
 
 describe('peer application flooding and Local Sync recovery', () => {
+  it('keeps Ready, the session, and the negotiation across a transient disconnect; resets Ready after a persistent one', async () => {
+    const h = await hostInRoom();
+    await guestJoins(h);
+    const old = await connectHost(h);
+    const sync = h.controller.localSync;
+    const localSelectionId = 'A'.repeat(22) as MediaSelectionId;
+    const remoteSelectionId = ('B'.repeat(21) + 'A') as MediaSelectionId;
+    const fingerprint = 'A'.repeat(43) as MediaFingerprint;
+    sync.dispatch({ type: 'select', selectionId: localSelectionId, byteLength: 1 });
+    sync.dispatch({ type: 'playback', selectionId: localSelectionId, status: 'ready' });
+    sync.dispatch({ type: 'fingerprint', selectionId: localSelectionId, fingerprint });
+    const deliver = (body: ApplicationBody, sequence: number) => {
+      old.channel.receive(
+        JSON.stringify({
+          protocolVersion: 1,
+          type: body.type,
+          sequence,
+          sentAt: 0,
+          payload: {
+            ...body.payload,
+            sessionId: SESSION_ID,
+            negotiationId: old.negotiationId,
+            senderId: GUEST_ID,
+            recipientId: HOST_ID,
+          },
+        }),
+      );
+    };
+    const pair = { localSelectionId: remoteSelectionId, remoteSelectionId: localSelectionId };
+    deliver(
+      {
+        type: 'MEDIA_INFO',
+        payload: {
+          selectionId: remoteSelectionId,
+          fingerprintVersion: 1,
+          fingerprint,
+          byteLength: 1,
+        },
+      },
+      2,
+    );
+    deliver({ type: 'MEDIA_MATCH', payload: { ...pair, fingerprint } }, 3);
+    sync.dispatch({ type: 'ready', readinessId: readinessId(1) });
+    deliver({ type: 'READY', payload: { ...pair, fingerprint, readinessId: readinessId(50) } }, 4);
+    const ready = sync.getState();
+    expect(ready).toMatchObject({ connected: true, localReady: true, remoteReady: true });
+    const sentBefore = h.socket().sentText.length;
+
+    // Transient: back within the grace. Nothing about the room or Local Sync changes.
+    old.pc.setConnectionState('disconnected');
+    await h.timers.advance(PEER_DISCONNECT_GRACE_MS - 100);
+    old.pc.setConnectionState('connected');
+    await h.timers.advance(60_000);
+    expect(sync.getState()).toBe(ready);
+    expect(h.connections).toHaveLength(1);
+    expect(old.pc.closed).toBe(false);
+    expect(old.channel.closed).toBe(false);
+    expect(inRoom(h.controller.getState()).peer).toMatchObject({
+      connection: 'connected',
+      failure: null,
+    });
+    expect(h.socket().sentText.slice(sentBefore)).toStrictEqual([]);
+    expect(h.controller.getDiagnostics().recovery).toMatchObject({
+      transientRecovered: 1,
+      sessionsLost: 0,
+      lastLoss: null,
+    });
+
+    // Persistent: the grace ends, the session fails once, Ready resets, and a fresh
+    // negotiation replaces it.
+    old.pc.setConnectionState('disconnected');
+    await h.timers.advance(PEER_DISCONNECT_GRACE_MS);
+    expect(old.pc.closed).toBe(true);
+    expect(inRoom(h.controller.getState()).peer).toMatchObject({
+      connection: 'recovering',
+      failure: 'connection_lost',
+    });
+    expect(sync.getState()).toMatchObject({
+      connected: false,
+      remote: null,
+      localReady: false,
+      remoteReady: false,
+      localReadinessId: null,
+      remoteReadinessId: null,
+    });
+    expect(h.controller.getDiagnostics().recovery).toMatchObject({
+      transientRecovered: 1,
+      sessionsLost: 1,
+      lastLoss: { failure: 'connection_lost', cause: 'disconnect_timeout' },
+    });
+    await h.timers.advance(HOST_RECOVERY_DELAY_MS);
+    const fresh = await connectHost(h);
+    expect(h.connections).toHaveLength(2);
+    expect(fresh.negotiationId).not.toBe(old.negotiationId);
+    expect(sync.getState()).toMatchObject({
+      connected: true,
+      localReady: false,
+      remoteReady: false,
+    });
+  });
+
   it('uses normal fresh-peer recovery, clears remote readiness, and reannounces retained identity', async () => {
     const h = await hostInRoom();
     await guestJoins(h);

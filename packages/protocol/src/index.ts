@@ -80,6 +80,8 @@ export {
   type RtcAnswerMessage,
   type RtcConfigMessage,
   type RtcConfigRequestMessage,
+  type RtcEstablishedAckMessage,
+  type RtcEstablishedMessage,
   type RtcOfferMessage,
   type RtcRecoverMessage,
   type RtcRecoveryRequestMessage,
@@ -122,7 +124,7 @@ export {
 export {
   MAX_ICE_CANDIDATE_BYTES,
   MAX_ICE_CANDIDATES_PER_NEGOTIATION,
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   MAX_SDP_BYTES,
   MAX_SDP_MID_BYTES,
   MAX_SDP_MLINE_INDEX,

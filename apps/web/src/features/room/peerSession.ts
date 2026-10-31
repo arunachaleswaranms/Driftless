@@ -17,6 +17,7 @@ import {
   type SessionId,
 } from '@driftless/protocol';
 import type { StatsReportLike } from './connectionStats.ts';
+import { browserTimers, type Cancel, type Timers } from './reconnectSchedule.ts';
 import { offersTurn } from './rtcConfig.ts';
 
 /** The part of `RTCPeerConnection` a peer session uses. */
@@ -83,7 +84,10 @@ export type PeerFailure =
   | 'negotiation_failed'
   /** ICE or DTLS failed before the channel became usable. */
   | 'connection_failed'
-  /** An established connection disconnected, failed, or closed. */
+  /**
+   * An established connection failed or closed, or stayed disconnected for
+   * longer than PEER_DISCONNECT_GRACE_MS.
+   */
   | 'connection_lost'
   /** The control channel closed or reported an error. */
   | 'channel_closed'
@@ -99,6 +103,28 @@ export type PeerFailure =
   | 'signaling_unavailable'
   /** The ICE policy allows only TURN relay, and no TURN server was available. */
   | 'relay_unavailable';
+
+/**
+ * What the browser reported when a `connection_failed` or `connection_lost`
+ * session ended, for diagnostics. Fixed tokens.
+ *
+ * - `disconnect_timeout`: `disconnected` for the whole grace period.
+ * - `failed`: the connection state became `failed`.
+ * - `closed`: the connection state became `closed` without the owner closing it.
+ */
+export type ConnectionLossCause = 'disconnect_timeout' | 'failed' | 'closed';
+
+/**
+ * How long a connection may stay `disconnected` before the session fails.
+ * A `disconnected` connection is not necessarily lost: ICE may find its way
+ * back, as mobile and changing networks often do, and the same session then
+ * continues untouched. `failed`, a closed connection, and a closed or failed
+ * control channel are never waited for. Provisional.
+ */
+export const PEER_DISCONNECT_GRACE_MS = 5000;
+
+/** One-shot timers for the disconnect grace, injectable so tests drive time. */
+export type PeerTimers = Timers;
 
 /** Browser-reported states of a live session, for diagnostics. */
 export interface PeerObservation {
@@ -142,8 +168,24 @@ export interface PeerSessionOptions {
   readonly signal: (body: NegotiationBody) => boolean;
   /** Local millisecond clock for diagnostic `sentAt` and inbound application admission. */
   readonly clock: () => number;
-  /** Called on every state change except `closed`, which only the owner causes. */
-  readonly onStateChange: (state: PeerSessionState, failure?: PeerFailure) => void;
+  /**
+   * Called on every state change except `closed`, which only the owner
+   * causes. A failure of the connection itself also says what the browser
+   * reported.
+   */
+  readonly onStateChange: (
+    state: PeerSessionState,
+    failure?: PeerFailure,
+    cause?: ConnectionLossCause,
+  ) => void;
+  /**
+   * Called when the connection came back to `connected` within the
+   * disconnect grace: the same session, channel, and handshake continue.
+   * Diagnostic only.
+   */
+  readonly onDisconnectRecovered?: () => void;
+  /** The disconnect grace timer; the browser's by default. */
+  readonly timers?: PeerTimers;
 }
 
 /**
@@ -157,10 +199,13 @@ export interface PeerSessionOptions {
  * enough.
  *
  * Every asynchronous continuation and event handler checks that the session
- * is still live, and teardown detaches every handler, so a late callback from
- * a closed session can never act. A session is never repaired: there is no
- * ICE restart or renegotiation within it, and a failure tears it down and
- * reports once. Recovery is the owner's decision and always uses a fresh
+ * is still live, and teardown detaches every handler and cancels its timer,
+ * so a late callback from a closed session can never act. A session is never
+ * repaired: there is no ICE restart or renegotiation within it. A connection
+ * that reports `disconnected` is given PEER_DISCONNECT_GRACE_MS to return to
+ * `connected` by itself, and the session continues unchanged if it does; any
+ * other loss, or a disconnect that outlasts the grace, tears the session down
+ * and reports once. Recovery is the owner's decision and always uses a fresh
  * session, with a fresh connection, negotiation ID, channel, and handshake.
  *
  * Once connected, a session needs no signaling: a late candidate that
@@ -168,7 +213,10 @@ export interface PeerSessionOptions {
  */
 export class PeerSession {
   readonly #options: PeerSessionOptions;
+  readonly #timers: PeerTimers;
   #state: PeerSessionState = 'negotiating';
+  /** The one pending disconnect grace timer, while the connection is `disconnected`. */
+  #disconnectGrace: Cancel | undefined;
   #connection: PeerConnectionLike | undefined;
   #channel: DataChannelLike | undefined;
 
@@ -195,6 +243,7 @@ export class PeerSession {
 
   constructor(options: PeerSessionOptions) {
     this.#options = options;
+    this.#timers = options.timers ?? browserTimers;
     this.#applicationCallback = options.onApplicationMessage;
     this.#applicationLastRefill = options.clock();
   }
@@ -433,7 +482,9 @@ export class PeerSession {
       if (this.#owns(connection)) this.#localCandidate(event.candidate);
     };
     connection.onconnectionstatechange = () => {
-      if (this.#owns(connection)) this.#connectionStateChanged(connection.connectionState);
+      if (this.#owns(connection)) {
+        this.#connectionStateChanged(connection, connection.connectionState);
+      }
     };
     connection.ondatachannel = (event) => {
       if (this.#owns(connection)) this.#remoteChannel(event.channel);
@@ -515,11 +566,49 @@ export class PeerSession {
     return false;
   }
 
-  #connectionStateChanged(state: RTCPeerConnectionState): void {
-    if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-      // No ICE restart: any loss ends this session; recovery uses a new one.
-      this.#fail(this.#state === 'connected' ? 'connection_lost' : 'connection_failed');
+  /**
+   * `disconnected` may be transient, so it starts one grace timer; a return
+   * to `connected` before it fires cancels it and keeps everything. `failed`
+   * and `closed` end the session at once. No ICE restart: a session that is
+   * lost stays lost, and recovery uses a new one.
+   */
+  #connectionStateChanged(connection: PeerConnectionLike, state: RTCPeerConnectionState): void {
+    switch (state) {
+      case 'disconnected': {
+        if (this.#disconnectGrace !== undefined) return;
+        const grace: Cancel = this.#timers.schedule(PEER_DISCONNECT_GRACE_MS, () => {
+          // Powerless once cancelled, replaced, or the session is over.
+          if (this.#disconnectGrace !== grace || !this.#owns(connection)) return;
+          this.#disconnectGrace = undefined;
+          this.#connectionLost('disconnect_timeout');
+        });
+        this.#disconnectGrace = grace;
+        return;
+      }
+      case 'failed':
+      case 'closed':
+        this.#connectionLost(state);
+        return;
+      case 'connected':
+        if (this.#disconnectGrace === undefined) return;
+        this.#cancelDisconnectGrace();
+        this.#options.onDisconnectRecovered?.();
+        return;
+      case 'new':
+      case 'connecting':
+        // Still on its way back, or not yet there: a pending grace keeps running.
+        return;
     }
+  }
+
+  #connectionLost(cause: ConnectionLossCause): void {
+    this.#fail(this.#state === 'connected' ? 'connection_lost' : 'connection_failed', cause);
+  }
+
+  #cancelDisconnectGrace(): void {
+    const cancel = this.#disconnectGrace;
+    this.#disconnectGrace = undefined;
+    cancel?.();
   }
 
   /** Guest: accepts exactly one channel, the expected control channel. */
@@ -789,15 +878,16 @@ export class PeerSession {
     this.#options.onStateChange(state);
   }
 
-  #fail(failure: PeerFailure): void {
+  #fail(failure: PeerFailure, cause?: ConnectionLossCause): void {
     if (!this.#live) return;
     this.#state = 'failed';
     this.#teardown();
-    this.#options.onStateChange('failed', failure);
+    this.#options.onStateChange('failed', failure, cause);
   }
 
-  /** Closes the channel and connection, detaches every handler, and drops queues. */
+  /** Closes the channel and connection, detaches every handler, cancels the timer, and drops queues. */
   #teardown(): void {
+    this.#cancelDisconnectGrace();
     this.#applicationCallback = undefined;
     const channel = this.#channel;
     const connection = this.#connection;

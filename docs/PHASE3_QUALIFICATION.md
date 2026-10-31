@@ -1,7 +1,8 @@
 # Phase 3 Local Sync Qualification
 
 3A, 3B, 3C — IMPLEMENTED / REVIEW PASS (user-approved independent reviews).
-3D — QUALIFICATION NOT CLOSED. Phase 3 exit gate — NOT PASSED.
+3D — RECOVERY HARDENING IMPLEMENTED / INDEPENDENT REVIEW PENDING / PHYSICAL
+QUALIFICATION NOT CLOSED. Phase 3 exit gate — NOT PASSED.
 Phase 3 software qualification — PASS; physical/network qualification — NOT CLOSED.
 Phase 2 physical/network qualification — DEFERRED / NOT CLOSED.
 
@@ -15,6 +16,38 @@ containing the thresholds and tools is the code candidate; a later documentation
 commit records its SHA and results, and is not the tested application revision.
 No product behavior changes are planned. Any fix requires a new committed SHA,
 full regression and requalification of the affected matrix. No PR or merge in 3D.
+
+## Post-qualification recovery-hardening implementation
+
+Starting commit `e6fe18a2f9f3bce06c68f605fa984d340e7dc08c`. The USB cellular evidence
+below exposed recovery defects, not a synchronization defect: the 30-minute window
+measured 1800/1800 valid samples (p95 53.252 ms, p99 54.168 ms, max 57.569 ms), but
+three spontaneous DIRECT transport failures each consumed one of the then four
+lifetime negotiations, so the intentional cellular interruption had no recovery
+left; and after validated restoration the phone's authenticated resume was refused
+while the service still held its dead socket (detection up to two 15 s pings) until
+the browser's 15.75 s retry schedule ran out. The evidence proves the DIRECT IPv6
+path failed spontaneously; it does not show why, and nothing here claims a cause.
+
+This commit implements fixes; it is not qualification evidence:
+
+| Finding | Fix |
+| --- | --- |
+| Q10/Q15: unexpected fresh-peer recovery inside the long run | A `disconnected` peer connection gets a 5 s grace and continues in place if it returns; only a persistent disconnect, `failed`, `closed` or a channel close/error replaces the session. |
+| Q13: large-ahead correction interrupted by a spontaneous peer failure | Same grace; and recovery no longer exhausts a lifetime budget. |
+| Q17: membership not recovered after validated network restoration | Budget of 4 negotiations in a row without mutual establishment, reset by both participants' `RTC_ESTABLISHED`; 5 s default signaling ping (stale socket unbound within 10 s); 19-attempt, 59.75 s resume schedule treating `SESSION_UNAVAILABLE` as retryable; no live-socket takeover. |
+
+Deterministic software evidence: a guest whose network returns at once against a
+worst-phase stale binding is refused at 0, 0.25, 0.75, 1.75, 3.75 and 7.75 s, resumes
+at 11.75 s, and has a fresh authenticated peer session at 11.75 s in the simulation
+(fake transport, zero round-trip), inside a 25 s software target and the unchanged 30 s
+gate. 20 controller and 100 store established-recovery cycles stay bounded; the fifth
+consecutive unestablished negotiation is refused. Browser: Local Sync through six
+established fresh-peer recoveries with explicit re-Ready and a fresh baseline each time.
+
+Thresholds are unchanged. **Q10, Q13, Q15 and Q17 remain FAIL and Q18 remains GAP**
+until a NEW frozen candidate is physically requalified; unit, controller, integration
+and same-host browser tests do not convert any physical result.
 
 ## Physical USB cellular attempt — 2026-10-31
 

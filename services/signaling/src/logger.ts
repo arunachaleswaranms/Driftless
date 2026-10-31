@@ -17,6 +17,7 @@ export type RejectionDetail =
   | 'negotiation_request'
   | 'resume_request'
   | 'rtc_config_request'
+  | 'establishment_report'
   | 'relay_too_large';
 
 /** Transport-level failure classes. Fixed tokens only. */
@@ -62,6 +63,11 @@ export type LogEvent =
       readonly connection: number;
       readonly step: Exclude<NegotiationStep, 'candidate'>;
     }
+  /**
+   * Both participants reported the active negotiation established, which
+   * restarted the bounded run of negotiations without establishment.
+   */
+  | { readonly event: 'negotiation_established'; readonly connection: number }
   /**
    * An ICE configuration was issued to a room member. Whether it included a
    * TURN credential is a fixed token; the URLs, username, and credential are

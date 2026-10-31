@@ -1,5 +1,6 @@
-import type { SelectedPath } from './connectionStats.ts';
+import type { SelectedPath, SelectedPathClass } from './connectionStats.ts';
 import type { IceTransportPolicy } from './iceServers.ts';
+import type { ConnectionLossCause, PeerFailure } from './peerSession.ts';
 
 /**
  * Whether the current peer connection's configuration offered a TURN server.
@@ -10,6 +11,37 @@ import type { IceTransportPolicy } from './iceServers.ts';
  * - `not_requested`: this controller does not ask the service.
  */
 export type TurnAvailability = 'offered' | 'not_configured' | 'unavailable' | 'not_requested';
+
+/** How the latest failed peer session of this membership ended. Fixed tokens only. */
+export interface PeerLoss {
+  readonly failure: PeerFailure;
+  /** What the browser reported, when the connection itself was lost. */
+  readonly cause: ConnectionLossCause | null;
+  /** The selected path last read for that session; never an address. */
+  readonly path: SelectedPathClass;
+}
+
+/**
+ * Peer recovery as this browser saw it during the current membership: fixed
+ * tokens and counts only, so a later physical qualification run can tell
+ * which kind of disruption happened.
+ */
+export interface RecoveryDiagnostics {
+  /** `disconnected` periods that returned to `connected` within the grace, in place. */
+  readonly transientRecovered: number;
+  /** Peer sessions that failed and needed a fresh negotiation. */
+  readonly sessionsLost: number;
+  readonly lastLoss: PeerLoss | null;
+  /** Recovery stopped: the bound on negotiations without establishment was reached. */
+  readonly exhausted: boolean;
+}
+
+export const NO_RECOVERY: RecoveryDiagnostics = {
+  transientRecovered: 0,
+  sessionsLost: 0,
+  lastLoss: null,
+  exhausted: false,
+};
 
 /**
  * A browser-local, observational snapshot of the current peer connection.
@@ -29,12 +61,17 @@ export interface ConnectionDiagnostics {
   readonly iceConnection: RTCIceConnectionState | null;
   readonly dataChannel: RTCDataChannelState | null;
   readonly path: SelectedPath;
-  /** Negotiations this guest membership has used, of the most it may use. */
+  /**
+   * Negotiations started since one was last established, the current one
+   * included, of the most that may be started without establishment.
+   */
   readonly negotiation: { readonly count: number; readonly max: number } | null;
   readonly turn: TurnAvailability | null;
   readonly icePolicy: IceTransportPolicy;
   /** Local clock when the statistics were read. */
   readonly collectedAt: number | null;
+  /** Kept across peer sessions for the membership; reset with it. */
+  readonly recovery: RecoveryDiagnostics;
 }
 
 export const NO_DIAGNOSTICS = (icePolicy: IceTransportPolicy): ConnectionDiagnostics => ({
@@ -47,6 +84,7 @@ export const NO_DIAGNOSTICS = (icePolicy: IceTransportPolicy): ConnectionDiagnos
   turn: null,
   icePolicy,
   collectedAt: null,
+  recovery: NO_RECOVERY,
 });
 
 export const PATH_TEXT: Readonly<Record<SelectedPath['classification'], string>> = {
@@ -106,6 +144,20 @@ export function diagnosticsText(
     `Negotiation: ${diagnostics.negotiation === null ? 'none' : `${String(diagnostics.negotiation.count)} of ${String(diagnostics.negotiation.max)}`}`,
     `TURN configuration: ${diagnostics.turn === null ? 'none' : diagnostics.turn}`,
     `ICE transport policy: ${diagnostics.icePolicy}`,
+    ...recoveryLines(diagnostics.recovery),
   );
   return `${lines.join('\n')}\n`;
+}
+
+/** The recovery lines of the summary, from fixed tokens and counts only. */
+export function recoveryLines(recovery: RecoveryDiagnostics): string[] {
+  const { lastLoss } = recovery;
+  return [
+    `Transient disconnects recovered in place: ${String(recovery.transientRecovered)}`,
+    `Peer sessions lost: ${String(recovery.sessionsLost)}`,
+    `Last peer loss: ${lastLoss === null ? 'none' : lastLoss.failure}`,
+    `Last loss detail: ${lastLoss?.cause ?? 'none'}`,
+    `Last lost path: ${lastLoss === null ? 'none' : lastLoss.path}`,
+    `Recovery: ${recovery.exhausted ? 'stopped at its bound' : 'available'}`,
+  ];
 }

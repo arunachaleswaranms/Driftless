@@ -1,5 +1,5 @@
 import {
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   type NegotiationId,
   type ParticipantId,
   type ResumeChallenge,
@@ -738,15 +738,179 @@ describe('no traffic for an absent peer, and recovery relay', () => {
     for (const marker of ['RECOVERSDPMARK', A, B]) expect(logged).not.toContain(marker);
   });
 
-  it(`stops relaying recoveries after ${String(MAX_NEGOTIATIONS_PER_MEMBERSHIP)} negotiations`, () => {
+  it(`stops relaying recoveries after ${String(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT)} negotiations without establishment`, () => {
     const { host, guest } = negotiated();
     const ids = ['B', 'C', 'D', 'E'].map((c) => c.repeat(24));
     let previous: string = A;
     for (const [index, id] of ids.entries()) {
       host.send('RTC_RECOVER', { previousNegotiationId: previous, negotiationId: id, sdp: SDP });
-      if (index < MAX_NEGOTIATIONS_PER_MEMBERSHIP - 1) {
+      if (index < MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT - 1) {
         expect(expectType(guest.last(), 'RTC_RECOVER').payload.negotiationId).toBe(id);
         previous = id;
+      } else {
+        expect(expectType(host.last(), 'ERROR').payload.code).toBe('INVALID_STATE');
+      }
+    }
+  });
+});
+
+describe('establishment reports', () => {
+  /** A distinct, well-formed negotiation ID per index. */
+  const id = (index: number): string => index.toString(36).padStart(24, 'y');
+
+  function negotiated() {
+    const h = harness();
+    const pair = h.roomPair();
+    pair.host.send('RTC_OFFER', { negotiationId: A, sdp: SDP });
+    pair.guest.send('RTC_ANSWER', { negotiationId: A, sdp: SDP });
+    return { h, ...pair };
+  }
+
+  function types(client: TestClient): string[] {
+    return client.received.map((message) => message.type);
+  }
+
+  it('acknowledges an authenticated report to the reporter only, idempotently', () => {
+    const { h, host, guest } = negotiated();
+    const hostBefore = host.received.length;
+    guest.send('RTC_ESTABLISHED', { negotiationId: A });
+    expect(expectType(guest.last(), 'RTC_ESTABLISHED_ACK').payload).toStrictEqual({
+      negotiationId: A,
+    });
+    // Nothing is relayed: the peer's presence and messages are unchanged.
+    expect(host.received).toHaveLength(hostBefore);
+    // A duplicate, for example after a lost acknowledgement, is acknowledged again.
+    guest.send('RTC_ESTABLISHED', { negotiationId: A });
+    expect(expectType(guest.last(), 'RTC_ESTABLISHED_ACK').payload.negotiationId).toBe(A);
+    expect(
+      h.logger.events.filter((event) => event.event === 'negotiation_established'),
+    ).toHaveLength(0);
+    host.send('RTC_ESTABLISHED', { negotiationId: A });
+    expectType(host.last(), 'RTC_ESTABLISHED_ACK');
+    host.send('RTC_ESTABLISHED', { negotiationId: A });
+    expectType(host.last(), 'RTC_ESTABLISHED_ACK');
+    // One reset, logged once, without the negotiation ID.
+    expect(
+      h.logger.events.filter((event) => event.event === 'negotiation_established'),
+    ).toHaveLength(1);
+    expect(JSON.stringify(h.logger.events)).not.toContain(A);
+    expect(h.store.negotiationOf(host.connection.id)).toStrictEqual({
+      activeNegotiationId: A,
+      negotiationCount: 1,
+    });
+  });
+
+  it('refuses stale, unknown, and out-of-room reports with a recoverable error', () => {
+    const { h, host, guest } = negotiated();
+    host.send('RTC_RECOVER', { previousNegotiationId: A, negotiationId: B, sdp: SDP });
+    guest.send('RTC_ANSWER', { negotiationId: B, sdp: SDP });
+    for (const negotiationId of [A, id(42)]) {
+      guest.send('RTC_ESTABLISHED', { negotiationId });
+      expect(expectType(guest.last(), 'ERROR').payload).toStrictEqual({
+        code: 'INVALID_STATE',
+        message: ERROR_MESSAGES.INVALID_STATE,
+        recoverable: true,
+      });
+    }
+    expect(h.logger.events).toContainEqual({
+      event: 'message_rejected',
+      connection: guest.connection.id,
+      code: 'INVALID_STATE',
+      detail: 'establishment_report',
+    });
+    // Outside a room, and while resuming, no report is accepted.
+    const outsider = h.connect();
+    outsider.send('RTC_ESTABLISHED', { negotiationId: B });
+    expect(expectType(outsider.last(), 'ERROR').payload.code).toBe('INVALID_STATE');
+    // Strict parsing: extra fields and malformed IDs are protocol violations.
+    guest.send('RTC_ESTABLISHED', { negotiationId: B, extra: 1 });
+    expect(expectType(guest.last(), 'ERROR').payload.code).toBe('INVALID_MESSAGE');
+    guest.send('RTC_ESTABLISHED', { negotiationId: B.slice(1) });
+    expect(expectType(guest.last(), 'ERROR').payload.code).toBe('INVALID_MESSAGE');
+    // Binary signaling stays refused and closes the connection.
+    guest.connection.receiveBinary();
+    expect(guest.closes.at(-1)?.code).toBe(CLOSE_CODES.UNSUPPORTED_DATA);
+    // That ended the guest's membership: its report is no longer possible.
+    expect(h.store.negotiationOf(host.connection.id)).toStrictEqual({
+      activeNegotiationId: null,
+      negotiationCount: 0,
+    });
+    host.send('RTC_ESTABLISHED', { negotiationId: B });
+    expect(expectType(host.last(), 'ERROR').payload.code).toBe('INVALID_STATE');
+  });
+
+  it('accepts a report while the peer reconnects, and requires the resume proof after a loss', () => {
+    const { h, host, guest, created, joined } = negotiated();
+    guest.connection.transportClosed(1006);
+    host.send('RTC_ESTABLISHED', { negotiationId: A });
+    expectType(host.last(), 'RTC_ESTABLISHED_ACK');
+    // A connection that only began a resume has proven nothing and may not report.
+    const pending = h.connect();
+    pending.send('SESSION_RESUME_BEGIN', {
+      sessionId: created.payload.sessionId,
+      participantId: joined.payload.participantId,
+    });
+    pending.send('RTC_ESTABLISHED', { negotiationId: A });
+    expect(expectType(pending.last(), 'ERROR').payload.code).toBe('INVALID_STATE');
+    // A wrong proof gains nothing either.
+    const wrong = h.resume(
+      created.payload.sessionId,
+      joined.payload.participantId,
+      flipped(joined.payload.resumeSecret),
+    );
+    expectUnavailable(wrong.client.last());
+    wrong.client.send('RTC_ESTABLISHED', { negotiationId: A });
+    expect(expectType(wrong.client.last(), 'ERROR').payload.code).toBe('INVALID_STATE');
+    // The proven connection reports as the guest; the lost report is resent.
+    const { client } = h.resume(
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expect(expectType(client.last(), 'SESSION_RESUMED').payload.negotiationCount).toBe(1);
+    client.send('RTC_ESTABLISHED', { negotiationId: A });
+    expectType(client.last(), 'RTC_ESTABLISHED_ACK');
+    expect(
+      h.logger.events.filter((event) => event.event === 'negotiation_established'),
+    ).toHaveLength(1);
+  });
+
+  it('applies the connection rate limit to reports', () => {
+    const h = harness({ rateLimit: { burst: 4, perSecond: 1 } });
+    const { host, guest } = h.roomPair();
+    host.send('RTC_OFFER', { negotiationId: A, sdp: SDP });
+    guest.send('RTC_ANSWER', { negotiationId: A, sdp: SDP });
+    for (let index = 0; index < 3; index += 1) guest.send('RTC_ESTABLISHED', { negotiationId: A });
+    expect(types(guest).filter((type) => type === 'RTC_ESTABLISHED_ACK')).toHaveLength(2);
+    expect(expectType(guest.last(), 'ERROR').payload.code).toBe('RATE_LIMITED');
+    expect(guest.closes.at(-1)?.code).toBe(CLOSE_CODES.POLICY_VIOLATION);
+  });
+
+  it('lets a room recover after every established negotiation, and still bounds failures', () => {
+    const { host, guest } = negotiated();
+    let previous: string = A;
+    for (let cycle = 1; cycle <= 20; cycle += 1) {
+      host.send('RTC_ESTABLISHED', { negotiationId: previous });
+      guest.send('RTC_ESTABLISHED', { negotiationId: previous });
+      expectType(host.last(), 'RTC_ESTABLISHED_ACK');
+      expectType(guest.last(), 'RTC_ESTABLISHED_ACK');
+      guest.send('RTC_RECOVERY_REQUEST', { negotiationId: previous });
+      expectType(host.last(), 'RTC_RECOVERY_REQUEST');
+      const next = id(cycle);
+      host.send('RTC_RECOVER', { previousNegotiationId: previous, negotiationId: next, sdp: SDP });
+      expect(expectType(guest.last(), 'RTC_RECOVER').payload.negotiationId).toBe(next);
+      guest.send('RTC_ANSWER', { negotiationId: next, sdp: SDP });
+      expectType(host.last(), 'RTC_ANSWER');
+      previous = next;
+    }
+    // Now never established: three more recoveries, then refusal.
+    for (let attempt = 1; attempt <= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; attempt += 1) {
+      const next = id(100 + attempt);
+      host.send('RTC_RECOVER', { previousNegotiationId: previous, negotiationId: next, sdp: SDP });
+      if (attempt < MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT) {
+        expectType(guest.last(), 'RTC_RECOVER');
+        guest.send('RTC_ANSWER', { negotiationId: next, sdp: SDP });
+        previous = next;
       } else {
         expect(expectType(host.last(), 'ERROR').payload.code).toBe('INVALID_STATE');
       }

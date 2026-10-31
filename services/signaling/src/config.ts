@@ -33,8 +33,13 @@ export const DEFAULT_RECONNECT_GRACE_SECONDS = 30;
 export const MIN_RECONNECT_GRACE_SECONDS = 5;
 export const MAX_RECONNECT_GRACE_SECONDS = 120;
 
-/** Provisional WebSocket ping interval; not tuned for mobile networks. */
-export const DEFAULT_HEARTBEAT_SECONDS = 15;
+/**
+ * Provisional WebSocket ping interval. A silently dead socket is detected
+ * within two intervals (10 seconds by default), which bounds how long a
+ * mobile client that lost its network must wait before its authenticated
+ * resume can succeed. See DEFAULT_HEARTBEAT_INTERVAL_MS.
+ */
+export const DEFAULT_HEARTBEAT_SECONDS = 5;
 export const MIN_HEARTBEAT_SECONDS = 5;
 export const MAX_HEARTBEAT_SECONDS = 60;
 

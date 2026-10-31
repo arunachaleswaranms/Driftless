@@ -1,6 +1,6 @@
 import {
   MAX_ICE_CANDIDATES_PER_NEGOTIATION,
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   type InviteSecret,
   type NegotiationId,
   type NegotiationSnapshot,
@@ -71,7 +71,18 @@ interface Negotiation {
   recoveryRequested: boolean;
   readonly candidates: Record<ParticipantRole, number>;
   readonly complete: Record<ParticipantRole, boolean>;
+  /** Whether each participant reported its peer session for this negotiation established. */
+  readonly established: Record<ParticipantRole, boolean>;
 }
+
+/**
+ * Negotiation IDs a room remembers, newest last, so that none of them can be
+ * started again. Every negotiation started since the last mutual
+ * establishment is among them, because at most
+ * MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT can be; the history never grows
+ * beyond this, however long the room lives.
+ */
+export const RECENT_NEGOTIATION_IDS = MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT;
 
 interface Room {
   readonly roomId: RoomId;
@@ -84,17 +95,30 @@ interface Room {
   /** The latest negotiation for the current guest, whether or not it still works. */
   negotiation: Negotiation | undefined;
   /**
-   * Every negotiation ID the current guest membership has used, at most
-   * MAX_NEGOTIATIONS_PER_MEMBERSHIP, so that none can be started again.
+   * Negotiations the current guest membership started since both
+   * participants last reported one established, the active one included: at
+   * most MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT, and 1 once the active
+   * negotiation is established.
    */
-  usedNegotiationIds: NegotiationId[];
-  /** The room's most recent negotiation ID, so that a later guest cannot reuse it. */
-  lastNegotiationId: NegotiationId | undefined;
+  negotiationsSinceEstablished: number;
+  /**
+   * The room's latest negotiation IDs, across guests, at most
+   * RECENT_NEGOTIATION_IDS, so that none of them can be started again.
+   */
+  recentNegotiationIds: NegotiationId[];
 }
 
 /** One negotiation message, by what it does. */
 export type NegotiationStep =
   'offer' | 'answer' | 'candidate' | 'complete' | 'recover' | 'recovery_request';
+
+export type EstablishResult =
+  /**
+   * The report is recorded, now or before; acknowledge it. `reset` is true
+   * only for the report that completed both participants' establishment.
+   */
+  | { readonly ok: true; readonly reset: boolean }
+  | { readonly ok: false; readonly code: 'INVALID_STATE' };
 
 export type NegotiationResult =
   /** The message is legal; relay it to `recipient`, the sender's connected peer. */
@@ -269,6 +293,13 @@ export class RoomStore {
     return count;
   }
 
+  /** Negotiation IDs remembered across every room, for bound tests. */
+  get rememberedNegotiationIdCount(): number {
+    let count = 0;
+    for (const room of this.#rooms.values()) count += room.recentNegotiationIds.length;
+    return count;
+  }
+
   membershipOf(key: MemberKey): Member | undefined {
     const room = this.#bindings.get(key);
     const participant = room === undefined ? undefined : participantByKey(room, key);
@@ -303,8 +334,8 @@ export class RoomStore {
       host,
       guest: undefined,
       negotiation: undefined,
-      usedNegotiationIds: [],
-      lastNegotiationId: undefined,
+      negotiationsSinceEstablished: 0,
+      recentNegotiationIds: [],
     };
     this.#rooms.set(roomId, room);
     this.#sessions.set(sessionId, room);
@@ -476,9 +507,9 @@ export class RoomStore {
    * that is reconnecting. Roles are fixed: only the host offers and
    * recovers, only the guest answers and requests recovery. Every message
    * must name the active negotiation; a recovery names it as the one it
-   * replaces and starts a fresh one, within the per-membership bound, with
-   * an ID never used before. A legal message updates only counters and
-   * flags.
+   * replaces and starts a fresh one, within the bound on negotiations
+   * without establishment, with an ID the room has not used recently. A
+   * legal message updates only counters and flags.
    */
   negotiate(
     key: MemberKey,
@@ -497,9 +528,8 @@ export class RoomStore {
     const relay = { ok: true, recipient: { ...member(recipient), key: recipientKey } } as const;
     const negotiation = room.negotiation;
     const fresh =
-      !room.usedNegotiationIds.includes(negotiationId) &&
-      negotiationId !== room.lastNegotiationId &&
-      room.usedNegotiationIds.length < MAX_NEGOTIATIONS_PER_MEMBERSHIP;
+      !room.recentNegotiationIds.includes(negotiationId) &&
+      room.negotiationsSinceEstablished < MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT;
 
     switch (step) {
       case 'offer':
@@ -525,7 +555,7 @@ export class RoomStore {
           sender.role !== 'guest' ||
           negotiation?.negotiationId !== negotiationId ||
           negotiation.recoveryRequested ||
-          room.usedNegotiationIds.length >= MAX_NEGOTIATIONS_PER_MEMBERSHIP
+          room.negotiationsSinceEstablished >= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT
         ) {
           return refused;
         }
@@ -553,6 +583,38 @@ export class RoomStore {
       negotiation.complete[role] = true;
     }
     return relay;
+  }
+
+  /**
+   * Records that `key`'s participant reports its authenticated peer session
+   * for `negotiationId` established. Only a current member of a room with a
+   * guest may report, only for the active negotiation, and only once it was
+   * answered; anything else, including a report naming an earlier
+   * negotiation, is refused and changes nothing. A repeated report is
+   * recorded already and changes nothing more. When both participants have
+   * reported the active negotiation, the run of negotiations without
+   * establishment restarts from it, so the next recovery has the whole
+   * budget again. The peer need not be connected to signaling: nothing is
+   * relayed.
+   */
+  establish(key: MemberKey, negotiationId: NegotiationId): EstablishResult {
+    const room = this.#bindings.get(key);
+    const participant = room === undefined ? undefined : participantByKey(room, key);
+    const negotiation = room?.negotiation;
+    if (
+      room?.guest === undefined ||
+      participant === undefined ||
+      negotiation?.negotiationId !== negotiationId ||
+      !negotiation.answered
+    ) {
+      return { ok: false, code: 'INVALID_STATE' };
+    }
+    const { established } = negotiation;
+    if (established[participant.role]) return { ok: true, reset: false };
+    established[participant.role] = true;
+    if (!established.host || !established.guest) return { ok: true, reset: false };
+    room.negotiationsSinceEstablished = 1;
+    return { ok: true, reset: true };
   }
 
   /**
@@ -597,9 +659,13 @@ export class RoomStore {
       recoveryRequested: false,
       candidates: { host: 0, guest: 0 },
       complete: { host: false, guest: false },
+      established: { host: false, guest: false },
     };
-    room.usedNegotiationIds.push(negotiationId);
-    room.lastNegotiationId = negotiationId;
+    room.negotiationsSinceEstablished += 1;
+    room.recentNegotiationIds.push(negotiationId);
+    if (room.recentNegotiationIds.length > RECENT_NEGOTIATION_IDS) {
+      room.recentNegotiationIds.shift();
+    }
   }
 
   /** Ends the guest's membership; a later guest starts with no negotiation. */
@@ -608,7 +674,7 @@ export class RoomStore {
     if (guest?.key !== undefined) this.#bindings.delete(guest.key);
     room.guest = undefined;
     room.negotiation = undefined;
-    room.usedNegotiationIds = [];
+    room.negotiationsSinceEstablished = 0;
   }
 
   #delete(room: Room): void {
@@ -660,6 +726,6 @@ function isGraceOver(participant: Participant, now: number): boolean {
 function negotiationSnapshot(room: Room): NegotiationSnapshot {
   return {
     activeNegotiationId: room.negotiation?.negotiationId ?? null,
-    negotiationCount: room.usedNegotiationIds.length,
+    negotiationCount: room.negotiationsSinceEstablished,
   };
 }

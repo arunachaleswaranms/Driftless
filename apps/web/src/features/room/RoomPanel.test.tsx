@@ -19,6 +19,7 @@ import {
   peerMessage,
   statsReport,
 } from '../../test/room.ts';
+import { RECONNECT_DELAYS_MS } from './reconnectSchedule.ts';
 import { RoomController } from './roomController.ts';
 import { RoomPanel } from './RoomPanel.tsx';
 
@@ -277,7 +278,7 @@ describe('RoomPanel', () => {
       socket().drop();
     });
     await act(async () => {
-      for (const delay of [0, 250, 500, 1000, 2000, 4000, 4000, 4000]) {
+      for (const delay of RECONNECT_DELAYS_MS) {
         await timers.advance(delay);
         sockets.at(-1)?.drop();
         await flush();

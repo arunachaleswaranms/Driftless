@@ -138,6 +138,20 @@ test('copies a summary of safe fields only', async ({ browser, baseURL, pageProb
     'Negotiation',
     'TURN configuration',
     'ICE transport policy',
+    'Transient disconnects recovered in place',
+    'Peer sessions lost',
+    'Last peer loss',
+    'Last loss detail',
+    'Last lost path',
+    'Recovery',
+  ]);
+  expect(lines.slice(-6)).toStrictEqual([
+    'Transient disconnects recovered in place: 0',
+    'Peer sessions lost: 0',
+    'Last peer loss: none',
+    'Last loss detail: none',
+    'Last lost path: none',
+    'Recovery: available',
   ]);
   expect(lines).toContain('Path: DIRECT');
   expect(lines).toContain('Role: host');
@@ -165,7 +179,12 @@ test('describes the new connection after peer recovery, not the old one', async 
   for (const peer of [host, guest]) {
     await expect(status(peer.page)).toHaveText(CONNECTED_STATUS, { timeout: 20_000 });
     const section = await openDiagnostics(peer.page);
-    await expect(diagnosticsFact(section, 'Negotiation')).toHaveText('2 of 4');
+    // The recovered session is established, so the run without establishment
+    // restarted at 1; the lost session is remembered by fixed tokens only.
+    await expect(diagnosticsFact(section, 'Negotiation')).toHaveText('1 of 4');
+    await expect(diagnosticsFact(section, 'Peer sessions lost')).toHaveText('1');
+    await expect(diagnosticsFact(section, 'Last peer loss')).toContainText('path DIRECT');
+    await expect(diagnosticsFact(section, 'Recovery')).toHaveText('Available');
     await expect(section).toContainText('Statistics read from this browser.');
     await expect(diagnosticsFact(section, 'Path')).toHaveText('Direct (not relayed)');
     await expect(diagnosticsFact(section, 'Data channel')).toHaveText('open');

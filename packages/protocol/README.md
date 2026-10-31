@@ -9,14 +9,14 @@ It has no runtime dependencies and uses no Node-only or browser-only API, so the
 Phases 2A–3C freeze only what they implement:
 
 - the common envelope, `protocolVersion: 1`;
-- client → server: `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`, `SESSION_RESUME_BEGIN`, `SESSION_RESUME_PROVE`, `RTC_CONFIG_REQUEST`;
-- server → client: `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ROOM_PARTICIPANT_CONNECTION`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUMED`, `RTC_CONFIG`, `ERROR`;
+- client → server: `ROOM_CREATE`, `ROOM_JOIN`, `ROOM_LEAVE`, `SESSION_RESUME_BEGIN`, `SESSION_RESUME_PROVE`, `RTC_CONFIG_REQUEST`, `RTC_ESTABLISHED`;
+- server → client: `ROOM_CREATED`, `ROOM_JOINED`, `ROOM_LEFT`, `ROOM_PARTICIPANT_JOINED`, `ROOM_PARTICIPANT_LEFT`, `ROOM_CLOSED`, `ROOM_PARTICIPANT_CONNECTION`, `SESSION_RESUME_CHALLENGE`, `SESSION_RESUMED`, `RTC_CONFIG`, `RTC_ESTABLISHED_ACK`, `ERROR`;
 - the ICE server entry `{ urls, username, credential }` of `RTC_CONFIG` (`src/rtcConfig.ts`): `stun:`/`stuns:`/`turn:`/`turns:` URLs only, credentials exactly on TURN entries, and the bounds `MAX_RTC_ICE_SERVERS` (4), `MAX_RTC_ICE_SERVER_URLS` (4), `MAX_ICE_SERVER_URL_BYTES` (300), `MAX_ICE_SERVER_USERNAME_BYTES` (128), `MAX_ICE_SERVER_CREDENTIAL_BYTES` (128), and `MAX_RTC_CONFIG_TTL_MS` (one day). The package carries derived TURN credentials; it knows nothing of how they are derived, and no secret is part of it;
 - both directions, relayed by the service: `RTC_OFFER`, `RTC_ANSWER`, `ICE_CANDIDATE`, `ICE_COMPLETE`, `RTC_RECOVERY_REQUEST`, `RTC_RECOVER`;
 - peer → peer on `driftless-control`: `PEER_HELLO`, `PEER_READY`, `MEDIA_INFO`, `MEDIA_MATCH`, `MEDIA_MISMATCH`, `READY`, `NOT_READY`, `PLAY`, `PAUSE`, `SEEK`, and `SYNC`, bound to session, negotiation, sender, and recipient;
 - room ID, invite secret, participant ID, negotiation ID, session ID, resume secret, resume challenge, and resume proof formats;
 - the canonical resume proof input, `resumeProofInput` (76 bytes; see `src/resume.ts`). The package computes no hash: endpoints use their own platform cryptography over exactly these bytes;
-- the bounds `MAX_SIGNALING_MESSAGE_BYTES` (32,768), `MAX_SDP_BYTES` (16,384), `MAX_ICE_CANDIDATE_BYTES` (1024), `MAX_SDP_MID_BYTES` (64), `MAX_SDP_MLINE_INDEX` (63), `MAX_USERNAME_FRAGMENT_BYTES` (256), `MAX_ICE_CANDIDATES_PER_NEGOTIATION` (32), `MAX_NEGOTIATIONS_PER_MEMBERSHIP` (4), and `MAX_PEER_MESSAGE_BYTES` (1024). They are provisional implementation and security bounds, not WebRTC limits;
+- the bounds `MAX_SIGNALING_MESSAGE_BYTES` (32,768), `MAX_SDP_BYTES` (16,384), `MAX_ICE_CANDIDATE_BYTES` (1024), `MAX_SDP_MID_BYTES` (64), `MAX_SDP_MLINE_INDEX` (63), `MAX_USERNAME_FRAGMENT_BYTES` (256), `MAX_ICE_CANDIDATES_PER_NEGOTIATION` (32), `MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT` (4, negotiations started in a row without mutual establishment), and `MAX_PEER_MESSAGE_BYTES` (1024). They are provisional implementation and security bounds, not WebRTC limits;
 - the error codes `INVALID_MESSAGE`, `UNSUPPORTED_PROTOCOL`, `INVALID_STATE`, `ROOM_UNAVAILABLE`, `ROOM_FULL`, `RATE_LIMITED`, `SERVER_ERROR`, `SESSION_UNAVAILABLE`.
 
 Social, transfer, connection diagnostics (which are browser-local and use no message), and binary framing are not part of this package. They remain conceptual in `docs/PROTOCOL.md`. Phase 3A setup is implemented as specified below.
@@ -82,7 +82,7 @@ Run from this directory, or from the repository root with `-w @driftless/protoco
 | `npm run smoke:dist`   | Imports the built package by name through its `exports` map and checks its behavior. |
 | `npm run check`        | `typecheck`, `lint`, `format:check`, `test`, `build`, and `smoke:dist` in sequence.  |
 
-`npm test` runs **305 Vitest tests**, covering the versioned envelope, signaling and negotiation contracts, ICE configuration, credentials and identifiers, UTF-8 size bounds, media identity/readiness, host playback and strict discriminated SYNC phases. The new `sync.test.ts` covers exact shapes, timestamp/estimate bounds, direction exclusion from signaling and maximal encoded sizes; [Phase 3C evidence](../../docs/PHASE3C_IMPLEMENTATION.md) records current results.
+`npm test` runs **315 Vitest tests**, covering the versioned envelope, signaling and negotiation contracts, the establishment report and acknowledgement, ICE configuration, credentials and identifiers, UTF-8 size bounds, media identity/readiness, host playback and strict discriminated SYNC phases. The new `sync.test.ts` covers exact shapes, timestamp/estimate bounds, direction exclusion from signaling and maximal encoded sizes; [Phase 3C evidence](../../docs/PHASE3C_IMPLEMENTATION.md) records current results.
 
 `dist/` is generated and not committed. Consumers import the built output through the `exports` map; the signaling service's TypeScript build references this project, so `tsc -b` there builds it first.
 

@@ -114,6 +114,18 @@ export function ConnectionDiagnosticsView({ controller, state }: ConnectionDiagn
         <Fact label="ICE transport policy">
           {diagnostics.icePolicy === 'relay' ? 'Relay only (qualification build)' : 'All'}
         </Fact>
+        <Fact label="Transient disconnects recovered">
+          {String(diagnostics.recovery.transientRecovered)}
+        </Fact>
+        <Fact label="Peer sessions lost">{String(diagnostics.recovery.sessionsLost)}</Fact>
+        <Fact label="Last peer loss">
+          {diagnostics.recovery.lastLoss === null
+            ? 'None'
+            : `${diagnostics.recovery.lastLoss.failure} (${diagnostics.recovery.lastLoss.cause ?? 'no connection detail'}, path ${diagnostics.recovery.lastLoss.path})`}
+        </Fact>
+        <Fact label="Recovery">
+          {diagnostics.recovery.exhausted ? 'Stopped at its bound' : 'Available'}
+        </Fact>
         <Fact label="Build">{BUILD_REVISION}</Fact>
       </dl>
       <div className="room-actions">

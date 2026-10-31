@@ -34,10 +34,17 @@ export const DEFAULT_RECONNECT_GRACE_MS = 30_000;
 /**
  * Provisional default interval of WebSocket protocol pings. A connection that
  * has not answered the previous ping when the next one is due is treated as
- * lost, so a dead path is detected within two intervals. Not tuned for
- * mobile networks.
+ * lost, so a dead path is detected within two intervals: at most 10 seconds
+ * after it died. Only then is the participant unbound and its reconnect
+ * grace started, and only then can its own authenticated resume succeed; a
+ * client that comes back sooner is refused with SESSION_UNAVAILABLE and
+ * retries on its bounded schedule. 5 seconds keeps that stale-socket window
+ * well inside a 30-second recovery target on a mobile network that drops a
+ * socket silently. This is signaling transport liveness only: it is not an
+ * application message, is not rate limited, carries nothing, and is
+ * unrelated to the Local Sync SYNC heartbeat on the peer data channel.
  */
-export const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000;
+export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
 
 export interface SignalingServerOptions {
   readonly host: string;

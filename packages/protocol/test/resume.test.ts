@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes, webcrypto } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   CLIENT_MESSAGE_TYPES,
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   MAX_SDP_BYTES,
   RESUME_PROOF_DOMAIN,
   RESUME_PROOF_INPUT_BYTES,
@@ -313,7 +313,7 @@ describe('session resume messages', () => {
         // The active ID is present exactly when the count is not zero.
         { ...base, activeNegotiationId: null },
         { ...base, negotiationCount: 0 },
-        { ...base, negotiationCount: MAX_NEGOTIATIONS_PER_MEMBERSHIP + 1 },
+        { ...base, negotiationCount: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT + 1 },
         { ...base, negotiationCount: -1 },
         { ...base, negotiationCount: 1.5 },
         { ...base, activeNegotiationId: ROOM_ID },
@@ -322,7 +322,9 @@ describe('session resume messages', () => {
       ]) {
         expectInvalidPayload(resumed(payload));
       }
-      expect(resumed({ ...base, negotiationCount: MAX_NEGOTIATIONS_PER_MEMBERSHIP }).ok).toBe(true);
+      expect(
+        resumed({ ...base, negotiationCount: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT }).ok,
+      ).toBe(true);
     });
   });
 
@@ -340,7 +342,7 @@ describe('session resume messages', () => {
       { ...base, participantId: ROOM_ID },
       { ...base, activeNegotiationId: null },
       { ...base, negotiationCount: 0 },
-      { ...base, negotiationCount: MAX_NEGOTIATIONS_PER_MEMBERSHIP + 1 },
+      { ...base, negotiationCount: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT + 1 },
       { ...base, address: '192.0.2.1' },
       { ...base, sdp: SDP },
     ]) {

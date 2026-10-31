@@ -1,11 +1,26 @@
 /**
  * Delays before each signaling resume attempt after the connection is lost,
- * in milliseconds: the first attempt is immediate. The schedule is finite,
- * its largest step is bounded, and the whole of it (15.75 s of delays) stays
- * well inside the service's default 30-second reconnect grace period. These
- * are provisional development values, not tuned for mobile networks.
+ * in milliseconds: the first attempt is immediate, then the steps grow to
+ * 4 seconds and stay there. The schedule is finite: 19 attempts over
+ * 59.75 seconds of delays, each attempt itself bounded by
+ * RESUME_ATTEMPT_TIMEOUT_MS.
+ *
+ * It must outlast the service noticing that the old connection is dead.
+ * A mobile network can drop a socket silently; the service then still holds
+ * the old binding until its liveness check removes it (within two 5-second
+ * heartbeat intervals by default), and refuses every resume until then with
+ * SESSION_UNAVAILABLE, which this schedule treats as retryable. Its own
+ * reconnect grace starts only then, so retrying for longer than that grace
+ * is safe. Provisional.
  */
-export const RECONNECT_DELAYS_MS: readonly number[] = [0, 250, 500, 1000, 2000, 4000, 4000, 4000];
+export const RECONNECT_DELAYS_MS: readonly number[] = [
+  0,
+  250,
+  500,
+  1000,
+  2000,
+  ...Array.from({ length: 14 }, () => 4000),
+];
 
 /**
  * Delays before each attempt to reach the service after the user leaves a

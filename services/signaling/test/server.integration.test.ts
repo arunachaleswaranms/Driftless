@@ -16,6 +16,7 @@ import { createMemoryLogger, type LogEvent } from '../src/logger.js';
 import { RtcConfigIssuer } from '../src/rtcConfig.js';
 import {
   createSignalingServer,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
   SIGNALING_PATH,
   type SignalingServer,
   type SignalingServerOptions,
@@ -35,7 +36,7 @@ const ORIGIN = 'http://localhost:5173';
 const TTL = 60_000;
 const GRACE = 30_000;
 const SWEEP_MS = 1000;
-const HEARTBEAT_MS = 15_000;
+const HEARTBEAT_MS = DEFAULT_HEARTBEAT_INTERVAL_MS;
 const WAIT_MS = 3000;
 
 interface Running {
@@ -60,7 +61,7 @@ async function startServer(overrides: Partial<SignalingServerOptions> = {}): Pro
     roomTtlMs: TTL,
     reconnectGraceMs: GRACE,
     sweepIntervalMs: SWEEP_MS,
-    heartbeatIntervalMs: HEARTBEAT_MS,
+    // Every test runs the service's default liveness interval.
     logger,
     clock: clock.read,
     scheduler,
@@ -1210,5 +1211,205 @@ describe('ICE configuration over real sockets', () => {
       expect(logged).not.toContain(value);
     }
     expect(instance.logs.filter((event) => event.event === 'rtc_config_issued')).toHaveLength(2);
+  });
+});
+
+describe('mobile stale-socket recovery over real sockets', () => {
+  const NEGOTIATION = 'M'.repeat(24);
+  const RECOVERY = 'R'.repeat(24);
+  const SDP = 'v=0\r\n';
+
+  /** Opens a new socket and answers its challenge with `secret`. */
+  async function resumeWith(
+    instance: Running,
+    sessionId: SessionId,
+    participantId: ParticipantId,
+    secret: ResumeSecret,
+  ): Promise<ServerMessage> {
+    const client = await TestClient.open(instance.port);
+    client.send('SESSION_RESUME_BEGIN', { sessionId, participantId });
+    const { challenge } = (await client.expect('SESSION_RESUME_CHALLENGE')).payload;
+    client.send('SESSION_RESUME_PROVE', {
+      challenge,
+      proof: proofFor(secret, sessionId, participantId, challenge),
+    });
+    const reply = await client.next();
+    if (reply.type !== 'SESSION_RESUMED') client.socket.terminate();
+    return reply;
+  }
+
+  /** One liveness pass, after the fake clock moves by one interval; lets pongs arrive. */
+  async function heartbeat(instance: Running): Promise<void> {
+    instance.clock.advance(HEARTBEAT_MS);
+    instance.scheduler.tick(HEARTBEAT_MS);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  /** A room whose first negotiation both participants reported established. */
+  async function establishedPair(instance: Running) {
+    const pair = await roomPair(instance);
+    pair.host.send('RTC_OFFER', { negotiationId: NEGOTIATION, sdp: SDP });
+    await pair.guest.expect('RTC_OFFER');
+    pair.guest.send('RTC_ANSWER', { negotiationId: NEGOTIATION, sdp: SDP });
+    await pair.host.expect('RTC_ANSWER');
+    for (const client of [pair.host, pair.guest]) {
+      client.send('RTC_ESTABLISHED', { negotiationId: NEGOTIATION });
+      expect((await client.expect('RTC_ESTABLISHED_ACK')).payload.negotiationId).toBe(NEGOTIATION);
+    }
+    return pair;
+  }
+
+  it('uses a 5-second default heartbeat that removes a silent socket within 10 seconds', async () => {
+    expect(DEFAULT_HEARTBEAT_INTERVAL_MS).toBe(5000);
+    const instance = await startServer();
+    const { host, guest } = await roomPair(instance);
+    // Worst phase: the guest answers a ping, then its network goes silent at once.
+    await heartbeat(instance);
+    guest.socket.pause();
+    const silentAt = instance.clock.now;
+    await heartbeat(instance);
+    // One pass after the loss the socket is still bound: its last ping was answered.
+    expect(instance.logs.some((event) => event.event === 'participant_disconnected')).toBe(false);
+    await heartbeat(instance);
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe(
+      'RECONNECTING',
+    );
+    expect(instance.clock.now - silentAt).toBe(2 * DEFAULT_HEARTBEAT_INTERVAL_MS);
+    expect(instance.clock.now - silentAt).toBeLessThanOrEqual(10_000);
+    // The responsive host was never removed, however many passes ran.
+    for (let pass = 0; pass < 12; pass += 1) await heartbeat(instance);
+    expect(host.socket.readyState).toBe(WebSocket.OPEN);
+    expect(
+      instance.logs.filter(
+        (event) => event.event === 'transport_error' && event.detail === 'liveness_timeout',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('refuses early authenticated resumes until liveness removes the stale socket, then resumes the same membership', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await establishedPair(instance);
+    const { sessionId } = created.payload;
+    const { participantId, resumeSecret } = joined.payload;
+
+    // Worst heartbeat phase: the phone's last pong arrived just before its network vanished.
+    await heartbeat(instance);
+    guest.socket.pause();
+    // Network restored at once: the client's first attempts find the old socket still bound.
+    const restoredAt = instance.clock.now;
+    const early = await resumeWith(instance, sessionId, participantId, resumeSecret);
+    expect(expectType(early, 'ERROR').payload).toStrictEqual({
+      code: 'SESSION_UNAVAILABLE',
+      message: 'The room session is not available.',
+      recoverable: true,
+    });
+    await heartbeat(instance);
+    const second = await resumeWith(instance, sessionId, participantId, resumeSecret);
+    expect(expectType(second, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+    expect(JSON.stringify(second.payload)).toBe(JSON.stringify(early.payload));
+
+    await heartbeat(instance);
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload).toStrictEqual({
+      participantId,
+      signaling: 'RECONNECTING',
+      activeNegotiationId: NEGOTIATION,
+      negotiationCount: 1,
+    });
+
+    // Unbound now, yet every wrong credential is still refused alike.
+    const refusals = [
+      await resumeWith(instance, sessionId, participantId, flipped(resumeSecret)),
+      await resumeWith(instance, sessionId, created.payload.participantId, resumeSecret),
+      await resumeWith(instance, sessionId, flipped(participantId), resumeSecret),
+      await resumeWith(instance, flipped(sessionId), participantId, resumeSecret),
+    ];
+    // An expired challenge is refused alike too.
+    const slow = await TestClient.open(instance.port);
+    slow.send('SESSION_RESUME_BEGIN', { sessionId, participantId });
+    const { challenge } = (await slow.expect('SESSION_RESUME_CHALLENGE')).payload;
+    instance.clock.advance(10_000);
+    slow.send('SESSION_RESUME_PROVE', {
+      challenge,
+      proof: proofFor(resumeSecret, sessionId, participantId, challenge),
+    });
+    refusals.push(await slow.next());
+    slow.socket.terminate();
+    for (const refusal of refusals) {
+      expect(JSON.stringify(refusal)).toContain('"code":"SESSION_UNAVAILABLE"');
+      expect(refusal.payload).toStrictEqual(early.payload);
+    }
+    instance.clock.advance(-10_000);
+
+    // The next authenticated attempt resumes the same membership.
+    const client = await TestClient.open(instance.port);
+    client.send('SESSION_RESUME_BEGIN', { sessionId, participantId });
+    const fresh = (await client.expect('SESSION_RESUME_CHALLENGE')).payload.challenge;
+    client.send('SESSION_RESUME_PROVE', {
+      challenge: fresh,
+      proof: proofFor(resumeSecret, sessionId, participantId, fresh),
+    });
+    const resumed = await client.expect('SESSION_RESUMED');
+    // Restored within two heartbeat intervals of connectivity returning.
+    expect(instance.clock.now - restoredAt).toBeLessThanOrEqual(2 * HEARTBEAT_MS);
+    expect(resumed.payload).toMatchObject({
+      sessionId,
+      roomId: created.payload.roomId,
+      participantId,
+      role: 'guest',
+      activeNegotiationId: NEGOTIATION,
+      negotiationCount: 1,
+    });
+    expect((await host.expect('ROOM_PARTICIPANT_CONNECTION')).payload.signaling).toBe('CONNECTED');
+    // A fresh peer recovery can begin at once, with the whole budget.
+    client.send('RTC_RECOVERY_REQUEST', { negotiationId: NEGOTIATION });
+    await host.expect('RTC_RECOVERY_REQUEST');
+    host.send('RTC_RECOVER', {
+      previousNegotiationId: NEGOTIATION,
+      negotiationId: RECOVERY,
+      sdp: SDP,
+    });
+    expect((await client.expect('RTC_RECOVER')).payload.negotiationId).toBe(RECOVERY);
+    // One live signaling connection per participant: every refused attempt is gone.
+    await until(() => instance.server.connectionCount === 2, 'refused attempts to close');
+  });
+
+  it('never lets any connection take over a live, responsive socket', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await establishedPair(instance);
+    const { sessionId } = created.payload;
+    const { participantId, resumeSecret } = joined.payload;
+    for (let pass = 0; pass < 8; pass += 1) {
+      await heartbeat(instance);
+      // Even a correct proof is refused while the old binding answers pings.
+      const attempt = await resumeWith(instance, sessionId, participantId, resumeSecret);
+      expect(expectType(attempt, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
+    }
+    expect(guest.socket.readyState).toBe(WebSocket.OPEN);
+    // The old binding is still the membership: traffic reaches it.
+    host.send('RTC_RECOVER', {
+      previousNegotiationId: NEGOTIATION,
+      negotiationId: RECOVERY,
+      sdp: SDP,
+    });
+    expect((await guest.expect('RTC_RECOVER')).payload.negotiationId).toBe(RECOVERY);
+    expect(instance.logs.some((event) => event.event === 'participant_resumed')).toBe(false);
+  });
+
+  it('refuses a resume once the reconnect grace has ended', async () => {
+    const instance = await startServer();
+    const { host, guest, created, joined } = await roomPair(instance);
+    await heartbeat(instance);
+    guest.socket.pause();
+    await heartbeat(instance);
+    await heartbeat(instance);
+    await host.expect('ROOM_PARTICIPANT_CONNECTION');
+    instance.clock.advance(GRACE);
+    const late = await resumeWith(
+      instance,
+      created.payload.sessionId,
+      joined.payload.participantId,
+      joined.payload.resumeSecret,
+    );
+    expect(expectType(late, 'ERROR').payload.code).toBe('SESSION_UNAVAILABLE');
   });
 });

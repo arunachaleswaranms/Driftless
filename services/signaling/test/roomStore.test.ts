@@ -8,7 +8,7 @@ import {
   isResumeSecret,
   isRoomId,
   isSessionId,
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   type InviteSecret,
   type NegotiationId,
   type ParticipantId,
@@ -19,7 +19,7 @@ import {
 } from '@driftless/protocol';
 import { describe, expect, it } from 'vitest';
 import type { RandomSource } from '../src/credentials.js';
-import { RoomStore, type CreateRoomResult } from '../src/roomStore.js';
+import { RECENT_NEGOTIATION_IDS, RoomStore, type CreateRoomResult } from '../src/roomStore.js';
 import { flipped, proofFor, sequentialRandom } from './support.js';
 
 const TTL = 60_000;
@@ -847,15 +847,27 @@ describe('RoomStore recovery negotiation', () => {
     expect(store.negotiate(HOST, 'offer', C).ok).toBe(false);
   });
 
-  it(`bounds a membership to ${String(MAX_NEGOTIATIONS_PER_MEMBERSHIP)} negotiations`, () => {
+  it(`bounds a run to ${String(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT)} negotiations without establishment`, () => {
+    // Negotiation 1 and three recoveries, none ever established.
     const { store } = negotiated();
     expect(store.negotiate(HOST, 'recover', B, A).ok).toBe(true);
     expect(store.negotiate(HOST, 'recover', C, B).ok).toBe(true);
     expect(store.negotiate(HOST, 'recover', D, C).ok).toBe(true);
-    expect(store.negotiationOf(HOST)?.negotiationCount).toBe(MAX_NEGOTIATIONS_PER_MEMBERSHIP);
+    expect(store.negotiationOf(HOST)?.negotiationCount).toBe(
+      MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+    );
+    // Attempt 5 is refused.
     expect(store.negotiate(HOST, 'recover', E, D).ok).toBe(false);
     // No request can be accepted either, since no recovery could follow.
     expect(store.negotiate(GUEST, 'recovery_request', D).ok).toBe(false);
+    // An unanswered negotiation cannot be reported established to escape the bound.
+    expect(store.establish(HOST, D)).toStrictEqual({ ok: false, code: 'INVALID_STATE' });
+    expect(store.establish(GUEST, D)).toStrictEqual({ ok: false, code: 'INVALID_STATE' });
+    expect(store.negotiate(HOST, 'recover', E, D).ok).toBe(false);
+    expect(store.negotiationOf(HOST)).toStrictEqual({
+      activeNegotiationId: D,
+      negotiationCount: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+    });
   });
 
   it('accepts one guest recovery request per negotiation, naming the active one', () => {
@@ -923,5 +935,184 @@ describe('RoomStore recovery negotiation', () => {
     expect(store.negotiate(HOST, 'offer', C).ok).toBe(false);
     expect(store.negotiate(HOST, 'offer', D).ok).toBe(true);
     expect(store.negotiate(HOST, 'recover', E, D).ok).toBe(true);
+  });
+});
+
+describe('RoomStore establishment and the consecutive negotiation budget', () => {
+  /** A distinct, well-formed negotiation ID per index. */
+  const id = (index: number): NegotiationId =>
+    index.toString(36).padStart(24, 'x') as NegotiationId;
+  const A = id(1);
+  const B = id(2);
+
+  function answered() {
+    const store = newStore();
+    const room = created(store.createRoom(HOST, T0));
+    const joined = store.joinRoom(GUEST, room.roomId, room.inviteSecret, T0);
+    if (!joined.ok) throw new Error('expected a guest');
+    expect(store.negotiate(HOST, 'offer', A).ok).toBe(true);
+    expect(store.negotiate(GUEST, 'answer', A).ok).toBe(true);
+    return { store, room, joined };
+  }
+
+  /** Fails the active negotiation and recovers into `next`, without establishing it. */
+  function recover(store: RoomStore, previous: NegotiationId, next: NegotiationId): boolean {
+    return (
+      store.negotiate(GUEST, 'recovery_request', previous).ok &&
+      store.negotiate(HOST, 'recover', next, previous).ok &&
+      store.negotiate(GUEST, 'answer', next).ok
+    );
+  }
+
+  it('records host only, then guest only, and resets the run only when both report', () => {
+    const { store } = answered();
+    expect(recover(store, A, B)).toBe(true);
+    expect(store.negotiationOf(HOST)?.negotiationCount).toBe(2);
+    expect(store.establish(HOST, B)).toStrictEqual({ ok: true, reset: false });
+    expect(store.negotiationOf(HOST)?.negotiationCount).toBe(2);
+    expect(store.establish(GUEST, B)).toStrictEqual({ ok: true, reset: true });
+    expect(store.negotiationOf(GUEST)).toStrictEqual({
+      activeNegotiationId: B,
+      negotiationCount: 1,
+    });
+  });
+
+  it('never resets on one side alone, whichever side reports', () => {
+    for (const reporter of [HOST, GUEST]) {
+      const { store } = answered();
+      let previous = A;
+      for (let index = 2; index <= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; index += 1) {
+        // Only one side ever reports, however often.
+        expect(store.establish(reporter, previous)).toStrictEqual({ ok: true, reset: false });
+        expect(store.establish(reporter, previous)).toStrictEqual({ ok: true, reset: false });
+        expect(recover(store, previous, id(index))).toBe(true);
+        previous = id(index);
+      }
+      expect(store.establish(reporter, previous)).toStrictEqual({ ok: true, reset: false });
+      expect(store.negotiationOf(HOST)?.negotiationCount).toBe(
+        MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+      );
+      expect(store.negotiate(GUEST, 'recovery_request', previous).ok).toBe(false);
+      expect(store.negotiate(HOST, 'recover', id(99), previous).ok).toBe(false);
+    }
+  });
+
+  it('treats duplicate reports as idempotent: recorded, acknowledged, no second reset', () => {
+    const { store } = answered();
+    expect(store.establish(HOST, A)).toStrictEqual({ ok: true, reset: false });
+    expect(store.establish(HOST, A)).toStrictEqual({ ok: true, reset: false });
+    expect(store.establish(GUEST, A)).toStrictEqual({ ok: true, reset: true });
+    expect(store.establish(GUEST, A)).toStrictEqual({ ok: true, reset: false });
+    expect(store.establish(HOST, A)).toStrictEqual({ ok: true, reset: false });
+    // A duplicate after a later recovery started is stale, and resets nothing.
+    expect(recover(store, A, B)).toBe(true);
+    expect(store.establish(HOST, A)).toStrictEqual({ ok: false, code: 'INVALID_STATE' });
+    expect(store.establish(GUEST, A)).toStrictEqual({ ok: false, code: 'INVALID_STATE' });
+    expect(store.negotiationOf(HOST)?.negotiationCount).toBe(2);
+  });
+
+  it('refuses stale, unknown, unanswered, and out-of-room reports without any change', () => {
+    const { store, room, joined } = answered();
+    const before = store.negotiationOf(HOST);
+    // Unknown ID, and the ID of no negotiation at all.
+    expect(store.establish(HOST, id(77)).ok).toBe(false);
+    // Not in any room.
+    expect(store.establish(THIRD, A).ok).toBe(false);
+    expect(store.negotiationOf(HOST)).toStrictEqual(before);
+
+    // Stale: an earlier negotiation, after the recovery replaced it.
+    expect(store.negotiate(HOST, 'recover', B, A).ok).toBe(true);
+    expect(store.establish(GUEST, A).ok).toBe(false);
+    // Not yet answered: no peer session can exist for it.
+    expect(store.establish(HOST, B).ok).toBe(false);
+    expect(store.establish(GUEST, B).ok).toBe(false);
+    expect(store.negotiate(GUEST, 'answer', B).ok).toBe(true);
+
+    // A reconnecting participant has no connection to report on; the
+    // participant still connected may report.
+    store.connectionLost(GUEST, T0);
+    expect(store.establish(GUEST, B).ok).toBe(false);
+    expect(store.establish(HOST, B)).toStrictEqual({ ok: true, reset: false });
+    const challenge = 'C'.repeat(32) as ResumeChallenge;
+    const resumed = store.resume(
+      40,
+      room.sessionId,
+      joined.guest.participantId,
+      challenge,
+      proofFor(joined.resumeSecret, room.sessionId, joined.guest.participantId, challenge),
+      T0,
+    );
+    expect(resumed.ok).toBe(true);
+    // The resumed connection carries the membership and may report.
+    expect(store.establish(40, B)).toStrictEqual({ ok: true, reset: true });
+
+    // After the guest's membership ends, nothing can be reported.
+    store.leaveRoom(40);
+    expect(store.establish(40, B).ok).toBe(false);
+    expect(store.establish(HOST, B).ok).toBe(false);
+    // A host alone, and a host before any negotiation, cannot report either.
+    const alone = newStore();
+    created(alone.createRoom(HOST, T0));
+    expect(alone.establish(HOST, A).ok).toBe(false);
+  });
+
+  it('gives a later guest no establishment of an earlier one', () => {
+    const { store, room } = answered();
+    expect(store.establish(HOST, A).ok).toBe(true);
+    store.leaveRoom(GUEST);
+    expect(store.joinRoom(THIRD, room.roomId, room.inviteSecret, T0).ok).toBe(true);
+    expect(store.establish(HOST, A).ok).toBe(false);
+    expect(store.establish(THIRD, A).ok).toBe(false);
+    expect(store.negotiate(HOST, 'offer', B).ok).toBe(true);
+    expect(store.negotiate(THIRD, 'answer', B).ok).toBe(true);
+    expect(store.establish(HOST, B)).toStrictEqual({ ok: true, reset: false });
+    expect(store.establish(THIRD, B)).toStrictEqual({ ok: true, reset: true });
+  });
+
+  it('survives 100 established recoveries with bounded state and the whole budget each time', () => {
+    const { store } = answered();
+    expect(store.establish(HOST, A).ok).toBe(true);
+    expect(store.establish(GUEST, A)).toStrictEqual({ ok: true, reset: true });
+    let previous = A;
+    for (let cycle = 1; cycle <= 100; cycle += 1) {
+      const next = id(1000 + cycle);
+      expect(recover(store, previous, next)).toBe(true);
+      expect(store.negotiationOf(HOST)).toStrictEqual({
+        activeNegotiationId: next,
+        negotiationCount: 2,
+      });
+      expect(store.establish(GUEST, next)).toStrictEqual({ ok: true, reset: false });
+      expect(store.establish(HOST, next)).toStrictEqual({ ok: true, reset: true });
+      expect(store.negotiationOf(HOST)).toStrictEqual({
+        activeNegotiationId: next,
+        negotiationCount: 1,
+      });
+      // Bounded: one negotiation, a fixed-size ID history, one room, two members.
+      expect(store.negotiationCount).toBe(1);
+      expect(store.rememberedNegotiationIdCount).toBe(Math.min(cycle + 1, RECENT_NEGOTIATION_IDS));
+      expect([store.roomCount, store.memberCount, store.connectedCount]).toStrictEqual([1, 2, 2]);
+      previous = next;
+    }
+    // Recovery is still available, with the whole consecutive budget.
+    for (let index = 1; index < MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; index += 1) {
+      const next = id(5000 + index);
+      expect(recover(store, previous, next)).toBe(true);
+      previous = next;
+    }
+    expect(store.negotiationOf(HOST)?.negotiationCount).toBe(
+      MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+    );
+    expect(store.negotiate(GUEST, 'recovery_request', previous).ok).toBe(false);
+    expect(store.negotiate(HOST, 'recover', id(9999), previous).ok).toBe(false);
+  });
+
+  it('never accepts a recently used ID again, and remembers only a bounded number', () => {
+    const { store } = answered();
+    expect(store.establish(HOST, A).ok && store.establish(GUEST, A).ok).toBe(true);
+    // A recent ID, even the established active one, cannot start a recovery.
+    expect(store.negotiate(HOST, 'recover', A, A).ok).toBe(false);
+    expect(recover(store, A, B)).toBe(true);
+    expect(store.negotiate(HOST, 'recover', A, B).ok).toBe(false);
+    expect(store.rememberedNegotiationIdCount).toBe(2);
   });
 });

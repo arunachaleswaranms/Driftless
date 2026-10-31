@@ -29,7 +29,6 @@ import {
   type EmptyPayload,
   type ErrorMessage,
   type IceCandidateMessage,
-  type IceCompleteMessage,
   type NegotiationMessage,
   type NegotiationSnapshot,
   type ParticipantRole,
@@ -54,7 +53,11 @@ import {
   type SessionResumeProveMessage,
 } from './messages.js';
 import { MAX_RTC_ICE_SERVERS, toRtcIceServer, type RtcIceServer } from './rtcConfig.js';
-import { MAX_NEGOTIATIONS_PER_MEMBERSHIP, isSessionDescription, toIceCandidate } from './webrtc.js';
+import {
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+  isSessionDescription,
+  toIceCandidate,
+} from './webrtc.js';
 
 /**
  * Why a message was rejected. Every value is a fixed token, so it is safe to
@@ -277,13 +280,21 @@ function decodeNegotiationSnapshot(object: JsonObject): NegotiationSnapshot | un
   const { activeNegotiationId, negotiationCount } = object;
   if (
     !isWireInteger(negotiationCount) ||
-    negotiationCount > MAX_NEGOTIATIONS_PER_MEMBERSHIP ||
+    negotiationCount > MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT ||
     !(activeNegotiationId === null || isNegotiationId(activeNegotiationId)) ||
     (activeNegotiationId === null) !== (negotiationCount === 0)
   ) {
     return undefined;
   }
   return { activeNegotiationId, negotiationCount };
+}
+
+/** A payload of exactly one negotiation ID. */
+function decodeNegotiationIdOnly(value: unknown): { negotiationId: NegotiationId } | undefined {
+  const object = exactObject(value, ['negotiationId']);
+  if (object === undefined) return undefined;
+  const { negotiationId } = object;
+  return isNegotiationId(negotiationId) ? { negotiationId } : undefined;
 }
 
 function decodeSessionDescription(value: unknown): SessionDescriptionPayload | undefined {
@@ -306,18 +317,8 @@ const NEGOTIATION_DECODERS: DecoderTable<NegotiationMessage> = {
     if (!isNegotiationId(negotiationId) || candidate === undefined) return undefined;
     return { negotiationId, candidate };
   },
-  ICE_COMPLETE: (value): IceCompleteMessage['payload'] | undefined => {
-    const object = exactObject(value, ['negotiationId']);
-    if (object === undefined) return undefined;
-    const { negotiationId } = object;
-    return isNegotiationId(negotiationId) ? { negotiationId } : undefined;
-  },
-  RTC_RECOVERY_REQUEST: (value): { negotiationId: NegotiationId } | undefined => {
-    const object = exactObject(value, ['negotiationId']);
-    if (object === undefined) return undefined;
-    const { negotiationId } = object;
-    return isNegotiationId(negotiationId) ? { negotiationId } : undefined;
-  },
+  ICE_COMPLETE: decodeNegotiationIdOnly,
+  RTC_RECOVERY_REQUEST: decodeNegotiationIdOnly,
   RTC_RECOVER: (value): RtcRecoverMessage['payload'] | undefined => {
     const object = exactObject(value, ['previousNegotiationId', 'negotiationId', 'sdp']);
     if (object === undefined) return undefined;
@@ -443,6 +444,7 @@ const CLIENT_DECODERS: DecoderTable<ClientMessage> = {
   },
   ROOM_LEAVE: decodeEmpty,
   RTC_CONFIG_REQUEST: decodeEmpty,
+  RTC_ESTABLISHED: decodeNegotiationIdOnly,
   SESSION_RESUME_BEGIN: (value): SessionResumeBeginMessage['payload'] | undefined => {
     const object = exactObject(value, ['sessionId', 'participantId']);
     if (object === undefined) return undefined;
@@ -629,6 +631,7 @@ const SERVER_DECODERS: DecoderTable<ServerMessage> = {
     }
     return { expiresAt, iceServers: servers };
   },
+  RTC_ESTABLISHED_ACK: decodeNegotiationIdOnly,
   ERROR: (value): ErrorMessage['payload'] | undefined => {
     const object = exactObject(value, ['code', 'message', 'recoverable']);
     if (object === undefined) return undefined;

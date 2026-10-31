@@ -1,5 +1,5 @@
 import {
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   PEER_CONTROL_CHANNEL_LABEL,
   type InviteSecret,
   type NegotiationId,
@@ -490,7 +490,7 @@ describe('forced relay (qualification builds only)', () => {
       failure: 'relay_unavailable',
     });
     // Bounded like any failure: no offer ever left, and recovery stops at the bound.
-    for (let index = 0; index < MAX_NEGOTIATIONS_PER_MEMBERSHIP; index += 1) {
+    for (let index = 0; index < MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; index += 1) {
       await harness.timers.advance(HOST_RECOVERY_DELAY_MS + RTC_CONFIG_WAIT_MS);
     }
     expect(harness.connections).toHaveLength(0);
@@ -544,10 +544,11 @@ describe('connection diagnostics', () => {
         protocol: 'udp',
         relayProtocol: null,
       },
-      negotiation: { count: 1, max: MAX_NEGOTIATIONS_PER_MEMBERSHIP },
+      negotiation: { count: 1, max: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT },
       turn: 'not_configured',
       icePolicy: 'all',
       collectedAt: harness.timers.now,
+      recovery: { transientRecovered: 0, sessionsLost: 0, lastLoss: null, exhausted: false },
     });
     await harness.timers.advance(3_600_000);
     expect(pc.getStatsCalls).toBe(1);
@@ -589,7 +590,8 @@ describe('connection diagnostics', () => {
     expect(inRoom(state).peer?.connection).toBe('connected');
     expect(pc.closed).toBe(false);
     expect(harness.connections).toHaveLength(1);
-    // Nothing was renegotiated or sent because of it.
+    // Nothing was renegotiated or sent because of it: only the offer, and
+    // the establishment report of the connected session.
     await harness.timers.advance(60_000);
     expect(harness.controller.getState()).toBe(state);
     expect(
@@ -597,7 +599,7 @@ describe('connection diagnostics', () => {
         .socket()
         .sent.slice(sentBefore)
         .map((m) => m.type),
-    ).toStrictEqual(['RTC_OFFER']);
+    ).toStrictEqual(['RTC_OFFER', 'RTC_ESTABLISHED']);
 
     // An unfamiliar report shape is also UNKNOWN, not a failure.
     pc.stats = new Map<string, unknown>([['x', { id: 'x', type: 'transport' }]]);
@@ -643,7 +645,15 @@ describe('connection diagnostics', () => {
     expect(harness.controller.getDiagnostics()).toMatchObject({
       status: 'ready',
       path: { classification: 'TURN_RELAY', localCandidateType: 'relay', relayProtocol: 'tcp' },
-      negotiation: { count: 2, max: MAX_NEGOTIATIONS_PER_MEMBERSHIP },
+      // Established again: the run of negotiations without establishment restarted.
+      negotiation: { count: 1, max: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT },
+      // The failed session is remembered only by fixed tokens and its path class.
+      recovery: {
+        transientRecovered: 0,
+        sessionsLost: 1,
+        lastLoss: { failure: 'connection_lost', cause: 'failed', path: 'DIRECT' },
+        exhausted: false,
+      },
     });
   });
 

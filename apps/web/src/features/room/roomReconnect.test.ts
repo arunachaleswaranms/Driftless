@@ -1,5 +1,5 @@
 import {
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   PEER_CONTROL_CHANNEL_LABEL,
   type InviteSecret,
   type NegotiationId,
@@ -850,12 +850,12 @@ describe('peer transport recovery', () => {
 
   it('host: local offer failures still use up the negotiation budget', async () => {
     const harness = await guestJoins(await hostInRoom());
-    for (let index = 0; index < MAX_NEGOTIATIONS_PER_MEMBERSHIP; index += 1) {
+    for (let index = 0; index < MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; index += 1) {
       await harness.connection().settle('createOffer', 'reject');
       await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
     }
     await harness.timers.advance(HOST_RECOVERY_DELAY_MS * 10);
-    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_PER_MEMBERSHIP);
+    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT);
     expect(inRoom(harness.controller.getState()).peer?.connection).toBe('failed');
     expect(harness.timers.pendingCount).toBe(0);
   });
@@ -957,56 +957,74 @@ describe('peer transport recovery', () => {
     ).toStrictEqual([{ negotiationId }, { negotiationId }]);
   });
 
-  it(`host: stops at ${String(MAX_NEGOTIATIONS_PER_MEMBERSHIP)} negotiations and lets the user leave`, async () => {
+  it(`host: stops after ${String(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT)} negotiations in a row that never establish, and lets the user leave`, async () => {
     const { harness } = await connectedHost();
-    for (let index = 2; index <= MAX_NEGOTIATIONS_PER_MEMBERSHIP; index += 1) {
-      harness.connection().setConnectionState('failed');
-      await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
-      await connectHostSession(harness);
-    }
-    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_PER_MEMBERSHIP);
+    // The established first session fails; three recoveries in a row fail before connecting.
     harness.connection().setConnectionState('failed');
+    for (let index = 2; index <= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; index += 1) {
+      await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
+      expect(harness.connections).toHaveLength(index);
+      await harness.connection().settle('createOffer');
+      await harness.connection().settle('setLocalDescription');
+      harness.connection().setConnectionState('failed');
+    }
     await harness.timers.advance(HOST_RECOVERY_DELAY_MS * 10);
     // No fifth negotiation, no loop, a safe failed state.
-    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_PER_MEMBERSHIP);
+    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT);
     const failed = inRoom(harness.controller.getState());
     expect(failed.peer?.connection).toBe('failed');
     expect(statusText(failed)).toBe('The peer connection to the guest could not be recovered.');
+    expect(harness.controller.getDiagnostics().recovery).toMatchObject({
+      sessionsLost: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+      lastLoss: { failure: 'connection_failed', cause: 'failed' },
+      exhausted: true,
+    });
     const offers = [
       ...harness.socket().sentOfType('RTC_OFFER'),
       ...harness.socket().sentOfType('RTC_RECOVER'),
     ];
     expect(new Set(offers.map((m) => m.payload.negotiationId)).size).toBe(
-      MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+      MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
     );
+    expect(harness.timers.pendingCount).toBe(0);
     harness.controller.leaveRoom();
     expect(harness.socket().sent.at(-1)?.type).toBe('ROOM_LEAVE');
   });
 
-  it(`guest: does not ask again once ${String(MAX_NEGOTIATIONS_PER_MEMBERSHIP)} negotiations are used`, async () => {
-    const { harness, negotiationId } = await connectedGuest();
+  it(`guest: stops asking after ${String(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT)} negotiations in a row that never establish`, async () => {
+    const { harness, channel, negotiationId } = await connectedGuest();
+    channel.remoteClose();
     let previous = negotiationId;
-    for (let index = 2; index <= MAX_NEGOTIATIONS_PER_MEMBERSHIP; index += 1) {
-      harness.connection().setConnectionState('failed');
+    for (let index = 2; index <= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT; index += 1) {
       harness.socket().deliver({
         type: 'RTC_RECOVER',
         payload: { previousNegotiationId: previous, negotiationId: idOf(index), sdp: 'v=0\r\n' },
       });
       await flush();
-      await connectGuestSession(harness, idOf(index));
+      harness.connection().setConnectionState('failed');
       previous = idOf(index);
     }
-    const requests = harness.socket().sentOfType('RTC_RECOVERY_REQUEST').length;
-    harness.connection().setConnectionState('failed');
-    expect(harness.socket().sentOfType('RTC_RECOVERY_REQUEST')).toHaveLength(requests);
+    // One request per failed negotiation, then none: the service would refuse it.
+    expect(harness.socket().sentOfType('RTC_RECOVERY_REQUEST')).toHaveLength(
+      MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT - 1,
+    );
     expect(inRoom(harness.controller.getState()).peer?.connection).toBe('failed');
-    // A further recovery offer would exceed the bound and is not accepted.
+    expect(harness.controller.getDiagnostics().recovery.exhausted).toBe(true);
+    // The service is the authority: a recovery offer it did relay is followed,
+    // and a session that establishes restores recovery.
     harness.socket().deliver({
       type: 'RTC_RECOVER',
       payload: { previousNegotiationId: previous, negotiationId: idOf(9), sdp: 'v=0\r\n' },
     });
     await flush();
-    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_PER_MEMBERSHIP);
+    expect(harness.connections).toHaveLength(MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT + 1);
+    await connectGuestSession(harness, idOf(9));
+    expect(inRoom(harness.controller.getState()).peer?.connection).toBe('connected');
+    expect(harness.controller.getDiagnostics().recovery.exhausted).toBe(false);
+    harness.connection().setConnectionState('failed');
+    expect(harness.socket().sentOfType('RTC_RECOVERY_REQUEST').at(-1)?.payload).toStrictEqual({
+      negotiationId: idOf(9),
+    });
   });
 });
 
@@ -1268,5 +1286,423 @@ describe('leaving while signaling is reconnecting', () => {
     expect(harness.controller.getState()).toStrictEqual({ phase: 'idle', notice: 'left' });
     expect(harness.socket().closeCalls).toStrictEqual([]);
     expect(harness.prover.calls).toStrictEqual([]);
+  });
+});
+
+describe('establishment reports (Phase 3 recovery hardening)', () => {
+  /** Resumes the current membership on a new socket with the given snapshot. */
+  async function resumeWith(
+    harness: Harness,
+    role: 'host' | 'guest',
+    activeNegotiationId: NegotiationId,
+    delay = 0,
+  ) {
+    const socket = await attemptUntilProof(harness, delay);
+    socket.deliver({
+      type: 'SESSION_RESUMED',
+      payload: resumedPayload(role, { activeNegotiationId }),
+    });
+    await flush();
+    return socket;
+  }
+
+  function ack(harness: Harness, negotiationId: NegotiationId) {
+    harness.socket().deliver({ type: 'RTC_ESTABLISHED_ACK', payload: { negotiationId } });
+  }
+
+  it('reports the connected session once, and an acknowledged report is not resent', async () => {
+    const { harness, negotiationId } = await connectedHost();
+    expect(
+      harness
+        .socket()
+        .sentOfType('RTC_ESTABLISHED')
+        .map((m) => m.payload),
+    ).toStrictEqual([{ negotiationId }]);
+    ack(harness, negotiationId);
+    harness.socket().drop();
+    const resumed = await resumeWith(harness, 'host', negotiationId);
+    expect(inRoom(harness.controller.getState()).peer?.connection).toBe('connected');
+    expect(resumed.sentOfType('RTC_ESTABLISHED')).toStrictEqual([]);
+  });
+
+  it('resends after a resume when the acknowledgement was lost with the connection', async () => {
+    const { harness, negotiationId, pc } = await connectedGuest();
+    // Sent, recorded by the service perhaps, but the ACK never arrives.
+    expect(harness.socket().sentOfType('RTC_ESTABLISHED')).toHaveLength(1);
+    harness.socket().drop();
+    const resumed = await resumeWith(harness, 'guest', negotiationId);
+    expect(resumed.sentOfType('RTC_ESTABLISHED').map((m) => m.payload)).toStrictEqual([
+      { negotiationId },
+    ]);
+    // The service treats it as a duplicate and acknowledges it; a repeat ACK is harmless.
+    ack(harness, negotiationId);
+    ack(harness, negotiationId);
+    expect(pc.closed).toBe(false);
+    expect(harness.connections).toHaveLength(1);
+    // Acknowledged now: a later resume sends nothing.
+    harness.socket().drop();
+    const again = await resumeWith(harness, 'guest', negotiationId);
+    expect(again.sentOfType('RTC_ESTABLISHED')).toStrictEqual([]);
+  });
+
+  it('ignores an acknowledgement for another negotiation', async () => {
+    const { harness, negotiationId } = await connectedHost();
+    ack(harness, OTHER);
+    harness.socket().drop();
+    const resumed = await resumeWith(harness, 'host', negotiationId);
+    expect(resumed.sentOfType('RTC_ESTABLISHED').map((m) => m.payload)).toStrictEqual([
+      { negotiationId },
+    ]);
+  });
+
+  it('ignores an old negotiation’s acknowledgement after a recovery', async () => {
+    const { harness, negotiationId: first } = await connectedHost();
+    harness.connection().setConnectionState('failed');
+    await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
+    const { negotiationId: second } = await connectHostSession(harness);
+    expect(
+      harness
+        .socket()
+        .sentOfType('RTC_ESTABLISHED')
+        .map((m) => m.payload),
+    ).toStrictEqual([{ negotiationId: first }, { negotiationId: second }]);
+    // The late ACK for the first session does not settle the second's report.
+    ack(harness, first);
+    harness.socket().drop();
+    const resumed = await resumeWith(harness, 'host', second);
+    expect(resumed.sentOfType('RTC_ESTABLISHED').map((m) => m.payload)).toStrictEqual([
+      { negotiationId: second },
+    ]);
+  });
+
+  it('holds a report made while signaling is down, keeps the session, and sends it after the resume', async () => {
+    const harness = await guestJoins(await hostInRoom());
+    const pc = harness.connection();
+    await pc.settle('createOffer');
+    await pc.settle('setLocalDescription');
+    const negotiationId = harness.socket().sentOfType('RTC_OFFER')[0]?.payload.negotiationId;
+    if (negotiationId === undefined) throw new Error('no offer');
+    harness.socket().deliver({ type: 'RTC_ANSWER', payload: { negotiationId, sdp: 'v=0\r\n' } });
+    await flush();
+    await pc.settle('setRemoteDescription');
+    // The socket is already dead, though its close has not been reported yet.
+    const dead = harness.socket();
+    dead.readyState = FakeWebSocket.CLOSED;
+    const channel = pc.channels[0];
+    if (channel === undefined) throw new Error('no channel');
+    channel.open();
+    const fromGuest = {
+      sessionId: SESSION_ID,
+      negotiationId,
+      senderId: GUEST_ID,
+      recipientId: HOST_ID,
+    };
+    channel.receive(peerMessage('PEER_HELLO', fromGuest, 0));
+    channel.receive(peerMessage('PEER_READY', fromGuest, 1));
+    // Connected: the working session is not failed for want of signaling.
+    expect(inRoom(harness.controller.getState()).peer?.connection).toBe('connected');
+    expect(dead.sentOfType('RTC_ESTABLISHED')).toStrictEqual([]);
+    dead.drop();
+    expect(pc.closed).toBe(false);
+    const resumed = await resumeWith(harness, 'host', negotiationId);
+    expect(resumed.sentOfType('RTC_ESTABLISHED').map((m) => m.payload)).toStrictEqual([
+      { negotiationId },
+    ]);
+    ack(harness, negotiationId);
+    expect(harness.connections).toHaveLength(1);
+    expect(inRoom(harness.controller.getState()).peer?.connection).toBe('connected');
+  });
+
+  it('drops a report whose session did not survive the outage', async () => {
+    const { harness, pc, negotiationId } = await connectedGuest();
+    harness.socket().drop();
+    pc.setConnectionState('failed');
+    const resumed = await resumeWith(harness, 'guest', negotiationId);
+    // Nothing reports the dead session; the guest asks for a recovery instead.
+    expect(resumed.sentOfType('RTC_ESTABLISHED')).toStrictEqual([]);
+    expect(resumed.sentOfType('RTC_RECOVERY_REQUEST').map((m) => m.payload)).toStrictEqual([
+      { negotiationId },
+    ]);
+  });
+
+  it('never reports a session that failed before completing the handshake', async () => {
+    const harness = await guestJoins(await hostInRoom());
+    await harness.connection().settle('createOffer');
+    await harness.connection().settle('setLocalDescription');
+    harness.connection().setConnectionState('failed');
+    await harness.timers.advance(HOST_RECOVERY_DELAY_MS * 10);
+    expect(harness.socket().sentOfType('RTC_ESTABLISHED')).toStrictEqual([]);
+  });
+});
+
+describe('repeated recovery without lifetime exhaustion (Phase 3 recovery hardening)', () => {
+  /** Live resources: one peer connection and one socket that are not closed. */
+  function expectBounded(harness: Harness) {
+    expect(harness.connections.filter((connection) => !connection.closed)).toHaveLength(1);
+    expect(
+      harness.sockets.filter((socket) => socket.readyState !== FakeWebSocket.CLOSED),
+    ).toHaveLength(1);
+    expect(harness.timers.pendingCount).toBe(0);
+  }
+
+  it('host: 20 consecutive established recoveries in one membership, then another is still allowed', async () => {
+    const { harness, negotiationId } = await connectedHost();
+    harness.socket().deliver({ type: 'RTC_ESTABLISHED_ACK', payload: { negotiationId } });
+    let previous = negotiationId;
+    for (let cycle = 1; cycle <= 20; cycle += 1) {
+      // Alternate how the transport fails: browser failure, a disconnect that
+      // outlasts the grace, and the guest's request.
+      if (cycle % 3 === 0) {
+        harness.socket().deliver({
+          type: 'RTC_RECOVERY_REQUEST',
+          payload: { negotiationId: previous },
+        });
+      } else if (cycle % 3 === 1) {
+        harness.connection().setConnectionState('failed');
+        await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
+      } else {
+        harness.connection().setConnectionState('disconnected');
+        await harness.timers.advance(5000);
+        await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
+      }
+      const { negotiationId: next, sent } = await connectHostSession(harness);
+      expect(sent).toMatchObject({
+        type: 'RTC_RECOVER',
+        payload: { previousNegotiationId: previous, negotiationId: next },
+      });
+      expect(inRoom(harness.controller.getState()).peer?.connection).toBe('connected');
+      expect(harness.socket().sentOfType('RTC_ESTABLISHED').at(-1)?.payload).toStrictEqual({
+        negotiationId: next,
+      });
+      harness.socket().deliver({ type: 'RTC_ESTABLISHED_ACK', payload: { negotiationId: next } });
+      expect(harness.controller.getDiagnostics().negotiation).toStrictEqual({
+        count: 1,
+        max: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+      });
+      expectBounded(harness);
+      previous = next;
+    }
+    expect(harness.connections).toHaveLength(21);
+    // Every third session was replaced at the guest's request without failing here.
+    expect(harness.controller.getDiagnostics().recovery).toMatchObject({
+      transientRecovered: 0,
+      sessionsLost: 14,
+      lastLoss: { failure: 'connection_lost', cause: 'disconnect_timeout' },
+      exhausted: false,
+    });
+    // The 21st failure still recovers.
+    harness.connection().setConnectionState('failed');
+    await harness.timers.advance(HOST_RECOVERY_DELAY_MS);
+    expect(harness.connections).toHaveLength(22);
+    await connectHostSession(harness);
+    expect(inRoom(harness.controller.getState())).toMatchObject({
+      phase: 'in-room',
+      participantId: HOST_ID,
+      peer: { participantId: GUEST_ID, connection: 'connected' },
+    });
+    // Signaling never dropped: one socket throughout.
+    expect(harness.sockets).toHaveLength(1);
+  });
+
+  it('guest: 10 established recoveries, then a further failure still asks for recovery', async () => {
+    const { harness, negotiationId, channel } = await connectedGuest();
+    harness.socket().deliver({ type: 'RTC_ESTABLISHED_ACK', payload: { negotiationId } });
+    let previous = negotiationId;
+    let current = channel;
+    for (let cycle = 2; cycle <= 11; cycle += 1) {
+      current.remoteClose();
+      expect(harness.socket().sentOfType('RTC_RECOVERY_REQUEST').at(-1)?.payload).toStrictEqual({
+        negotiationId: previous,
+      });
+      harness.socket().deliver({
+        type: 'RTC_RECOVER',
+        payload: { previousNegotiationId: previous, negotiationId: idOf(cycle), sdp: 'v=0\r\n' },
+      });
+      await flush();
+      ({ channel: current } = await connectGuestSession(harness, idOf(cycle)));
+      expect(harness.socket().sentOfType('RTC_ESTABLISHED').at(-1)?.payload).toStrictEqual({
+        negotiationId: idOf(cycle),
+      });
+      harness.socket().deliver({
+        type: 'RTC_ESTABLISHED_ACK',
+        payload: { negotiationId: idOf(cycle) },
+      });
+      expectBounded(harness);
+      previous = idOf(cycle);
+    }
+    current.remoteClose();
+    expect(harness.socket().sentOfType('RTC_RECOVERY_REQUEST')).toHaveLength(11);
+    expect(inRoom(harness.controller.getState()).peer?.connection).toBe('recovering');
+  });
+});
+
+describe('mobile stale-socket resume (Phase 3 recovery hardening)', () => {
+  /** The service's default liveness interval: a dead socket is unbound within two. */
+  const HEARTBEAT_MS = 5000;
+
+  /**
+   * Plays the service for each resume attempt: SESSION_UNAVAILABLE while the
+   * stale socket is still bound (before `unboundAt`), SESSION_RESUMED after.
+   * Returns the time of the successful resume.
+   */
+  async function resumeAgainstStaleBinding(
+    harness: Harness,
+    unboundAt: number,
+    snapshot: ReturnType<typeof resumedPayload>,
+  ): Promise<number> {
+    for (let attempt = 0; attempt < RECONNECT_DELAYS_MS.length; attempt += 1) {
+      const before = harness.sockets.length;
+      const delay = harness.timers.pendingDelays[0];
+      if (delay === undefined) throw new Error('no attempt scheduled');
+      await harness.timers.advance(delay);
+      expect(harness.sockets).toHaveLength(before + 1);
+      const socket = harness.socket();
+      socket.open();
+      await flush();
+      socket.deliver({ type: 'SESSION_RESUME_CHALLENGE', payload: { challenge: CHALLENGE } });
+      await flush();
+      expect(socket.sentOfType('SESSION_RESUME_PROVE')).toHaveLength(1);
+      if (harness.timers.now < unboundAt) {
+        socket.deliver({
+          type: 'ERROR',
+          payload: {
+            code: 'SESSION_UNAVAILABLE',
+            message: 'The room session is not available.',
+            recoverable: true,
+          },
+        });
+        await flush();
+        // A retryable refusal while the schedule lasts: the room is kept.
+        const state = harness.controller.getState();
+        if (attempt < RECONNECT_DELAYS_MS.length - 1) {
+          expect(inRoom(state).signaling).toBe('reconnecting');
+        }
+        continue;
+      }
+      socket.deliver({ type: 'SESSION_RESUMED', payload: snapshot });
+      await flush();
+      return harness.timers.now;
+    }
+    throw new Error('the schedule ran out');
+  }
+
+  it('retries through SESSION_UNAVAILABLE until liveness unbinds the stale socket, then recovers the peer', async () => {
+    const { harness, negotiationId, pc } = await connectedGuest();
+    harness.socket().deliver({ type: 'RTC_ESTABLISHED_ACK', payload: { negotiationId } });
+    // The phone's network disappears: the socket and the peer transport die.
+    const lostAt = harness.timers.now;
+    harness.socket().drop();
+    pc.setConnectionState('failed');
+    // Connectivity returns at once; worst heartbeat phase: the service unbinds
+    // the dead socket two intervals after the loss.
+    const resumedAt = await resumeAgainstStaleBinding(
+      harness,
+      lostAt + 2 * HEARTBEAT_MS,
+      resumedPayload('guest', { activeNegotiationId: negotiationId }),
+    );
+    // Attempts at 0, 0.25, 0.75, 1.75, 3.75, 7.75 s were refused; 11.75 s resumed.
+    expect(resumedAt - lostAt).toBe(11_750);
+    expect(harness.sockets).toHaveLength(8);
+    const state = inRoom(harness.controller.getState());
+    expect(state).toMatchObject({
+      role: 'guest',
+      roomId: ROOM_ID,
+      participantId: GUEST_ID,
+      signaling: 'connected',
+    });
+    // Every attempt proved the secret; none sent it.
+    for (const socket of harness.sockets.slice(1)) {
+      expect(socket.sentOfType('SESSION_RESUME_BEGIN')[0]?.payload).toStrictEqual({
+        sessionId: SESSION_ID,
+        participantId: GUEST_ID,
+      });
+      expect(socket.sentText.join('')).not.toContain(GUEST_RESUME);
+    }
+    // A fresh peer recovery begins at once on the resumed connection.
+    expect(
+      harness
+        .socket()
+        .sentOfType('RTC_RECOVERY_REQUEST')
+        .map((m) => m.payload),
+    ).toStrictEqual([{ negotiationId }]);
+    harness.socket().deliver({
+      type: 'RTC_RECOVER',
+      payload: { previousNegotiationId: negotiationId, negotiationId: idOf(2), sdp: 'v=0\r\n' },
+    });
+    await flush();
+    await connectGuestSession(harness, idOf(2));
+    // Simulated: authenticated resume plus a fresh authenticated peer at 11.75 s,
+    // inside the 25 s software target and the 30 s physical gate.
+    expect(harness.timers.now - lostAt).toBe(11_750);
+    expect(harness.timers.now - lostAt).toBeLessThanOrEqual(25_000);
+    expect(inRoom(harness.controller.getState())).toMatchObject({
+      participantId: GUEST_ID,
+      notice: 'restored',
+      peer: { participantId: HOST_ID, connection: 'connected' },
+    });
+    expect(harness.socket().sentOfType('RTC_ESTABLISHED').at(-1)?.payload).toStrictEqual({
+      negotiationId: idOf(2),
+    });
+    expect(harness.timers.pendingCount).toBe(0);
+  });
+
+  it('after several established recoveries, survives a stale-socket outage and recovers again', async () => {
+    const { harness, negotiationId, channel } = await connectedGuest();
+    let previous = negotiationId;
+    let current = channel;
+    for (let cycle = 2; cycle <= 4; cycle += 1) {
+      harness.socket().deliver({
+        type: 'RTC_ESTABLISHED_ACK',
+        payload: { negotiationId: previous },
+      });
+      current.remoteClose();
+      harness.socket().deliver({
+        type: 'RTC_RECOVER',
+        payload: { previousNegotiationId: previous, negotiationId: idOf(cycle), sdp: 'v=0\r\n' },
+      });
+      await flush();
+      ({ channel: current } = await connectGuestSession(harness, idOf(cycle)));
+      previous = idOf(cycle);
+    }
+    // The fourth established negotiation is active; signaling is lost and the
+    // service still holds the dead socket; the peer transport dies too.
+    const lostAt = harness.timers.now;
+    harness.socket().drop();
+    harness.connection().setConnectionState('failed');
+    const resumedAt = await resumeAgainstStaleBinding(
+      harness,
+      lostAt + 2 * HEARTBEAT_MS,
+      // Mutually established: the service's count restarted at 1.
+      resumedPayload('guest', { activeNegotiationId: previous, negotiationCount: 1 }),
+    );
+    expect(resumedAt - lostAt).toBeLessThanOrEqual(2 * HEARTBEAT_MS + 4000);
+    harness.socket().deliver({
+      type: 'RTC_RECOVER',
+      payload: { previousNegotiationId: previous, negotiationId: idOf(5), sdp: 'v=0\r\n' },
+    });
+    await flush();
+    await connectGuestSession(harness, idOf(5));
+    expect(inRoom(harness.controller.getState())).toMatchObject({
+      participantId: GUEST_ID,
+      roomId: ROOM_ID,
+      peer: { participantId: HOST_ID, connection: 'connected' },
+    });
+    // Five negotiations in one membership, none blocked by a lifetime count.
+    expect(harness.connections).toHaveLength(5);
+  });
+
+  it('ends the room only when the whole schedule is refused', async () => {
+    const { harness } = await connectedGuest();
+    harness.socket().drop();
+    await expect(
+      resumeAgainstStaleBinding(harness, Number.POSITIVE_INFINITY, resumedPayload('guest')),
+    ).rejects.toThrow('the schedule ran out');
+    expect(harness.controller.getState()).toStrictEqual({
+      phase: 'idle',
+      notice: 'session_unrecoverable',
+    });
+    expect(harness.sockets).toHaveLength(1 + RECONNECT_DELAYS_MS.length);
+    expect(harness.timers.pendingCount).toBe(0);
+    expect(harness.connections.every((connection) => connection.closed)).toBe(true);
   });
 });

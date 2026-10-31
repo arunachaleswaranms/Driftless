@@ -162,6 +162,30 @@ export type RtcConfigMessage = Envelope<
   }
 >;
 
+// Recovery accounting (Phase 3 recovery hardening): client → server → the same client
+//
+// Signaling control metadata only: no description, candidate, address, or
+// media. A participant reports that its authenticated peer session for the
+// service's active negotiation reached the Driftless `connected` state, so
+// that both participants' reports together reset the bounded run of
+// negotiations without establishment. The service acknowledges a recorded
+// report, including a repeated one, to the reporting connection only.
+
+/**
+ * Either participant → service. This participant's peer session for the
+ * active negotiation completed the authenticated peer handshake.
+ */
+export type RtcEstablishedMessage = Envelope<
+  'RTC_ESTABLISHED',
+  { readonly negotiationId: NegotiationId }
+>;
+
+/** Service → the reporting participant. Its report for `negotiationId` is recorded. */
+export type RtcEstablishedAckMessage = Envelope<
+  'RTC_ESTABLISHED_ACK',
+  { readonly negotiationId: NegotiationId }
+>;
+
 export type NegotiationMessage =
   | RtcOfferMessage
   | RtcAnswerMessage
@@ -177,6 +201,7 @@ export type ClientMessage =
   | SessionResumeBeginMessage
   | SessionResumeProveMessage
   | RtcConfigRequestMessage
+  | RtcEstablishedMessage
   | NegotiationMessage;
 
 // Server → client
@@ -265,8 +290,10 @@ export type ParticipantSignalingState = (typeof PARTICIPANT_SIGNALING_STATES)[nu
  * whenever a participant must reconcile with it. `activeNegotiationId` is
  * the latest negotiation the service accepted, whether or not its peer
  * connection still works, and is null exactly when `negotiationCount` is 0.
- * `negotiationCount` counts the negotiations this membership has used, at
- * most `MAX_NEGOTIATIONS_PER_MEMBERSHIP`.
+ * `negotiationCount` counts the negotiations started since both participants
+ * last reported one established, at most
+ * `MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT`; it is 1 while the active
+ * negotiation is the established one.
  */
 export interface NegotiationSnapshot {
   readonly activeNegotiationId: NegotiationId | null;
@@ -349,6 +376,7 @@ export type ServerMessage =
   | SessionResumeChallengeMessage
   | SessionResumedMessage
   | RtcConfigMessage
+  | RtcEstablishedAckMessage
   | ErrorMessage
   | NegotiationMessage;
 
@@ -368,6 +396,7 @@ export const CLIENT_MESSAGE_TYPES = [
   'SESSION_RESUME_BEGIN',
   'SESSION_RESUME_PROVE',
   'RTC_CONFIG_REQUEST',
+  'RTC_ESTABLISHED',
   ...NEGOTIATION_MESSAGE_TYPES,
 ] as const satisfies readonly ClientMessage['type'][];
 
@@ -382,6 +411,7 @@ export const SERVER_MESSAGE_TYPES = [
   'SESSION_RESUME_CHALLENGE',
   'SESSION_RESUMED',
   'RTC_CONFIG',
+  'RTC_ESTABLISHED_ACK',
   'ERROR',
   ...NEGOTIATION_MESSAGE_TYPES,
 ] as const satisfies readonly ServerMessage['type'][];

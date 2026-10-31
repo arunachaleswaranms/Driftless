@@ -65,7 +65,7 @@ The proxy terminates TLS with a publicly trusted certificate, serves the static 
 
 - upgrade WebSocket connections on `/v1/signaling` (HTTP/1.1 `Upgrade`/`Connection` headers);
 - forward the browser's `Origin` header unchanged, because the service's origin policy checks it;
-- keep the WebSocket open longer than the service's ping interval (15 s by default); an idle timeout of 60 s or more is enough, because the service's pings keep the connection active;
+- keep the WebSocket open longer than the service's ping interval (5 s by default); an idle timeout of 60 s or more is enough, because the service's pings keep the connection active;
 - redirect `http` to `https` and never serve the application or signaling over plain HTTP or `ws://`;
 - not rewrite the path or add a query string (the service refuses any query on the upgrade).
 

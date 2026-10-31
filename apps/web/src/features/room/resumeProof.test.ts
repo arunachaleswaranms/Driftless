@@ -85,12 +85,21 @@ describe('createResumeProver', () => {
 });
 
 describe('reconnect schedule', () => {
-  it('is finite, starts immediately, has a bounded step, and fits the service grace period', () => {
-    expect(RECONNECT_DELAYS_MS).toStrictEqual([0, 250, 500, 1000, 2000, 4000, 4000, 4000]);
+  it('is finite, starts immediately, has a bounded step, and outlasts stale-socket detection', () => {
+    expect(RECONNECT_DELAYS_MS).toStrictEqual([
+      0, 250, 500, 1000, 2000, 4000, 4000, 4000, 4000, 4000, 4000, 4000, 4000, 4000, 4000, 4000,
+      4000, 4000, 4000,
+    ]);
+    expect(RECONNECT_DELAYS_MS).toHaveLength(19);
+    expect(RECONNECT_DELAYS_MS[0]).toBe(0);
     expect(Math.max(...RECONNECT_DELAYS_MS)).toBeLessThanOrEqual(4000);
     const total = RECONNECT_DELAYS_MS.reduce((sum, delay) => sum + delay, 0);
-    expect(total).toBe(15_750);
-    expect(total).toBeLessThan(30_000);
+    expect(total).toBe(59_750);
+    expect(total).toBeGreaterThanOrEqual(45_000);
+    expect(total).toBeLessThanOrEqual(60_000);
+    // Well beyond the service's worst stale-socket detection with its
+    // default 5-second heartbeat (two intervals).
+    expect(total).toBeGreaterThan(2 * 5000);
     expect(RESUME_ATTEMPT_TIMEOUT_MS).toBe(5000);
   });
 

@@ -350,42 +350,6 @@ test('survives ten consecutive signaling reconnects in one room', async ({
   await expect(room(host.page).getByRole('button', { name: 'Leave room' })).toBeVisible();
 });
 
-test('recovers the data channel up to the negotiation bound, then stops safely', async ({
-  browser,
-  baseURL,
-  pageProblems,
-}) => {
-  const { host, guest } = await connectedPair(browser, baseURL, pageProblems);
-  const negotiations = new Set((await rtcState(host.page)).sent.map((m) => m.negotiationId));
-  // The first negotiation plus three recoveries.
-  for (let recovery = 1; recovery <= 3; recovery += 1) {
-    await breakDataChannel(recovery % 2 === 0 ? host : guest);
-    await expect
-      .poll(async () => (await rtcState(host.page)).peerConnections.length)
-      .toBe(recovery + 1);
-    await expectStatus(host, CONNECTED_STATUS);
-    await expectStatus(guest, CONNECTED_STATUS);
-    const rtc = await expectSingleSession(host.page, recovery + 1);
-    for (const message of rtc.sent) negotiations.add(message.negotiationId);
-  }
-  expect(negotiations.size).toBe(4);
-
-  await breakDataChannel(guest);
-  await expectStatus(host, 'The peer connection to the guest could not be recovered.');
-  await expectStatus(guest, 'The peer connection to the host could not be recovered.');
-  await expect(room(guest.page).getByRole('alert')).toContainText(
-    'Driftless stopped trying to recover it.',
-  );
-  // No fifth negotiation, and nothing keeps trying.
-  await host.page.waitForTimeout(1000);
-  expect((await rtcState(host.page)).peerConnections).toHaveLength(4);
-  expect((await rtcState(guest.page)).peerConnections).toHaveLength(4);
-  // Leaving still works from the failed state.
-  await room(guest.page).getByRole('button', { name: 'Leave room' }).click();
-  await expectStatus(guest, 'You left the room. You are not in a room.');
-  await expectStatus(host, 'The guest left. Room created. Waiting for a guest to join.');
-});
-
 const LEAVING = 'Leaving the room…';
 const LEFT = 'You left the room. You are not in a room.';
 

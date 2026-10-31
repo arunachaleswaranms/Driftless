@@ -18,7 +18,7 @@ describe('loadConfig', () => {
         allowedOrigins: DEVELOPMENT_ORIGINS,
         roomTtlMs: 3_600_000,
         reconnectGraceMs: 30_000,
-        heartbeatIntervalMs: 15_000,
+        heartbeatIntervalMs: 5000,
         rtc: { stunUrls: [], turn: undefined, ttlMs: 3_600_000 },
       },
     });

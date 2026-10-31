@@ -191,6 +191,11 @@ export class FakeDataChannel {
     this.onclose?.call(this.asChannel(), new Event('close'));
   }
 
+  /** The browser reports an error on the channel. */
+  error(): void {
+    this.onerror?.call(this.asChannel(), new Event('error') as RTCErrorEvent);
+  }
+
   asChannel(): RTCDataChannel {
     return this as unknown as RTCDataChannel;
   }

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FakeDataChannel,
   FakePeerConnection,
+  FakeTimers,
   flush,
   nativeCandidate,
   peerMessage,
@@ -19,8 +20,11 @@ import {
   MAX_QUEUED_REMOTE_CANDIDATE_BYTES,
   PEER_APPLICATION_RATE_BURST,
   PEER_APPLICATION_RATE_PER_SECOND,
+  PEER_DISCONNECT_GRACE_MS,
   PeerSession,
+  type ConnectionLossCause,
   type NegotiationBody,
+  type PeerTimers,
   type PeerFailure,
   type PeerSessionState,
 } from './peerSession.ts';
@@ -42,11 +46,14 @@ function setup(
     configuration?: RTCConfiguration | (() => RTCConfiguration);
     clock?: () => number;
     negotiationId?: NegotiationId;
+    timers?: PeerTimers;
   } = {},
 ) {
   const connections: FakePeerConnection[] = [];
   const signals: NegotiationBody[] = [];
   const states: { state: PeerSessionState; failure: PeerFailure | undefined }[] = [];
+  const causes: (ConnectionLossCause | undefined)[] = [];
+  let recovered = 0;
   const session = new PeerSession({
     role,
     ...(options.onApplicationMessage ? { onApplicationMessage: options.onApplicationMessage } : {}),
@@ -70,14 +77,29 @@ function setup(
         return true;
       }),
     clock: options.clock ?? (() => 7),
-    onStateChange: (state, failure) => states.push({ state, failure }),
+    onStateChange: (state, failure, cause) => {
+      states.push({ state, failure });
+      causes.push(cause);
+    },
+    onDisconnectRecovered: () => {
+      recovered += 1;
+    },
+    timers: options.timers ?? new FakeTimers(),
   });
   const connection = () => {
     const current = connections[0];
     if (current === undefined) throw new Error('no connection');
     return current;
   };
-  return { session, connections, connection, signals, states };
+  return {
+    session,
+    connections,
+    connection,
+    signals,
+    states,
+    causes,
+    recovered: () => recovered,
+  };
 }
 
 /** A host session whose offer has been sent. */
@@ -547,8 +569,9 @@ describe('control channel handshake', () => {
     const connected = await hostWithOpenChannel();
     connected.channel.receive(hello(0));
     connected.channel.receive(ready(1));
-    connected.connection().setConnectionState('disconnected');
+    connected.connection().setConnectionState('failed');
     expect(connected.states.at(-1)).toStrictEqual({ state: 'failed', failure: 'connection_lost' });
+    expect(connected.causes.at(-1)).toBe('failed');
 
     const failing = await offeredHost();
     failing.connection().setConnectionState('failed');
@@ -1362,4 +1385,209 @@ describe('SYNC transport roles and shared rate budget', () => {
       h.session.close();
     },
   );
+});
+
+describe('transient disconnect grace (Phase 3 recovery hardening)', () => {
+  /** A host session through the handshake, on fake timers. */
+  async function connectedHost() {
+    const timers = new FakeTimers();
+    const harness = setup('host', { timers });
+    void harness.session.start();
+    await flush();
+    await harness.connection().settle('createOffer');
+    await harness.connection().settle('setLocalDescription');
+    void harness.session.acceptAnswer('v=0\r\nanswer\r\n');
+    await harness.connection().settle('setRemoteDescription');
+    const channel = harness.connection().channels[0];
+    if (channel === undefined) throw new Error('no channel');
+    channel.open();
+    harness.connection().setConnectionState('connected');
+    channel.receive(hello(0));
+    channel.receive(ready(1));
+    expect(harness.session.state).toBe('connected');
+    return { ...harness, channel, timers };
+  }
+
+  /** Timers that keep every task, cancelled or not, so a stale one can be run by hand. */
+  function capturingTimers() {
+    const tasks: { delayMs: number; task: () => void; cancelled: boolean }[] = [];
+    const timers: PeerTimers = {
+      schedule(delayMs, task) {
+        const entry = { delayMs, task, cancelled: false };
+        tasks.push(entry);
+        return () => {
+          entry.cancelled = true;
+        };
+      },
+    };
+    return { timers, tasks };
+  }
+
+  it('waits 5 seconds by default', () => {
+    expect(PEER_DISCONNECT_GRACE_MS).toBe(5000);
+  });
+
+  it('A: keeps the same session when the connection returns within the grace', async () => {
+    const { session, channel, connection, connections, states, signals, timers, recovered } =
+      await connectedHost();
+    const sentBefore = channel.sent.length;
+    const statesBefore = states.length;
+    connection().setConnectionState('disconnected');
+    expect(timers.pendingDelays).toStrictEqual([PEER_DISCONNECT_GRACE_MS]);
+    await timers.advance(4900);
+    expect(session.state).toBe('connected');
+    connection().setConnectionState('connected');
+    expect(timers.pendingCount).toBe(0);
+    expect(recovered()).toBe(1);
+    // Long after the grace would have ended, nothing has failed or restarted.
+    await timers.advance(60_000);
+    expect(session.state).toBe('connected');
+    expect(states).toHaveLength(statesBefore);
+    expect(connections).toHaveLength(1);
+    expect(connection().closed).toBe(false);
+    expect(channel.closed).toBe(false);
+    expect(connection().calls.filter((call) => call === 'createOffer')).toHaveLength(1);
+    expect(signals.filter((body) => body.type !== 'ICE_CANDIDATE')).toHaveLength(1);
+    // The same channel still carries application traffic, in sequence.
+    expect(
+      session.sendApplicationMessage({
+        type: 'NOT_READY',
+        payload: { localSelectionId: null, reason: 'USER' },
+      }),
+    ).toBe(true);
+    expect(channel.sent).toHaveLength(sentBefore + 1);
+    expect(channel.sent.at(-1)?.sequence).toBe(2);
+  });
+
+  it('B: fails exactly once as connection_lost when the disconnect outlasts the grace', async () => {
+    const { session, connection, channel, states, causes, timers, recovered } =
+      await connectedHost();
+    const statesBefore = states.length;
+    connection().setConnectionState('disconnected');
+    await timers.advance(PEER_DISCONNECT_GRACE_MS - 1);
+    expect(session.state).toBe('connected');
+    await timers.advance(1);
+    expect(states.slice(statesBefore)).toStrictEqual([
+      { state: 'failed', failure: 'connection_lost' },
+    ]);
+    expect(causes.at(-1)).toBe('disconnect_timeout');
+    expect(session.state).toBe('failed');
+    expect(connection().closed).toBe(true);
+    expect(channel.closed).toBe(true);
+    expect(recovered()).toBe(0);
+    // Nothing more, however the old connection reports afterwards.
+    connection().setConnectionState('failed');
+    connection().setConnectionState('connected');
+    await timers.advance(60_000);
+    expect(states.slice(statesBefore)).toHaveLength(1);
+    expect(timers.pendingCount).toBe(0);
+  });
+
+  it('C: fails at once when the connection fails during the grace, and cancels the timer', async () => {
+    const { connection, states, causes, timers } = await connectedHost();
+    const statesBefore = states.length;
+    connection().setConnectionState('disconnected');
+    await timers.advance(1000);
+    connection().setConnectionState('failed');
+    expect(states.slice(statesBefore)).toStrictEqual([
+      { state: 'failed', failure: 'connection_lost' },
+    ]);
+    expect(causes.at(-1)).toBe('failed');
+    expect(timers.pendingCount).toBe(0);
+    await timers.advance(PEER_DISCONNECT_GRACE_MS);
+    expect(states.slice(statesBefore)).toHaveLength(1);
+  });
+
+  it('D: schedules one timer however often disconnected is reported', async () => {
+    const { session, connection, states, timers } = await connectedHost();
+    const statesBefore = states.length;
+    connection().setConnectionState('disconnected');
+    await timers.advance(3000);
+    connection().setConnectionState('disconnected');
+    connection().setConnectionState('connecting');
+    connection().setConnectionState('disconnected');
+    expect(timers.pendingCount).toBe(1);
+    // The grace runs from the first report: a repeat does not extend it.
+    await timers.advance(2000);
+    expect(session.state).toBe('failed');
+    expect(states.slice(statesBefore)).toHaveLength(1);
+  });
+
+  it('E: a stale grace callback is powerless after the owner closed the session', async () => {
+    const { timers, tasks } = capturingTimers();
+    const harness = setup('host', { timers });
+    void harness.session.start();
+    await flush();
+    await harness.connection().settle('createOffer');
+    await harness.connection().settle('setLocalDescription');
+    harness.connection().setConnectionState('disconnected');
+    expect(tasks).toHaveLength(1);
+    harness.session.close();
+    expect(tasks[0]?.cancelled).toBe(true);
+    tasks[0]?.task();
+    expect(harness.states).toStrictEqual([]);
+    expect(harness.session.state).toBe('closed');
+  });
+
+  it('cancels a grace on every way the session ends, and a later timer is the only live one', async () => {
+    // Channel close during the grace fails at once, not after it.
+    const closing = await connectedHost();
+    const before = closing.states.length;
+    closing.connection().setConnectionState('disconnected');
+    closing.channel.remoteClose();
+    expect(closing.states.slice(before)).toStrictEqual([
+      { state: 'failed', failure: 'channel_closed' },
+    ]);
+    expect(closing.timers.pendingCount).toBe(0);
+
+    // A channel error, likewise.
+    const erring = await connectedHost();
+    erring.connection().setConnectionState('disconnected');
+    erring.channel.error();
+    expect(erring.states.at(-1)).toStrictEqual({ state: 'failed', failure: 'channel_closed' });
+    expect(erring.timers.pendingCount).toBe(0);
+
+    // A closed connection is a hard loss, not a disconnect.
+    const closed = await connectedHost();
+    closed.connection().setConnectionState('closed');
+    expect(closed.states.at(-1)).toStrictEqual({ state: 'failed', failure: 'connection_lost' });
+    expect(closed.causes.at(-1)).toBe('closed');
+
+    // The owner closing or replacing the session cancels it.
+    const replaced = await connectedHost();
+    replaced.connection().setConnectionState('disconnected');
+    replaced.session.close();
+    expect(replaced.timers.pendingCount).toBe(0);
+
+    // A grace stale from a recovered disconnect cannot fire for a later one.
+    const { timers, tasks } = capturingTimers();
+    const again = setup('host', { timers });
+    void again.session.start();
+    await flush();
+    await again.connection().settle('createOffer');
+    await again.connection().settle('setLocalDescription');
+    again.connection().setConnectionState('disconnected');
+    again.connection().setConnectionState('connected');
+    again.connection().setConnectionState('disconnected');
+    expect(tasks.map((task) => task.cancelled)).toStrictEqual([true, false]);
+    tasks[0]?.task();
+    expect(again.states).toStrictEqual([]);
+    tasks[1]?.task();
+    expect(again.states).toStrictEqual([{ state: 'failed', failure: 'connection_failed' }]);
+    expect(again.causes).toStrictEqual(['disconnect_timeout']);
+  });
+
+  it('treats a disconnect before the handshake completed as a connection failure after the grace', async () => {
+    const timers = new FakeTimers();
+    const harness = setup('guest', { timers });
+    void harness.session.acceptOffer('v=0\r\nremote-offer\r\n');
+    await flush();
+    await harness.connection().settle('setRemoteDescription');
+    await harness.connection().settle('createAnswer');
+    await harness.connection().settle('setLocalDescription');
+    harness.connection().setConnectionState('disconnected');
+    await timers.advance(PEER_DISCONNECT_GRACE_MS);
+    expect(harness.states.at(-1)).toStrictEqual({ state: 'failed', failure: 'connection_failed' });
+    expect(harness.causes.at(-1)).toBe('disconnect_timeout');
+  });
 });

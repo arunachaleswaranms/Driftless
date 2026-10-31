@@ -44,7 +44,7 @@ Phase 2 — Internet P2P Foundation: **MERGED / COMPLETE**.
 
 The latest physical attempt on 2026-10-31 at `778de3a839d468527ad4789ebdc24fda42b06453`, instrumented over USB, established an authenticated DIRECT/DIRECT channel between the Mac on Wi-Fi and the OnePlus on cellular with Wi-Fi OFF (G1–G4 PASS). A genuine cellular interruption was detected but not recovered (G5 FAIL). The 2026-10-11 Wi-Fi attempt passed Q4/Q5. No public TURN was configured or exercised (T3/T4 GAP / DEFERRED; T1/T2 software PASS). See [PHASE2_QUALIFICATION.md](docs/PHASE2_QUALIFICATION.md). Earlier automated browser evidence remains same-host development evidence.
 
-Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
+Phase 3 — Local Sync Mode: **IN PROGRESS / QUALIFICATION NOT CLOSED**. Phase 3A — Media Identity & Readiness Foundation: **IMPLEMENTED / REVIEW PASS**. Phase 3B — Host-Authoritative Playback Controls: **IMPLEMENTED / REVIEW PASS**. Phase 3C — Heartbeat, Drift Detection & Correction: **IMPLEMENTED / REVIEW PASS**. Phase 3D — Qualification & Closure: **RECOVERY HARDENING IMPLEMENTED / INDEPENDENT REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED**. Phase 3 exit gate: **NOT PASSED**.
 
 ### Implementation and qualification policy
 
@@ -430,7 +430,7 @@ Exact automated evidence is in [PHASE3B_IMPLEMENTATION.md](docs/PHASE3B_IMPLEMEN
 
 ## Remaining Work
 
-- Phase 3D — Qualification & Closure: **QUALIFICATION NOT CLOSED**; deferred physical/network qualification remains an open release-level gate.
+- Phase 3D — Qualification & Closure: **RECOVERY HARDENING IMPLEMENTED / INDEPENDENT REVIEW PENDING / PHYSICAL QUALIFICATION NOT CLOSED**; after review PASS, a new candidate must be frozen and physically requalified. Deferred physical/network qualification remains an open release-level gate.
 - Media transfer and Progressive Watch production implementation remain not started.
 
 ## Evidence Classification Policy
@@ -695,3 +695,56 @@ NOT PASSED. Phase 2 G1–G4 PASS, G5 FAIL; T3/T4 GAP / DEFERRED. Compatibility u
 Next: product work on spontaneous path loss, negotiation-budget exhaustion and resume
 stranding in a new reviewed candidate, then full physical requalification. No milestone
 PR or merge.
+
+### Recovery hardening implementation — 2026-10-31
+
+Starting commit `e6fe18a2f9f3bce06c68f605fa984d340e7dc08c` (`docs: record Phase 3 USB
+cellular qualification`). The frozen candidate `778de3a839d468527ad4789ebdc24fda42b06453`
+and its physical evidence are unchanged and remain historical. This implementation
+commit addresses the recovery defects the USB cellular attempt exposed:
+
+- **Transient peer disconnect.** `PeerSession` gives an `RTCPeerConnection` that reports
+  `disconnected` a 5-second grace (`PEER_DISCONNECT_GRACE_MS`, one injected timer per
+  session, cancelled on every ending). A return to `connected` keeps the same session,
+  negotiation, Ready cycle, playback revision and SYNC heartbeat with nothing sent. A
+  disconnect that outlasts the grace fails once as `connection_lost`
+  (`disconnect_timeout`); `failed`, `closed` and channel close/error stay immediate.
+  No ICE restart.
+- **Consecutive negotiation budget.** `MAX_NEGOTIATIONS_PER_MEMBERSHIP` (lifetime 4) is
+  replaced by `MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT` (4 started in a row without
+  mutual establishment). New `RTC_ESTABLISHED { negotiationId }` /
+  `RTC_ESTABLISHED_ACK { negotiationId }` (protocol version 1, lockstep): each side
+  reports its exact current session once Driftless `connected`; the service records
+  each role once for the active answered negotiation and restarts the count at 1 only
+  when both have. Unacknowledged reports are resent after a signaling resume. The
+  service keeps a four-entry ring of recent negotiation IDs; no lifetime history.
+- **Mobile stale socket.** Default signaling ping interval 15 s → 5 s (dead socket
+  unbound within 10 s); browser resume schedule 8 attempts / 15.75 s → 19 attempts /
+  59.75 s (max step 4 s, 5 s per attempt), `SESSION_UNAVAILABLE` retryable while it
+  lasts. No live takeover; resume proof unchanged.
+- **Diagnostics.** Fixed tokens and counts: transient disconnects recovered in place,
+  peer sessions lost, last loss (`PeerFailure` + `disconnect_timeout`/`failed`/`closed`),
+  last lost path class, recovery stopped at its bound.
+
+No Local Sync policy, qualification threshold, TURN, media transfer or dependency
+change. Software evidence only: Q10/Q13/Q15/Q17 remain **FAIL** and Q18 **GAP** until a
+new frozen candidate is physically requalified. Phase 2 G1–G4 PASS, G5 FAIL; T3/T4 GAP /
+DEFERRED. Regression: protocol 315, sync-engine 109, signaling 222, web 500 Vitest
+(1146 workspace) + 14 tool tests; Playwright focused recovery
+10/10, Chromium 76/76 ×3, Chromium + installed Chrome 152/152, retries 0. `npm audit --omit=dev` 0;
+`npm audit` 16 dev/tooling advisories (13 moderate, 3 high), unchanged debt for a
+separate cleanup commit.
+
+```text
+Phase 3A — IMPLEMENTED / REVIEW PASS
+Phase 3B — IMPLEMENTED / REVIEW PASS
+Phase 3C — IMPLEMENTED / REVIEW PASS
+Phase 3D — RECOVERY HARDENING IMPLEMENTED /
+           INDEPENDENT REVIEW PENDING /
+           PHYSICAL QUALIFICATION NOT CLOSED
+Phase 3 exit gate — NOT PASSED
+Phase 2 — G1 PASS, G2 PASS, G3 PASS, G4 PASS, G5 FAIL
+```
+
+Next: independent GitHub review of the recovery-hardening commit. Do not freeze or
+physically qualify a new candidate until review PASS. No milestone PR or merge.

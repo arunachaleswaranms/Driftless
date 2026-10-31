@@ -1,6 +1,6 @@
 import { LocalSyncController } from '../local-sync/localSyncController.ts';
 import {
-  MAX_NEGOTIATIONS_PER_MEMBERSHIP,
+  MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
   isInviteSecret,
   isRoomId,
   type ErrorCode,
@@ -21,7 +21,9 @@ import {
 import { classifySelectedPath } from './connectionStats.ts';
 import {
   NO_DIAGNOSTICS,
+  NO_RECOVERY,
   type ConnectionDiagnostics,
+  type RecoveryDiagnostics,
   type TurnAvailability,
 } from './diagnostics.ts';
 import type {
@@ -31,6 +33,7 @@ import type {
 } from './iceServers.ts';
 import {
   PeerSession,
+  type ConnectionLossCause,
   type CreatePeerConnection,
   type PeerFailure,
   type PeerSessionState,
@@ -231,10 +234,18 @@ const LEFT_NOTICES: Readonly<Record<ParticipantLeftReason, HostRoomNotice>> = {
  *   membership by answering a challenge with the resume secret, on a fixed,
  *   finite schedule. After `SESSION_RESUMED` the controller reconciles with
  *   the service's snapshot before anything else is sent.
+ * - A peer connection that is briefly `disconnected` is given a bounded grace
+ *   to return, inside the peer session; if it does, nothing changes here.
  * - When the peer transport fails, the session is discarded, never repaired,
  *   and a fresh negotiation with a fresh connection and channel replaces it:
- *   the host sends a recovery offer, and the guest asks for one. A membership
- *   uses at most MAX_NEGOTIATIONS_PER_MEMBERSHIP negotiations.
+ *   the host sends a recovery offer, and the guest asks for one. Each
+ *   participant reports a session that completes the authenticated handshake
+ *   with `RTC_ESTABLISHED`, again after a resume until acknowledged, and once
+ *   both have, the service restarts its count. At most
+ *   MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT negotiations are started in a row
+ *   without one becoming established; the service enforces that bound, and
+ *   this controller follows the same count so that it stops where the
+ *   service would refuse.
  *
  * Messages that do not fit the current state, or that name a negotiation
  * other than the current one, are ignored, so a late event from an earlier
@@ -256,7 +267,21 @@ export class RoomController {
   #peer: PeerSession | undefined;
   /** The latest negotiation the service holds for this guest membership, as known here. */
   #activeNegotiationId: NegotiationId | null = null;
+  /**
+   * Negotiations started since one was last established, the active one
+   * included, as the service counts them; 1 while the active one is
+   * established. Not a lifetime count: it restarts at every established
+   * session.
+   */
   #negotiationCount = 0;
+  /**
+   * The current peer session's establishment report, from the moment it
+   * connected until the service acknowledges it. One at most, for the
+   * current session only; never persisted.
+   */
+  #establishment: { readonly peer: PeerSession; acknowledged: boolean } | undefined;
+  /** Recovery diagnostics for this membership. */
+  #recovery: RecoveryDiagnostics = NO_RECOVERY;
   /** The negotiation this guest last asked to replace, so it asks only once. */
   #recoveryRequestedFor: NegotiationId | undefined;
   /** Whether a peer session has ended and its replacement has not yet connected. */
@@ -657,6 +682,19 @@ export class RoomController {
       case 'ICE_COMPLETE':
         this.#currentPeer(message.payload.negotiationId)?.remoteCandidatesComplete();
         return;
+      case 'RTC_ESTABLISHED_ACK': {
+        // Only the acknowledgement of the current session's own report; one
+        // for an earlier negotiation, or a repeat, changes nothing.
+        const establishment = this.#establishment;
+        if (
+          establishment !== undefined &&
+          establishment.peer === this.#peer &&
+          establishment.peer.negotiationId === message.payload.negotiationId
+        ) {
+          establishment.acknowledged = true;
+        }
+        return;
+      }
       case 'SESSION_RESUME_CHALLENGE':
       case 'SESSION_RESUMED':
         // Only meaningful on a resuming connection.
@@ -890,6 +928,9 @@ export class RoomController {
       { activeNegotiationId, negotiationCount },
       'connected',
     );
+    // A report the service may never have received, if the session it
+    // describes survived the outage.
+    this.#reportEstablished();
   }
 
   /**
@@ -955,7 +996,11 @@ export class RoomController {
       local !== undefined &&
       local.state === 'connected' &&
       local.negotiationId === negotiation.activeNegotiationId;
-    if (!keep && local !== undefined) {
+    if (keep) {
+      // The kept session is established; the other participant's report,
+      // if still missing, follows its own resume, which restarts the count.
+      this.#negotiationCount = 1;
+    } else if (local !== undefined) {
       this.#closePeer();
       this.#recovering = true;
     }
@@ -988,7 +1033,9 @@ export class RoomController {
     ) {
       return;
     }
-    if (this.#negotiationCount >= MAX_NEGOTIATIONS_PER_MEMBERSHIP) {
+    // The service would refuse another negotiation without establishment.
+    if (this.#negotiationCount >= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT) {
+      this.#setRecovery({ ...this.#recovery, exhausted: true });
       this.#setInRoom({ ...state, peer: { ...state.peer, connection: 'failed' } });
       return;
     }
@@ -1040,9 +1087,12 @@ export class RoomController {
   #acceptHostOffer(negotiationId: NegotiationId, sdp: string): void {
     const state = this.#state;
     if (state.phase !== 'in-room' || state.role !== 'guest') return;
-    if (this.#negotiationCount >= MAX_NEGOTIATIONS_PER_MEMBERSHIP) return;
     this.#activeNegotiationId = negotiationId;
-    this.#negotiationCount += 1;
+    // The service relayed this offer, so it is within the service's bound.
+    this.#negotiationCount = Math.min(
+      this.#negotiationCount + 1,
+      MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT,
+    );
     this.#recoveryRequestedFor = undefined;
     const peer = this.#createPeer('guest', negotiationId, state.peer.participantId, undefined);
     this.#setInRoom({
@@ -1074,6 +1124,7 @@ export class RoomController {
       configuration: () => this.#peerConfiguration(peer),
       createPeerConnection: this.#options.createPeerConnection,
       clock: this.#options.clock,
+      timers: this.#timers,
       // Signaling carries a session's messages only while it carries the
       // membership; nothing is queued for later.
       signal: (body) =>
@@ -1081,8 +1132,15 @@ export class RoomController {
       onApplicationMessage: (body) => {
         if (this.#peer === peer) this.localSync.receive(body);
       },
-      onStateChange: (peerState, failure) => {
-        if (this.#peer === peer) this.#peerStateChanged(peerState, failure);
+      onStateChange: (peerState, failure, cause) => {
+        if (this.#peer === peer) this.#peerStateChanged(peerState, failure, cause);
+      },
+      onDisconnectRecovered: () => {
+        if (this.#peer !== peer) return;
+        this.#setRecovery({
+          ...this.#recovery,
+          transientRecovered: this.#recovery.transientRecovered + 1,
+        });
       },
     });
     this.#peer = peer;
@@ -1192,10 +1250,43 @@ export class RoomController {
       negotiation:
         peer === undefined
           ? null
-          : { count: this.#negotiationCount, max: MAX_NEGOTIATIONS_PER_MEMBERSHIP },
+          : { count: this.#negotiationCount, max: MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT },
       turn: peer === undefined ? null : (this.#peerTurn.get(peer) ?? null),
       icePolicy: this.#icePolicy,
+      recovery: this.#recovery,
     };
+  }
+
+  /** Records recovery diagnostics and shows them at once. */
+  #setRecovery(recovery: RecoveryDiagnostics): void {
+    this.#recovery = recovery;
+    this.#setDiagnostics({ ...this.#diagnostics, recovery });
+  }
+
+  /**
+   * Reports the current peer session established, if it still is the
+   * session of the active negotiation and the report is unacknowledged. It
+   * goes out when the session connects and again after each resume; while
+   * signaling is down it waits, and the working session is untouched. The
+   * service treats a repeat as already recorded.
+   */
+  #reportEstablished(): void {
+    const establishment = this.#establishment;
+    if (establishment === undefined || establishment.acknowledged) return;
+    const { peer } = establishment;
+    if (
+      this.#peer !== peer ||
+      peer.state !== 'connected' ||
+      peer.negotiationId !== this.#activeNegotiationId
+    ) {
+      this.#establishment = undefined;
+      return;
+    }
+    if (!this.#signalingReady) return;
+    this.#signaling?.send({
+      type: 'RTC_ESTABLISHED',
+      payload: { negotiationId: peer.negotiationId },
+    });
   }
 
   /**
@@ -1225,11 +1316,23 @@ export class RoomController {
     return peer?.negotiationId === negotiationId ? peer : undefined;
   }
 
-  #peerStateChanged(peerState: PeerSessionState, failure: PeerFailure | undefined): void {
+  #peerStateChanged(
+    peerState: PeerSessionState,
+    failure: PeerFailure | undefined,
+    cause: ConnectionLossCause | undefined,
+  ): void {
     const state = this.#state;
     if (state.phase !== 'in-room' || state.peer === null || peerState === 'closed') return;
     if (peerState === 'failed') {
       this.localSync.setChannel(undefined);
+      this.#establishment = undefined;
+      // The path last read for the failed session, before its snapshot goes.
+      const path = this.#diagnostics.path.classification;
+      this.#recovery = {
+        ...this.#recovery,
+        sessionsLost: this.#recovery.sessionsLost + 1,
+        lastLoss: failure === undefined ? null : { failure, cause: cause ?? null, path },
+      };
       // The failed session is discarded, never resurrected. A fresh one
       // replaces it once both sides can signal.
       const offering = this.#offering;
@@ -1265,10 +1368,16 @@ export class RoomController {
     if (peerState === 'connected') {
       this.#recovering = false;
       const peer = this.#peer;
-      if (peer)
+      if (peer) {
         this.localSync.setChannel(
           (body) => this.#peer === peer && peer.sendApplicationMessage(body),
         );
+        // Established: the run of negotiations without establishment restarts.
+        this.#negotiationCount = 1;
+        if (this.#recovery.exhausted) this.#recovery = { ...this.#recovery, exhausted: false };
+        this.#establishment = { peer, acknowledged: false };
+        this.#reportEstablished();
+      }
     }
     const connection: PeerConnectionView =
       peerState !== 'connected' && this.#recovering ? 'recovering' : peerState;
@@ -1297,7 +1406,9 @@ export class RoomController {
   /** What to show while no peer session is live. */
   #idleConnectionView(): PeerConnectionView {
     if (!this.#recovering) return 'negotiating';
-    return this.#negotiationCount >= MAX_NEGOTIATIONS_PER_MEMBERSHIP ? 'failed' : 'recovering';
+    return this.#negotiationCount >= MAX_NEGOTIATIONS_WITHOUT_ESTABLISHMENT
+      ? 'failed'
+      : 'recovering';
   }
 
   #beginMembership(membership: Membership): void {
@@ -1315,6 +1426,8 @@ export class RoomController {
     this.#negotiationCount = 0;
     this.#recoveryRequestedFor = undefined;
     this.#recovering = false;
+    this.#establishment = undefined;
+    this.#setRecovery(NO_RECOVERY);
   }
 
   #forgetMembership(): void {
@@ -1348,6 +1461,7 @@ export class RoomController {
 
   #closePeer(): void {
     this.localSync.setChannel(undefined);
+    this.#establishment = undefined;
     const peer = this.#peer;
     this.#peer = undefined;
     peer?.close();

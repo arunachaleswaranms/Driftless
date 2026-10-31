@@ -90,6 +90,7 @@ export const VALID_CLIENT_PAYLOADS = {
   SESSION_RESUME_BEGIN: { sessionId: SESSION_ID, participantId: PARTICIPANT_ID },
   SESSION_RESUME_PROVE: { challenge: RESUME_CHALLENGE, proof: RESUME_PROOF },
   RTC_CONFIG_REQUEST: {},
+  RTC_ESTABLISHED: { negotiationId: NEGOTIATION_ID },
   ...VALID_NEGOTIATION_PAYLOADS,
 } as const;
 
@@ -145,6 +146,7 @@ export const VALID_SERVER_PAYLOADS = {
     negotiationCount: 2,
   },
   RTC_CONFIG: { expiresAt: 1_760_003_600_000, iceServers: RTC_ICE_SERVERS },
+  RTC_ESTABLISHED_ACK: { negotiationId: NEGOTIATION_ID },
   ERROR: { code: 'ROOM_UNAVAILABLE', message: 'The room is not available.', recoverable: true },
   ...VALID_NEGOTIATION_PAYLOADS,
 } as const;
